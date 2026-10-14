@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -53,6 +54,7 @@ TbBool setup_heap_manager(void)
         ERRORLOG("Can not open JTY file, \"%s\"",fname);
         return false;
     }
+    clear_standard_keepersprite_source_identity();
     for (i=0; i < KEEPSPRITE_LENGTH; i++)
         keepsprite[i] = NULL;
     for (i=0; i < KEEPSPRITE_LENGTH; i++)
@@ -66,6 +68,7 @@ void reset_heap_manager(void)
     SYNCDBG(8,"Starting");
     LbFileClose(jty_file_handle);
     jty_file_handle = NULL;
+    clear_standard_keepersprite_source_identity();
     for (i=0; i < KEEPSPRITE_LENGTH; i++)
         keepsprite[i] = NULL;
     for (i=0; i < KEEPSPRITE_LENGTH; i++)

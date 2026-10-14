@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -344,10 +345,21 @@ static void force_application_close()
     }
 }
 
+// Keep presses received during rendering or between logic turns until input()
+// consumes them. A complete down/up pair must not depend on event-pump timing.
+static TbBool poll_gameplay_inputs(void)
+{
+    const TbBool was_buffering = lbBufferKeyPresses;
+    lbBufferKeyPresses = true;
+    const TbBool result = poll_inputs();
+    lbBufferKeyPresses = was_buffering;
+    return result;
+}
+
 static bool keeper_wait_for_screen_focus()
 {
     do {
-        if ( !poll_inputs() )
+        if ( !poll_gameplay_inputs() )
         {
           force_application_close();
           break;
@@ -534,9 +546,7 @@ void gameplay_loop_draw()
 
 void network_yield_waiting_gameplay_packets()
 {
-    lbBufferKeyPresses = true;
-    poll_inputs();
-    lbBufferKeyPresses = false;
+    poll_gameplay_inputs();
     gameplay_loop_draw();
     update_gameplay_delta_time();
     // Reduce game speed during lag spikes.
@@ -587,7 +597,7 @@ static void gameplay_loop_logic()
     }
 #endif // FUNCTESTING
     do_draw = display_should_be_updated_this_turn() || (!LbIsActive());
-    poll_inputs();
+    poll_gameplay_inputs();
     input_eastegg();
     input();
     if (exchange_packets() == PExR_Wait) {
@@ -970,8 +980,9 @@ static TbBool wait_at_frontend(void)
 
       if ((!finish_menu) && (LbIsActive()))
       {
-        frontend_draw();
-        RendererPresentFrame();
+        if (frontend_draw() != 2) {
+            RendererPresentFrame();
+        }
       }
 
       if (!SoundDisabled)
@@ -1099,7 +1110,9 @@ void game_loop(void)
       int32_t mspos_x_bak = lbDisplay.MMouseX;
       int32_t mspos_y_bak = lbDisplay.MMouseY;
 
-      if (((game.game_kind != GKind_LocalGame) || (game.save_game_slot == -1)) && (!network_is_active() || net_join_role != NetRole_Spectator)) {
+      if ((!replay.load_enable || !replay.snapshot_loaded)
+          && ((game.game_kind != GKind_LocalGame) || (game.save_game_slot == -1))
+          && (!network_is_active() || net_join_role != NetRole_Spectator)) {
           for (int i = 0; i < PLAYERS_COUNT; i++) {
               struct PlayerInfo *player = get_player(i);
               if (player_exists(player) && ((player->allocflags & PlaF_CompCtrl) == 0) && !player_skips_heart_zoom(player)) {
@@ -1152,6 +1165,7 @@ void game_loop(void)
       RendererPresentFrame();
       game.fast_forward = 0;
       keeper_gameplay_loop();
+      replay_complete_game();
       set_pointer_graphic_none();
       RendererClearScreen(0);
       RendererPresentFrame();

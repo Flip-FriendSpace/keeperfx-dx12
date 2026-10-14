@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -10,6 +11,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "kfx/renderer/ITextRenderer.h"
+#include "kfx/renderer/TextLayout.h"
 #include "kfx/renderer/ir/TextCommands.h"
 #include "kfx/renderer/RendererManager.h"
 #include "bflib_sprfnt.h"   // LbTextDrawResizedImmediate, window/font accessors
@@ -26,19 +28,7 @@ IRTextDrawCmd* ITextRenderer::AppendTextCommand(int32_t x, int32_t y, int32_t un
 {
     if (!m_text_write_cmds)
         return nullptr;
-    IRTextDrawCmd cmd;
-    cmd.pos_x = x; cmd.pos_y = y; cmd.units_per_px = units_per_px;
-    cmd.draw_colour = RendererGetDrawColour();
-    cmd.draw_flags  = RendererGetDrawFlags();
-    cmd.cmap = LbTextGetRemap();
-    LbTextGetJustifyWindow(&cmd.justify_x, &cmd.justify_y, &cmd.justify_w);
-    LbTextGetClipWindow(&cmd.clip_x, &cmd.clip_y, &cmd.clip_w, &cmd.clip_h);
-    cmd.font = lbFontPtr;
-    cmd.font_generation = LbTextGetFontGeneration();
-    cmd.dbc_enabled = (dbc_initialized && dbc_enabled) ? 1 : 0;
-    cmd.dbc_font    = cmd.dbc_enabled ? (const void*)active_dbcfont : nullptr;
-    cmd.dbc_colour0 = dbc_colour0;
-    cmd.dbc_colour1 = dbc_colour1;
+    IRTextDrawCmd cmd = kfx::render::CaptureTextDrawState(x, y, units_per_px);
     cmd.seq = m_text_write_cmds->NextSeq();
     return &m_text_write_cmds->draws.Append(cmd);
 }

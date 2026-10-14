@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -12,6 +13,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/WorldSceneCapture.h"
 
 #include "platform.h"
 #include "kfx/platform/PlatformManager.h"
@@ -303,6 +305,7 @@ TbBool initial_setup(void)
     MinimalResolutionSetup = true;
     // Set size of static textures buffer
     game_load_files[1].SLength = max((ulong)TEXTURE_BLOCKS_STAT_COUNT_A*block_dimension*block_dimension,(ulong)LANDVIEW_MAP_WIDTH*LANDVIEW_MAP_HEIGHT);
+    begin_texture_bank_mutation();
     if (LbDataLoadAllV2(game_load_files))
     {
         ERRORLOG("Unable to load game_load_files");
@@ -906,6 +909,7 @@ void clear_map(void)
 
 void clear_things_and_persons_data(void)
 {
+    WorldSceneReset();
     struct Thing *thing;
     long i;
     memset(game.thing_lists, 0, sizeof(game.thing_lists));
@@ -1626,8 +1630,9 @@ extern "C" void network_yield_draw_frontend()
         poll_inputs();
         frontnet_start_input();
     }
-    frontend_draw();
-    RendererPresentFrame();
+    if (frontend_draw() != 2) {
+        RendererPresentFrame();
+    }
 }
 
 TbBool can_thing_be_queried(struct Thing *thing, PlayerNumber plyr_idx)
@@ -2179,18 +2184,32 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
     }
     else
     {
-        SYNCDBG(0,"finished properly");
+        if (!RendererFatalFailureReason()[0]) {
+            SYNCDBG(0,"finished properly");
+        }
     }
 
+    const char* renderer_failure = RendererFatalFailureReason();
+    const bool renderer_failed = renderer_failure[0] != '\0';
+    if (renderer_failed) {
+        char message[2400];
+        snprintf(message, sizeof(message), "The renderer stopped: %s\n\nUnsaved progress could not be recovered. Restart KeeperFX with -opengl to use OpenGL.", renderer_failure);
+        const char* suppress = getenv("KFX_DX12_FAILURE_NO_DIALOG");
+        if (local_camera_reference_enabled() && suppress && strcmp(suppress, "1") == 0)
+            ERRORLOG("Diagnostic renderer failure dialog suppressed: %s", message);
+        else
+            error_dialog_fatal(__func__, 3, message);
+    }
     steam_api_shutdown();
     LbErrorLogClose();
-    return 0;
+    return renderer_failed ? 1 : 0;
 }
 
 int kfxmain(int argc, char *argv[])
 {
+  int result = 0;
   try {
-  LbBullfrogMain(argc, argv);
+  result = LbBullfrogMain(argc, argv);
   } catch (...)
   {
       error_dialog(__func__, 1, "Exception raised!");
@@ -2205,7 +2224,7 @@ int kfxmain(int argc, char *argv[])
   }
 #endif
 
-  return 0;
+  return result;
 }
 
 #ifdef __cplusplus

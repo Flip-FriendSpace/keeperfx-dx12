@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -18,6 +19,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "packets.h"
+#include "kfx/renderer/WorldSceneCapture.h"
 #include "replay.h"
 #include "net_input_lag.h"
 #include "net_checksums.h"
@@ -829,6 +831,8 @@ TbBool process_user_global_packet_action(NetUserId user)
       return 1;
   case PckA_FinishGame:
       {
+      if (replay_process_finish_game(user, pckt->actn_par1))
+          return 1;
       TbBool my_player = is_my_player(player);
       int32_t victory_state = pckt->actn_par1;
       if (my_player) {
@@ -873,7 +877,9 @@ TbBool process_user_global_packet_action(NetUserId user)
       if (my_player) {
         frontend_save_continue_game(false);
       }
-      return 0;
+      // Completing the level can clear Game while preparing campaign progress.
+      // This packet is consumed; view controls must not touch the cleared player.
+      return 1;
       }
   case PckA_PlyrMsgEnd:
   case PckA_PlyrMsgClear:
@@ -1201,6 +1207,10 @@ void process_user_packet(NetUserId user)
         MULTIPLAYER_LOG("process_user_packet: Skipping empty packet for user %d", user);
         return;
     }
+    const TbBool reference_observe=user==get_local_user() && WorldSceneReferenceInputEnabled();
+    const uint64_t reference_epoch=reference_observe?WorldSceneEpoch():0;
+    struct Packet reference_packet;
+    if(reference_observe)reference_packet=*pckt;
     SYNCDBG(6, "Processing user %d packet of type %d.", user, (int)pckt->action);
     if (flag_is_set(game.operation_flags, GOF_Paused))
         replay_record_paused_action(user, pckt);
@@ -1234,6 +1244,7 @@ void process_user_packet(NetUserId user)
             break;
       }
   }
+  if(reference_observe)WorldSceneReferencePacketConsumed(&reference_packet,reference_epoch);
   SYNCDBG(8,"Finished");
 }
 
@@ -1798,6 +1809,7 @@ void process_packets(void)
     if (!replay.load_enable && flag_is_set(game.operation_flags, GOF_Paused))
         clear_users_button_state();
     process_queued_chat_messages();
+    replay_begin_requested_recording();
     if (replay.load_enable)
         verify_replay_checksum();
     // Write packets into file, if requested

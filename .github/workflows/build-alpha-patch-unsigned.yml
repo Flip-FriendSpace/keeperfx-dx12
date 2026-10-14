@@ -1,3 +1,4 @@
+# 2026-10-14 preview: upstream binary packaging is disabled in this fork.
 name: Alpha Patches (Unsigned)
 
 on:
@@ -13,6 +14,7 @@ on:
 
 jobs:
   build-alpha-patch-unsigned:
+    if: github.repository == 'dkfans/keeperfx'
 
     name: "Build Alpha Patch (Unsigned)"
     runs-on: ubuntu-24.04

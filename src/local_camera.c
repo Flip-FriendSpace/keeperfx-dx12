@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of the Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -39,6 +40,7 @@
 #include "gui_parchment.h"
 #include "player_instances.h"
 #include "bflib_datetm.h"
+#include "kfx/renderer/RenderBenchmark.h"
 
 #include <math.h>
 #include "post_inc.h"
@@ -50,6 +52,11 @@ extern "C" {
 static struct Packet observer_camera_packet;
 static int64_t camera_update_time;
 static TbBool camera_step_due = true;
+static TbBool benchmark_camera_pinned = false;
+static struct DungeonCamera benchmark_camera_pose;
+static int reference_camera_index = -1;
+static struct Camera reference_camera_pose;
+static struct Camera reference_camera_before_pin[3];
 extern float interpolate_time;
 /******************************************************************************/
 static int get_local_active_camera_index(struct PlayerInfo *player);
@@ -199,6 +206,10 @@ static void update_first_person_camera(struct Camera *cam, const struct PlayerIn
 
 void init_local_cameras(struct PlayerInfo *player)
 {
+    clear_engine_reference_selector();
+    clear_engine_reference_hover();
+    benchmark_camera_pinned = false;
+    reference_camera_index = -1;
     if (!is_my_player(player) || (local_state.camera.ready && is_observer_camera_active())) {
         return;
     }
@@ -561,6 +572,21 @@ void interpolate_local_cameras(void)
         camera_fraction = interpolate_time;
     }
     struct PlayerInfo *player = get_my_player();
+    if (reference_camera_index >= 0) {
+        if (local_camera_reference_enabled() && flag_is_set(game.operation_flags, GOF_Paused)
+            && get_local_active_camera(player) == &local_state.camera.current[reference_camera_index]) {
+            sync_camera_state(reference_camera_index, &reference_camera_pose);
+            return;
+        }
+        clear_local_camera_reference_pose();
+    }
+    if (benchmark_camera_pinned) {
+        if (RenderBenchmarkEnabled() && flag_is_set(game.operation_flags, GOF_Paused) && !network_is_active()) {
+            sync_local_camera_pose(player, &benchmark_camera_pose);
+            return;
+        }
+        benchmark_camera_pinned = false;
+    }
     const int camera_idx = get_local_active_camera(player) - local_state.camera.current;
     if (game.fast_forward > 1 && (!observer_is_active() || is_observer_camera_active()) && camera_idx != CamIV_FirstPerson && !player_instance_controls_camera(player->instance_num)) {
         const float elapsed = (get_time_tick_ns() - camera_update_time) / 1e9f * turns_per_second;
@@ -602,6 +628,53 @@ void sync_local_camera(struct PlayerInfo *player)
         return;
     }
     sync_local_camera_pose(player, &get_player_user_state(player)->dungeon_camera);
+}
+
+/** Snaps the local dungeon cameras to a pose without any interpolation */
+void set_local_camera_benchmark_pose(const struct DungeonCamera *pose)
+{
+    if (!RenderBenchmarkEnabled()) return;
+    benchmark_camera_pose = *pose;
+    benchmark_camera_pinned = true;
+    sync_local_camera_pose(get_my_player(), pose);
+}
+
+TbBool local_camera_reference_enabled(void)
+{
+    const char *mode = getenv("KFX_SCENE_REFERENCE");
+    const char *directory = getenv("KFX_SCENE_TEST_DIR");
+    return mode && strcmp(mode, "1") == 0 && directory && *directory && !network_is_active();
+}
+
+// Presentation-only pose for disposable, paused reference sessions. Neither
+// saved camera state nor a possessed creature's simulation pose is modified.
+TbBool set_local_camera_reference_pose(const struct Camera *pose)
+{
+    if (!pose || !local_camera_reference_enabled() || !local_state.camera.ready
+        || !flag_is_set(game.operation_flags, GOF_Paused)) return false;
+    const int index = get_local_active_camera(get_my_player()) - local_state.camera.current;
+    if (index != CamIV_Isometric && index != CamIV_FrontView && index != CamIV_FirstPerson) return false;
+    if (reference_camera_index != index) {
+        clear_local_camera_reference_pose();
+        reference_camera_before_pin[0] = local_state.camera.current[index];
+        reference_camera_before_pin[1] = local_state.camera.previous[index];
+        reference_camera_before_pin[2] = local_state.camera.destination[index];
+    }
+    reference_camera_index = index;
+    reference_camera_pose = *pose;
+    sync_camera_state(index, &reference_camera_pose);
+    return true;
+}
+
+void clear_local_camera_reference_pose(void)
+{
+    clear_engine_reference_selector();
+    clear_engine_reference_hover();
+    if (reference_camera_index < 0) return;
+    local_state.camera.current[reference_camera_index] = reference_camera_before_pin[0];
+    local_state.camera.previous[reference_camera_index] = reference_camera_before_pin[1];
+    local_state.camera.destination[reference_camera_index] = reference_camera_before_pin[2];
+    reference_camera_index = -1;
 }
 
 /** Snaps the local dungeon cameras to a pose without any interpolation */

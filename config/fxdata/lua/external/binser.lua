@@ -1,3 +1,4 @@
+-- KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 -- binser.lua
 
 --[[
@@ -438,7 +439,8 @@ local function newbinser()
             local nextindex = dataindex + length
             if not (length >= 0) then error("Bad string length") end
             if #str < nextindex - 1 then error("Expected more bytes of string") end
-            local ret = loadstring(sub(str, dataindex, nextindex - 1))
+            local ret, err = loadstring(sub(str, dataindex, nextindex - 1))
+            if not ret then error("Cannot deserialize function: " .. tostring(err)) end
             visited[#visited + 1] = ret
             return ret, nextindex
         elseif t == 211 then

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -17,6 +18,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/WorldSceneCapture.h"
 #include "light_data.h"
 
 #include "globals.h"
@@ -64,6 +66,7 @@ struct Light *light_allocate_light(void)
         {
             lgt->flags |= LgtF_Allocated;
             lgt->index = i;
+            WorldSceneLightAllocated(i);
             return lgt;
         }
     }

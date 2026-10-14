@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -46,6 +47,8 @@ void frontstats_leave(struct GuiButton *gbtn);
 void frontstats_set_timer(void);
 void frontstats_update(void);
 void frontstats_initialise(void);
+struct PlayerInfo;
+void frontstats_initialise_for_player(const struct PlayerInfo *player);
 void init_menu_state_on_net_stats_exit(void);
 /******************************************************************************/
 #ifdef __cplusplus

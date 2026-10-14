@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 
 #include <lua.h>
@@ -417,6 +418,11 @@ static char* lua_serialized_data = NULL;
 
 const char* lua_get_serialised_data(size_t *len)
 {
+    *len = 0;
+    if (Lvl_script == NULL)
+        return NULL;
+    free(lua_serialized_data);
+    lua_serialized_data = NULL;
     lua_getglobal(Lvl_script, "GetSerializedData");
 	if (lua_isfunction(Lvl_script, -1))
 	{
@@ -437,6 +443,10 @@ const char* lua_get_serialised_data(size_t *len)
 		const char *data = lua_tolstring(Lvl_script, -1, len);  // Get the result
         if (data) {
             lua_serialized_data = (char*)malloc(*len);
+            if (lua_serialized_data == NULL) {
+                lua_pop(Lvl_script, 1);
+                return NULL;
+            }
             memcpy(lua_serialized_data, data, *len);
             lua_pop(Lvl_script, 1);  // Pop the result
             return lua_serialized_data;
@@ -475,6 +485,35 @@ void cleanup_serialized_data() {
         free(lua_serialized_data);
         lua_serialized_data = NULL;
     }
+}
+
+TbBool lua_state_self_test(void)
+{
+    const char *enabled = getenv("KFX_STATE_TEST");
+    if (enabled == NULL || strcmp(enabled, "1") != 0 || Lvl_script == NULL
+        || game.game_kind != GKind_LocalGame)
+        return false;
+    // Exercise the linked VM, including bytecode and native-function resources.
+    // Always restore the actual Game table, even when an assertion fails.
+    const char *test =
+        "local original = Game; local ok, err = pcall(function() "
+        "Game = {probe = {value = 123456789, text = 'x64\\0state', native = math.abs, "
+        "fn = function(x) return x * 2 + 1 end}}; "
+        "Game.probe.self = Game.probe; Game.alias = Game.probe; "
+        "local data = GetSerializedData(); Game = {}; SetSerializedData(data); "
+        "assert(Game.probe.value == 123456789 and Game.probe.text == 'x64\\0state'); "
+        "assert(Game.probe.fn(20) == 41 and Game.probe.native(-7) == 7); "
+        "assert(Game.alias == Game.probe and Game.probe.self == Game.probe); "
+        "local valid = Game; "
+        "assert(not pcall(SetSerializedData, 'BAD!' .. data:sub(5))); assert(Game == valid); "
+        "local foreign = data:sub(1, 11) .. string.char(bit.bxor(data:byte(12), 8)) .. data:sub(13); "
+        "assert(not pcall(SetSerializedData, foreign)); assert(Game == valid); "
+        "assert(not pcall(SetSerializedData, data:sub(1, -2))); assert(Game == valid); "
+        "end); Game = original; assert(ok, err)";
+    TbBool result = CheckLua(Lvl_script, luaL_dostring(Lvl_script, test), "lua_state_self_test");
+    if (result)
+        JUSTLOG("Lua state self-test passed: %u-bit VM at %p", (unsigned)(sizeof(void *) * 8), (void *)Lvl_script);
+    return result;
 }
 
 void generate_lua_types_file()

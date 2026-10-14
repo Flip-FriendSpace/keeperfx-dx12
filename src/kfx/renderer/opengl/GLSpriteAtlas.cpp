@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "kfx/renderer/opengl/GLSpriteAtlas.h"
 #include "kfx/renderer/opengl/GLResourceMapper.h"
@@ -17,6 +18,7 @@ void GLSpriteAtlas::SetLivenessQuery(std::function<bool(SpriteHandle)> is_live)
 
 bool GLSpriteAtlas::Init()
 {
+    m_capture_uploaded = {}; m_capture_handle = kInvalidGpuResource; m_capture_texture = 0;
     m_pixels.assign((size_t)k_atlas_w * k_atlas_h, 0u);
     m_cursor_x = 1;
     m_shelf_y  = 0;
@@ -254,6 +256,28 @@ void GLSpriteAtlas::flush_dirty(unsigned int tex_id)
                     m_pixels.data() + (size_t)m_dirty_y_min * k_atlas_w);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    try {
+        GLint row_length = 0, skip_rows = 0, skip_pixels = 0, unpack_buffer = 0;
+        glGetIntegerv(GL_UNPACK_ROW_LENGTH, &row_length);
+        glGetIntegerv(GL_UNPACK_SKIP_ROWS, &skip_rows);
+        glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &skip_pixels);
+        glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack_buffer);
+        if (row_length || skip_rows || skip_pixels || unpack_buffer) {
+            m_capture_uploaded = {};
+        } else {
+            if (m_capture_handle != m_texture_handle || m_capture_texture != tex_id || m_capture_uploaded.indices.empty()) {
+                m_capture_uploaded = {};
+                m_capture_uploaded.width = k_atlas_w; m_capture_uploaded.height = k_atlas_h;
+                m_capture_uploaded.indices.assign(size_t(k_atlas_w) * k_atlas_h, 0);
+                m_capture_uploaded.initialized_rows.assign(k_atlas_h, 0);
+                m_capture_handle = m_texture_handle; m_capture_texture = tex_id;
+            }
+            const size_t first = size_t(m_dirty_y_min) * k_atlas_w;
+            std::copy_n(m_pixels.data() + first, size_t(h) * k_atlas_w, m_capture_uploaded.indices.data() + first);
+            std::fill_n(m_capture_uploaded.initialized_rows.begin() + m_dirty_y_min, h, uint8_t(1));
+        }
+    } catch (...) { m_capture_uploaded = {}; }
+
     m_dirty_y_min = k_atlas_h;
     m_dirty_y_max = -1;
 }
@@ -267,4 +291,12 @@ void GLSpriteAtlas::FlushPendingGL()
     if (tex == nullptr) return;
 
     flush_dirty(tex->id);
+}
+
+const kfx::render::SceneGLOverlaySource* GLSpriteAtlas::UploadedSourceForCapture(unsigned int texture) const noexcept
+{
+    // Only the render thread updates this mirror; queued CPU atlas writes do
+    // not change it until FlushPendingGL submits their rows.
+    return m_capture_handle == m_texture_handle && m_capture_texture == texture
+        && !m_capture_uploaded.indices.empty() ? &m_capture_uploaded : nullptr;
 }

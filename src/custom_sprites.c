@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -65,6 +66,9 @@ TbSpriteData keepersprite_add[KEEPERSPRITE_ADD_NUM] = {
 struct KeeperSprite creature_table_add[KEEPERSPRITE_ADD_NUM] = {
         {0}
 };
+// Exact initialized RLE byte extents for owned-source consumers.
+size_t keepersprite_add_bytes[KEEPERSPRITE_ADD_NUM] = {0};
+uint64_t keepersprite_add_stamps[KEEPERSPRITE_ADD_NUM] = {0};
 
 struct SpriteContext
 {
@@ -130,7 +134,15 @@ enum CustomLoadFlags {
 static unsigned char big_scratch_data[1024*1024*16] = {0};
 unsigned char *big_scratch = big_scratch_data;
 
-static void compress_raw(struct TbHugeSprite *sprite, unsigned char *src_buf, int x, int y, int w, int h, const uint8_t *conversion_table);
+static size_t compress_raw(struct TbHugeSprite *sprite, unsigned char *src_buf, int x, int y, int w, int h, const uint8_t *conversion_table, size_t capacity);
+
+static size_t sprite_rle_capacity(size_t width, size_t height)
+{
+    // Every pixel can require one command and one literal, plus one EOL per row.
+    if (!width || !height || width > (SIZE_MAX - 1) / 2) return 0;
+    const size_t row = width * 2 + 1;
+    return height <= SIZE_MAX / row ? row * height : 0;
+}
 static uint8_t *create_rgb_to_pal_table(const uint8_t *palette);
 struct SheetLoadContext
 {
@@ -489,10 +501,12 @@ void init_custom_sprites(LevelNumber lvnum)
     // Clear sprite data
     for (int i = 0; i < KEEPERSPRITE_ADD_NUM; i++)
     {
+        keepersprite_add_stamps[i] = 0;
         if (keepersprite_add[i] != NULL)
         {
             free(keepersprite_add[i]);
             keepersprite_add[i] = NULL;
+            keepersprite_add_bytes[i] = 0;
         }
     }
     // Clear added sprites
@@ -941,9 +955,14 @@ static size_t decode_png_to_sprite(unzFile zip, const char *path, const char *su
         return 0;
     }
 
-    size_t sz = (sprite->SWidth + 2) * (sprite->SHeight + 3);
+    const size_t capacity = sprite_rle_capacity(sprite->SWidth, sprite->SHeight);
+    if (capacity == 0)
+    {
+        spng_ctx_free(ctx);
+        return 0;
+    }
 
-    sprite->Data = malloc(sz);
+    sprite->Data = malloc(capacity);
     if (sprite->Data == NULL)
     {
         ERRORLOG("Unable to allocate sprite data for %s/%s",
@@ -952,11 +971,15 @@ static size_t decode_png_to_sprite(unzFile zip, const char *path, const char *su
         return 0;
     }
 
-    compress_raw(sprite, dst_buf,
-                 0, 0,
-                 sprite->SWidth,
-                 sprite->SHeight,
-                 conversion_table);
+    const size_t sz = compress_raw(sprite, dst_buf, 0, 0,
+        sprite->SWidth, sprite->SHeight, conversion_table, capacity);
+    if (sz == 0)
+    {
+        free(sprite->Data);
+        sprite->Data = NULL;
+        spng_ctx_free(ctx);
+        return 0;
+    }
 
     spng_ctx_free(ctx);
 
@@ -1041,31 +1064,53 @@ static int read_png_data(unzFile zip, const char *path, struct SpriteContext *co
         return 0;
     }
 
-    // This should be enough except rare cases like transparent checkerboard
+    // Reserve the proven worst case, including alternating transparent pixels.
     int dst_w = (int) context->sprite.SWidth;
     int dst_h = (int) context->sprite.SHeight;
 
     if (dst_w >= 255 || dst_h >= 255)
     {
         ERRORLOG("Sprites more than 255x255 are not supported");
+        spng_ctx_free(ctx);
         return 0;
     }
 
     if (next_free_sprite >= KEEPERSPRITE_ADD_NUM)
     {
         ERRORLOG("Too many custom sprites allocated");
+        spng_ctx_free(ctx);
         return 0;
     }
+    const size_t capacity = sprite_rle_capacity((size_t)dst_w, (size_t)dst_h);
+    if (capacity == 0)
+    {
+        spng_ctx_free(ctx);
+        return 0;
+    }
+    context->sprite.Data = malloc(capacity);
+    if (context->sprite.Data == NULL)
+    {
+        spng_ctx_free(ctx);
+        return 0;
+    }
+    const size_t encoded_bytes = compress_raw(&context->sprite, dst_buf,
+        context->x, context->y, dst_w, dst_h, NULL, capacity);
+    if (encoded_bytes == 0)
+    {
+        free(context->sprite.Data);
+        context->sprite.Data = NULL;
+        spng_ctx_free(ctx);
+        return 0;
+    }
+    // Publish source and identity together, only after all bytes are initialized.
     short sprite_idx = next_free_sprite;
+    keepersprite_add[sprite_idx] = context->sprite.Data;
+    keepersprite_add_bytes[sprite_idx] = encoded_bytes;
+    keepersprite_add_stamps[sprite_idx] = next_keepersprite_publication_stamp();
     next_free_sprite++;
-    if (*context->id_ptr == 0) // First sprite for current view (FP/TD)
+    if (*context->id_ptr == 0)
         *context->id_ptr = sprite_idx + KEEPERSPRITE_ADD_OFFSET;
-    (*context->id_sz_ptr)++; // Add new sprite for current view (FP/TD)
-
-    size_t sz = (dst_w + 2) * (dst_h + 3);
-    keepersprite_add[sprite_idx] = malloc(sz);
-    context->sprite.Data = keepersprite_add[sprite_idx];
-    compress_raw(&context->sprite, dst_buf, context->x, context->y, dst_w, dst_h, NULL);
+    (*context->id_sz_ptr)++;
     struct KeeperSprite *ksprite = &creature_table_add[sprite_idx];
 
     if (context->ksp_first == NULL)
@@ -1199,9 +1244,14 @@ static void load_rgb_to_pal_table()
     rgb_to_pal_table = create_rgb_to_pal_table(palette);
 }
 
-static void compress_raw(struct TbHugeSprite *sprite, unsigned char *inp_buf, int x, int y, int w, int h, const uint8_t *conversion_table)
+static size_t compress_raw(struct TbHugeSprite *sprite, unsigned char *inp_buf, int x, int y, int w, int h, const uint8_t *conversion_table, size_t capacity)
 {
     #define TEST_TRANSP(x) ((x & 0xFF000000u) < 0x40000000u)
+    const size_t required = sprite_rle_capacity(w > 0 ? (size_t)w : 0, h > 0 ? (size_t)h : 0);
+    if (!sprite || !sprite->Data || !inp_buf || !required || required > capacity
+        || x < 0 || y < 0 || (size_t)x > sprite->SWidth || (size_t)y > sprite->SHeight
+        || (size_t)w > sprite->SWidth - (size_t)x || (size_t)h > sprite->SHeight - (size_t)y)
+        return 0;
     if (conversion_table == NULL)
     {
         load_rgb_to_pal_table();
@@ -1209,7 +1259,7 @@ static void compress_raw(struct TbHugeSprite *sprite, unsigned char *inp_buf, in
     }
     if (conversion_table == NULL)
     {
-        return;
+        return 0;
     }
     unsigned char *buf = sprite->Data;
     uint32_t *src_buf = (uint32_t *) inp_buf;
@@ -1271,6 +1321,7 @@ static void compress_raw(struct TbHugeSprite *sprite, unsigned char *inp_buf, in
         src_buf += tail;
     }
     #undef TEST_TRANSP
+    return (size_t)(buf - sprite->Data);
 }
 
 #if BFDEBUG_LEVEL > 0

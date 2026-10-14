@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -140,6 +141,17 @@ unsigned char LbTextGetSpacesPerTab(void);
 int LbDbcGetGlyphBits(const struct AsianFont *font, uint32_t chr,
                        const unsigned char **out_data, int *out_scanline_bytes,
                        int *out_w, int *out_h, int *out_char_spacing, int *out_v_offset);
+/* Bounded producer-thread view of one initialized DBC bitmap. Consume/copy it
+ * synchronously. The publication stamp identifies a complete successful font
+ * load; combine it with the codepoint rather than retaining the font pointer. */
+struct TbDbcGlyphSource {
+    const unsigned char *data;
+    size_t data_bytes;
+    int scanline_bytes, width, height, char_spacing, vertical_offset;
+    uint64_t publication_stamp;
+};
+TbBool LbDbcGetGlyphSource(const struct AsianFont *font, uint32_t chr,
+    struct TbDbcGlyphSource *out_source);
 int LbDbcCharWidthM(const struct AsianFont *font, uint32_t chr, long units_per_px);
 int LbDbcCharHeight(const struct AsianFont *font);
 TbBool LbDbcIsDuospaceChar(const struct AsianFont *font, uint32_t chr);

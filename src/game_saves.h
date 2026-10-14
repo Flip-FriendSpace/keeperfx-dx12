@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -46,10 +47,12 @@ extern "C" {
 enum SaveGameChunks {
      SGC_InfoBlock        = MAKE_CHUNK_ID('I', 'N', 'F', 'O'),
      SGC_GameOrig         = MAKE_CHUNK_ID('O', 'L', 'D', 'S'),
+     SGC_GameState        = MAKE_CHUNK_ID('G', 'S', 'T', 'A'),
      SGC_PacketHeader     = MAKE_CHUNK_ID('P', 'H', 'D', 'R'),
      SGC_PacketData       = MAKE_CHUNK_ID('P', 'C', 'K', 'T'),
      SGC_IntralevelData   = MAKE_CHUNK_ID('I', 'L', 'V', 'L'),
      SGC_LuaData          = MAKE_CHUNK_ID('L', 'U', 'A', ' '),
+     SGC_Navigation      = MAKE_CHUNK_ID('N', 'A', 'V', 'G'),
      SGC_Continue         = MAKE_CHUNK_ID('C', 'O', 'N', 'T'),
 };
 
@@ -60,10 +63,11 @@ enum SaveGameChunkFlags {
      SGF_PacketData     = 0x0200,
      SGF_IntralevelData = 0x0400,
      SGF_LuaData        = 0x0800,
+     SGF_Navigation     = 0x1000,
 };
 #define SGF_SavedGame      (SGF_InfoBlock|SGF_GameOrig|SGF_IntralevelData|SGF_LuaData)
 #define SGF_PacketStart    (SGF_PacketHeader|SGF_PacketData|SGF_InfoBlock)
-#define SGF_PacketContinue (SGF_PacketHeader|SGF_PacketData|SGF_InfoBlock|SGF_GameOrig)
+#define SGF_PacketContinue (SGF_PacketHeader|SGF_PacketData|SGF_InfoBlock|SGF_GameOrig|SGF_LuaData|SGF_Navigation)
 
 enum ContinueTargets {
     CntT_None = 0,
@@ -89,7 +93,7 @@ enum CatalogueEntryFlags {
 
 // file header for game saves. Also used in packet recordings.
 // (Remember to bump the version number if the layout of this struct changes!)
-#define CATALOGUE_ENTRY_VER 0
+#define CATALOGUE_ENTRY_VER 1
 struct CatalogueEntry {
     unsigned short flags;
     char textname[SAVE_TEXTNAME_LEN];
@@ -129,9 +133,11 @@ extern struct CatalogueEntry *save_game_catalogue;
 extern long save_game_catalogue_count;
 /******************************************************************************/
 int load_game_chunks(TbFileHandle fhandle,struct CatalogueEntry *centry);
+int load_replay_chunks(TbFileHandle fhandle, struct CatalogueEntry *centry);
 TbBool fill_game_catalogue_entry(struct CatalogueEntry *centry,const char *textname);
 TbBool save_game_chunks(TbFileHandle fhandle,struct CatalogueEntry *centry);
 TbBool save_packet_chunks(TbFileHandle fhandle,struct CatalogueEntry *centry);
+TbBool state_packet_self_test(void);
 /******************************************************************************/
 TbBool load_game(long slot_idx);
 TbBool save_game(long slot_idx);

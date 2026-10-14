@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -163,6 +164,7 @@ _backtrace(int depth , LPCONTEXT context)
         if(keeperFxBaseAddr == 0x00000000)
         {
             fclose(mapFile);
+            mapFile = NULL;
         }
     }
     else
@@ -170,22 +172,29 @@ _backtrace(int depth , LPCONTEXT context)
         LbWarnLog("No keeperfx.map file found for stacktrace map lookups\n");
     }
 
-    STACKFRAME frame;
+    STACKFRAME64 frame;
     memset(&frame,0,sizeof(frame));
 
+#if defined(_WIN64)
+    const DWORD machine = IMAGE_FILE_MACHINE_AMD64;
+    frame.AddrPC.Offset = context->Rip;
+    frame.AddrStack.Offset = context->Rsp;
+    frame.AddrFrame.Offset = context->Rbp;
+#else
+    const DWORD machine = IMAGE_FILE_MACHINE_I386;
     frame.AddrPC.Offset = context->Eip;
-
-    frame.AddrPC.Mode = AddrModeFlat;
     frame.AddrStack.Offset = context->Esp;
-    frame.AddrStack.Mode = AddrModeFlat;
     frame.AddrFrame.Offset = context->Ebp;
+#endif
+    frame.AddrPC.Mode = AddrModeFlat;
+    frame.AddrStack.Mode = AddrModeFlat;
     frame.AddrFrame.Mode = AddrModeFlat;
 
     HANDLE process = GetCurrentProcess();
     HANDLE thread = GetCurrentThread();
 
     // Loop through all traces in the stack
-    while (StackWalk(IMAGE_FILE_MACHINE_I386, process, thread, &frame, context, 0, SymFunctionTableAccess, SymGetModuleBase, 0))
+    while (StackWalk64(machine, process, thread, &frame, context, 0, SymFunctionTableAccess64, SymGetModuleBase64, 0))
     {
         --depth;
         if (depth < 0)
@@ -195,13 +204,13 @@ _backtrace(int depth , LPCONTEXT context)
 
         // Get the base address in the module
         // This is where the address space of the functions start
-        DWORD module_base = SymGetModuleBase(process, frame.AddrPC.Offset);
+        DWORD64 module_base = SymGetModuleBase64(process, frame.AddrPC.Offset);
 
         // Get the name of the module
         // The module will be the keeperfx bin or a library
         const char * module_name = "[unknown module]";
         char module_name_raw[MAX_PATH];
-        if (module_base && GetModuleFileNameA((HINSTANCE)module_base, module_name_raw, MAX_PATH))
+        if (module_base && GetModuleFileNameA((HINSTANCE)(uintptr_t)module_base, module_name_raw, MAX_PATH))
         {
             module_name = strrchr(module_name_raw,'\\');
             if (module_name != NULL)
@@ -272,8 +281,8 @@ _backtrace(int depth , LPCONTEXT context)
 
                             // Log it
                             LbJustLog(
-                                "[#%-2d] %-12s : %-36s [0x%I64x+0x%I64x]\t map lookup for: %04x:%08x, base: %08x\n",
-                                depth, module_name, prevName, prevAddr, displacement, (uint16_t)context->SegCs, (uint32_t)frame.AddrPC.Offset, (uint32_t)module_base);
+                                "[#%-2d] %-12s : %-36s [0x%I64x+0x%I64x]\t map lookup for: %04x:%016" PRIx64 ", base: %016" PRIx64 "\n",
+                                depth, module_name, prevName, prevAddr, displacement, (uint16_t)context->SegCs, (uint64_t)frame.AddrPC.Offset, (uint64_t)module_base);
 
                             addrFound = true;
                             break;
@@ -308,13 +317,13 @@ _backtrace(int depth , LPCONTEXT context)
         // This works if there are any debug symbols available and also works for most OS libraries
         if (SymFromAddr(process, frame.AddrPC.Offset, &sfaDisplacement, pSymbol))
         {
-            LbJustLog("[#%-2d] %-12s : %-36s [%04x:%08x+0x%I64x, base %08x]\t symbol lookup\n",
-                      depth, module_name, pSymbol->Name, (uint16_t)context->SegCs, (uint32_t)frame.AddrPC.Offset, sfaDisplacement, (uint32_t)module_base);
+            LbJustLog("[#%-2d] %-12s : %-36s [%04x:%016" PRIx64 "+0x%I64x, base %016" PRIx64 "]\t symbol lookup\n",
+                      depth, module_name, pSymbol->Name, (uint16_t)context->SegCs, (uint64_t)frame.AddrPC.Offset, sfaDisplacement, (uint64_t)module_base);
         }
         else
         {
             // Fallback
-            LbJustLog("[#%-2d] %-12s : at %04x:%08x, base %08x\n", depth, module_name, (uint16_t)context->SegCs, (uint32_t)frame.AddrPC.Offset, (uint32_t)module_base);
+            LbJustLog("[#%-2d] %-12s : at %04x:%016" PRIx64 ", base %016" PRIx64 "\n", depth, module_name, (uint16_t)context->SegCs, (uint64_t)frame.AddrPC.Offset, (uint64_t)module_base);
         }
     }
 

@@ -48,6 +48,9 @@ res/keeperfx_icon.ico
 /src/ver_defs.h
 keeperfx.log
 crash_log.txt
+*.kfxscene
+*.kfxscene.tmp
+*.kfxscene.ppm
 debug.log
 .local/
 /keeperfx_vs2010
@@ -56,3 +59,64 @@ debug.log
 
 # Personal CMake presets (per-dev deploy path etc.) - see CMakeUserPresets.json.example
 /CMakeUserPresets.json
+
+# Local workspace data and private development instructions.
+/AGENTS.md
+/.agents/
+/.codex/
+/.tools/
+/.worktrees/
+/artifacts/
+/downloads/
+/runtime/
+/save/
+/replays/
+/scrshots/
+/local-dev/baseline.json
+/local-dev/render-coverage.json
+/local-dev/render-interface-coverage.json
+/local-dev/render-research.json
+/local-dev/render-coverage.mjs
+/config/mods/load_order.cfg
+/config/mods/keeper_enhanced_default/
+
+# Machine-specific settings and credentials; example templates may be tracked.
+/launch.vs.json
+*.user
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*credentials*.json
+
+# Generated build products, caches, logs and game captures.
+/dist/
+/CMakeCache.txt
+/CMakeFiles/
+/cmake_install.cmake
+/compile_commands.json
+/build.ninja
+/.ninja_deps
+/.ninja_log
+*.exe
+*.dll
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.pdb
+*.debug
+*.dmp
+*.dxil
+*.log
+*.sav
+*.sve
+__pycache__/
+*.py[cod]
+node_modules/

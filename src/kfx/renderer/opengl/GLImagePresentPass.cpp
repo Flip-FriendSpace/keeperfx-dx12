@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -419,7 +420,7 @@ void GLImagePresentPass::draw_quad(GLuint program, GLuint image_tex, GLuint pale
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void GLImagePresentPass::Resolve(int screen_w, int screen_h)
+void GLImagePresentPass::Resolve(int screen_w, int screen_h, bool clear_background)
 {
     ASSERT_RENDER_THREAD();
     if (!m_resource_mapper) return;
@@ -486,8 +487,10 @@ void GLImagePresentPass::Resolve(int screen_w, int screen_h)
     }
     else if (!m_rt_cmds.empty())
     {
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        if (clear_background) {
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
 
         // Composited in submission order -- see m_cmds' own comment. Each
         // entry draws through its own texture slot (m_opaque_slots[i]).

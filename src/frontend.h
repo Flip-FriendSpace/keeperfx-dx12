@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -389,6 +390,7 @@ void frontend_load_mappacks(struct GuiButton *gbtn);
 void frontend_load_mp_mappacks(struct GuiButton *gbtn);
 void frontend_load_continue_game(struct GuiButton *gbtn);
 short frontend_save_continue_game(short allow_lvnum_grow);
+TbBool frontend_finish_replay_game(PlayerNumber player_number);
 void frontend_continue_game_maintain(struct GuiButton *gbtn);
 void frontend_main_menu_load_game_maintain(struct GuiButton *gbtn);
 void frontend_mappacks_maintain(struct GuiButton *gbtn);

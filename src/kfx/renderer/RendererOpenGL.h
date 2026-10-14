@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef RENDERER_RENDEREROPENGL_H
 #define RENDERER_RENDEREROPENGL_H
 
@@ -19,6 +20,8 @@ public:
     void SetDisplayPalette(const unsigned char* rgb8) override;
     void ClearScreen(unsigned char colour) override;
     void PresentFrame() override;
+    // Game thread only; used before changing settings read by the render thread.
+    void WaitForSettingsChange();
 
     BackendCapabilities GetCapabilities() const override { return BackendCapabilities{ 1 }; }
     bool CanDraw() const override
@@ -29,6 +32,9 @@ public:
     bool BeginFrame() override;
     void EndFrame() override;
     bool PresentImage(const struct RendererPresentImageDesc* desc) override;
+    bool BeginIndexedWorldFallback(int width, int height, unsigned char& clear_index) override;
+    bool SubmitIndexedWorldFallback(const struct RendererPresentImageDesc* desc) override;
+    bool GetIndexedWorldFallbackPalette(std::array<uint8_t, 1024>& rgba) const override;
     void PresentHugeSprite(const struct TbHugeSprite* spr, int32_t sp_len,
                            int32_t x_shift, int32_t y_shift, int32_t units_per_px) override;
 

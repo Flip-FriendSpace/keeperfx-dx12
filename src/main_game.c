@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -12,6 +13,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/WorldSceneCapture.h"
 #include "kfx/renderer/RendererManager.h"
 #include "keeperfx.hpp"
 
@@ -34,6 +36,12 @@
 #include "frontmenu_ingame_map.h"
 #include "game_heap.h"
 #include "game_legacy.h"
+#include "game_saves.h"
+#include "light_data.h"
+#include "lens_api.h"
+#include "local_camera.h"
+#include "sound_manager.h"
+#include "net_exchange_gameplay.h"
 #include "replay.h"
 #include "game_merge.h"
 #include "gui_topmsg.h"
@@ -314,6 +322,39 @@ static void post_init_level(void)
 
 /******************************************************************************/
 
+/* Game and Lua have already been restored by load_game_chunks. Rebuild only
+ * session-local resources and derived caches; new-game hooks would destroy the
+ * saved turn, script state, player input state and running player instances. */
+static TbBool restore_packet_snapshot(void)
+{
+    free_swipe_graphic();
+    game.loaded_swipe_idx = -1;
+    reset_heap_manager();
+    RendererClearKeeperSpriteAtlas();
+    if (!setup_heap_manager())
+        return false;
+    initial_replay_seed = replay.head.action_seed;
+    luascript_loaded = (Lvl_script != NULL);
+    // The header retains every mapped user, including multiple users controlling
+    // one keeper; PlayerInfo::user_id alone cannot reconstruct that mapping.
+    restore_users_from_packet_save(false);
+    sound_manager_reapply_creature_sounds();
+    // load_replay_chunks installed the exact saved navigation graph.
+    reinit_level_after_load();
+    initialize_packet_history();
+    clear_packets();
+    light_import_system_state(&game.lightst);
+    panel_map_update(0, 0, game.map_subtiles_x + 1, game.map_subtiles_y + 1);
+    local_state.view_type = PVT_None;
+    local_state.palette_fade_step_pain = 0;
+    local_state.palette_fade_step_possession = 0;
+    reinitialise_eye_lens(game.applied_lens_type);
+    struct PlayerInfo *player = get_my_player();
+    PaletteSetUserPalette(player->user_id, local_state.lens_palette ? local_state.lens_palette : engine_palette);
+    init_local_cameras(player);
+    return true;
+}
+
 TbBool startup_saved_packet_game(void)
 {
     struct CatalogueEntry centry;
@@ -324,7 +365,9 @@ TbBool startup_saved_packet_game(void)
             replay.fname);
         return false;
     }
-    if (!change_campaign(CampgnT_Default, centry.campaign_fname))
+    // A continued replay already loaded its campaign and restored Lua. Keep
+    // the existing new-level setup only for recordings without a snapshot.
+    if (!replay.snapshot_loaded && !change_campaign(CampgnT_Default, centry.campaign_fname))
     {
         ERRORLOG("Unable to load campaign associated with packet file");
     }
@@ -364,30 +407,38 @@ TbBool startup_saved_packet_game(void)
         else
             my_player_number = view_plyr;
     }
-    if (!init_level())
-        return false;
+    if (replay.snapshot_loaded) {
+        if (!restore_packet_snapshot()) {
+            close_packet_file();
+            return false;
+        }
+    } else {
+        if (!init_level())
+            return false;
+        setup_zombie_players();
+        restore_users_from_packet_save(true);
+        for (NetUserId user = 0; user < MAX_NET_USERS; user++)
+        {
+            if ((get_net_user_player_number(user) >= 0) && (replay.head.user_players[user] >= 0))
+                apply_user_preferences(user, replay.head.user_prefs[user], UPF_NewGame);
+        }
+        init_players();
+        for (NetUserId user = 0; user < MAX_NET_USERS; user++)
+        {
+            const PlayerNumber plyr_idx = get_net_user_player_number(user);
+            if ((plyr_idx >= 0) && (replay.head.user_players[user] >= 0))
+                apply_user_start_tendencies(get_player(plyr_idx));
+        }
+        frontend_alliances = replay.head.frontend_alliances;
+        setup_alliances();
+        post_init_level();
+        post_init_players();
+    }
     if (!verify_replay_map_checksums())
         ERRORLOG("Replay \"%s\": level on disk differs from original", replay.fname);
-    setup_zombie_players();
-    restore_users_from_packet_save();
-    for (NetUserId user = 0; user < MAX_NET_USERS; user++)
-    {
-        if ((get_net_user_player_number(user) >= 0) && (replay.head.user_players[user] >= 0))
-            apply_user_preferences(user, replay.head.user_prefs[user], UPF_NewGame);
-    }
-    init_players();
-    for (NetUserId user = 0; user < MAX_NET_USERS; user++)
-    {
-        const PlayerNumber plyr_idx = get_net_user_player_number(user);
-        if ((plyr_idx >= 0) && (replay.head.user_players[user] >= 0))
-            apply_user_start_tendencies(get_player(plyr_idx));
-    }
-    frontend_alliances = replay.head.frontend_alliances;
-    setup_alliances();
     if (replay.turns_stored < replay.turns_fastforward)
         replay.turns_fastforward = replay.turns_stored;
-    post_init_level();
-    post_init_players();
+    replay_report_startup();
     set_selected_level_number(0);
     if ((game.mode_flags & MFlg_IsDemoMode) == 0) {
         observer_init(my_player_number);
@@ -509,6 +560,7 @@ CoroutineLoopState set_not_has_quit(CoroutineLoop *context)
  */
 void clear_complete_game(void)
 {
+    WorldSceneReset();
     memset(&game, 0, sizeof(struct Game));
     memset(&intralvl, 0, sizeof(struct IntralevelData));
     replay.turns_packetoff = -1;

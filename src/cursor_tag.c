@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -27,6 +28,7 @@
 #include "game_legacy.h"
 #include "roomspace.h"
 #include "engine_render.h"
+#include "cursor_tag.h"
 #include "slab_data.h"
 #include "power_hand.h"
 #include "frontend.h"
@@ -52,6 +54,11 @@ TbBool should_draw_cursor_box(PlayerNumber plyr_idx)
         return false;
     }
     if (get_my_player() == &local_observer_player) {
+        return true;
+    }
+    // An explicit private reference preview does not follow the host mouse.
+    // Keep the normal displayed-player, minimap-drag and observer guards above.
+    if (engine_reference_selector_is_drawing_for_player(plyr_idx)) {
         return true;
     }
     return !game_is_busy_doing_gui();
@@ -223,17 +230,22 @@ TbBool tag_cursor_blocks_place_door(PlayerNumber plyr_idx, MapSubtlCoord stl_x, 
 
 TbBool tag_cursor_blocks_place_room(NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool full_slab)
 {
-    SYNCDBG(7,"Starting");
     PlayerNumber plyr_idx = get_net_user_player_number(user);
     struct PlayerInfo* player = get_player(plyr_idx);
     struct UserState* ustate = get_user_state(user);
+    return tag_cursor_blocks_place_roomspace(plyr_idx, ustate->chosen_room_kind, &player->render_roomspace, stl_x, stl_y, full_slab);
+}
+
+TbBool tag_cursor_blocks_place_roomspace(PlayerNumber plyr_idx, RoomKind rkind, struct RoomSpace *render_roomspace, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool full_slab)
+{
+    SYNCDBG(7,"Starting");
     MapSlabCoord slb_x;
     MapSlabCoord slb_y;
     slb_x = subtile_slab(stl_x);
     slb_y = subtile_slab(stl_y);
     int floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
     unsigned char colour = SLC_RED;
-    if(can_build_roomspace(plyr_idx, ustate->chosen_room_kind, player->render_roomspace) > 0)
+    if(can_build_roomspace(plyr_idx, rkind, *render_roomspace) > 0)
     {
         colour = SLC_GREEN;
     }
@@ -241,18 +253,18 @@ TbBool tag_cursor_blocks_place_room(NetUserId user, MapSubtlCoord stl_x, MapSubt
     {
         #if (BFDEBUG_LEVEL > 7)
             struct SlabMap* slb = get_slabmap_block(slb_x, slb_y); //inside condition because otherwise it would throw a build warning for not using this variable.
-            SYNCDBG(7,"Cannot build %s on %s slabs centered at (%d,%d)", room_code_name(ustate->chosen_room_kind), slab_code_name(slb->kind), (int)slb_x, (int)slb_y);
+            SYNCDBG(7,"Cannot build %s on %s slabs centered at (%d,%d)", room_code_name(rkind), slab_code_name(slb->kind), (int)slb_x, (int)slb_y);
         #endif
     }
     if (should_draw_cursor_box(plyr_idx)) {
         map_volume_box.visible = 1;
         map_volume_box.color = colour;
-        map_volume_box.beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((player->render_roomspace.centreX - calc_distance_from_roomspace_centre(player->render_roomspace.width,0)) * STL_PER_SLB), 0));
-        map_volume_box.beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((player->render_roomspace.centreY - calc_distance_from_roomspace_centre(player->render_roomspace.height,0)) * STL_PER_SLB), 0));
-        map_volume_box.end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((player->render_roomspace.centreX + calc_distance_from_roomspace_centre(player->render_roomspace.width,(player->render_roomspace.width % 2 == 0))) + 1) * STL_PER_SLB), 0));
-        map_volume_box.end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((player->render_roomspace.centreY + calc_distance_from_roomspace_centre(player->render_roomspace.height,(player->render_roomspace.height % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        map_volume_box.beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((render_roomspace->centreX - calc_distance_from_roomspace_centre(render_roomspace->width,0)) * STL_PER_SLB), 0));
+        map_volume_box.beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((render_roomspace->centreY - calc_distance_from_roomspace_centre(render_roomspace->height,0)) * STL_PER_SLB), 0));
+        map_volume_box.end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((render_roomspace->centreX + calc_distance_from_roomspace_centre(render_roomspace->width,(render_roomspace->width % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        map_volume_box.end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((render_roomspace->centreY + calc_distance_from_roomspace_centre(render_roomspace->height,(render_roomspace->height % 2 == 0))) + 1) * STL_PER_SLB), 0));
         map_volume_box.floor_height_z = floor_height_z;
-        player->render_roomspace.is_roomspace_a_single_subtile = !full_slab;
+        render_roomspace->is_roomspace_a_single_subtile = !full_slab;
     }
     return (colour != SLC_RED);
 }

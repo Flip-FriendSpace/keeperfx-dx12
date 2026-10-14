@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -21,6 +22,8 @@
 #include "kfx/renderer/TileAtlasPacker.h"
 #include "kfx/renderer/ITileAtlas.h"
 #include "kfx/renderer/GpuResourceHandle.h"
+#include <array>
+#include <vector>
 
 class GLResourceMapper;
 
@@ -41,6 +44,7 @@ public:
     void              Rebuild();
     void              UpdateAnimatedTiles() override;
     GpuResourceHandle GetAtlasTextureArray() const override;
+    bool CopyUploadedTileForCapture(unsigned layer, unsigned tile, std::array<uint8_t, 1024>& pixels) const noexcept;
 
 protected:
     // TileAtlasPacker build overrides — use R8 raw index copy instead of RGBA8 decode
@@ -55,4 +59,8 @@ private:
     GLResourceMapper* m_resource_mapper = nullptr;
     GpuResourceHandle m_texture_handle = kInvalidGpuResource; // GL_TEXTURE_2D_ARRAY: 2048×1024×32 R8
     uint8_t* m_r8_scratch = nullptr;  // R8 (1 byte/pixel) CPU scratch; replaces m_rgba_scratch
+    // Bounded 64 MiB mirror of actual uploads; diagnostic allocation failure
+    // invalidates provenance without changing the normal renderer.
+    std::vector<uint8_t> m_capture_uploaded;
+    std::array<bool, 32> m_capture_known{};
 };

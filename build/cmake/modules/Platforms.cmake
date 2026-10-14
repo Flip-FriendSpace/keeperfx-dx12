@@ -1,7 +1,13 @@
+# KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 # Platforms.cmake - platform detection + directory-scope compile definitions.
 
 if(WIN32)
-    kfx_status("PLATFORM" "Windows / MinGW-w64 (i686)")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(KFX_MINGW_TRIPLET x86_64-w64-mingw32)
+    else()
+        set(KFX_MINGW_TRIPLET i686-w64-mingw32)
+    endif()
+    kfx_status("PLATFORM" "Windows / MinGW-w64 (${KFX_MINGW_TRIPLET})")
 elseif(UNIX AND NOT APPLE)
     kfx_status("PLATFORM" "Linux (x86_64)")
 else()

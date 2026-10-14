@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -21,6 +22,8 @@
 #include <cstddef>
 #include <utility>
 #include <vector>
+#include <memory>
+namespace kfx::render { struct WorldScene; }
 #include "kfx/renderer/WorldVertex.h"
 #include "kfx/renderer/EngineVertex.h"
 
@@ -99,8 +102,10 @@ struct IRWorldKeeperSpriteCmd
      *  draw_keepersprite()'s water_source_cutoff case. */
     int32_t               content_h     = 0;
     uint32_t              draw_flags    = 0;   /**< Sprite draw flags (Lb_SPRITE_*). */
-    /** RLE-compressed pixel data (keepersprite_array — stable for level lifetime). */
+    /** Borrowed RLE data; replay must finish before its source bank is reset. */
     const unsigned char*  data          = nullptr;
+    // Verified initialized readable extent; still borrowed until source reset.
+    size_t                data_bytes    = 0;
     /** Frame-resolved global sprite index (keepsprite[] / keepersprite_add[]).
      *  Atlas cache key — stable across sprite-heap eviction, unlike @p data.
      *  -1 = unknown (submit path without an id); such sprites bypass the atlas. */
@@ -220,6 +225,7 @@ struct IRMapFadeCmd
 
 struct WorldCommandBuffers
 {
+    std::shared_ptr<const kfx::render::WorldScene> scene;
     IRCommandBuffer<IRWorldTileBatchCmd>     tiles;
     IRCommandBuffer<IRWorldTexQuadCmd>       tex_quads;
     IRCommandBuffer<IRWorldKeeperSpriteCmd>  keeper_sprites;
@@ -232,6 +238,7 @@ struct WorldCommandBuffers
 
     void Reset()
     {
+        scene.reset();
         tiles.Reset();
         tex_quads.Reset();
         keeper_sprites.Reset();
@@ -249,6 +256,7 @@ struct WorldCommandBuffers
 
     void Swap(WorldCommandBuffers& other)
     {
+        scene.swap(other.scene);
         tiles.Swap(other.tiles);
         tex_quads.Swap(other.tex_quads);
         keeper_sprites.Swap(other.keeper_sprites);

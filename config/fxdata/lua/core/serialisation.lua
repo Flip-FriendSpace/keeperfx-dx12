@@ -1,11 +1,14 @@
+-- KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 -- serialization.lua
 -- Internal serialization logic for Lua<->C data.
 -- Used by the engine to serialize complex Lua state; not intended for API users.
 
 local binser = require 'external.binser'
-local base64 = require 'external.base64'
 require 'classes.Pos3d'
-local serialization_version = 2
+local serialization_version = 3
+-- Check the VM/bytecode frame format before binser loads any functions.
+-- The first five dump bytes include LuaJIT's version, endian and FR2 flags.
+local state_prefix = 'KFXL:3:' .. string.dump(function() end):sub(1, 5) .. ':'
 
 local registry = debug.getregistry()
 for _, name in ipairs({ "Player", "Thing", "Slab", "Camera", "Room", "Map", "Pos3d" }) do
@@ -42,40 +45,9 @@ end
 register_cfunctions(_G, "global:")
 register_cfunctions(registry, "registry:")
 
-local function restore_legacy_data(value, seen)
-    if type(value) == "table" then
-        if seen[value] then
-            return seen[value]
-        end
-        if value.__serialized_function then
-            local dumped = base64.decode(value.__serialized_function)
-            local func, err = load(dumped, nil, "b", _G)
-            assert(func, "Failed to load function: " .. tostring(err))
-            seen[value] = func
-            return func
-        end
-
-        local out = {}
-        seen[value] = out
-        for k, v in pairs(value) do
-            out[restore_legacy_data(k, seen)] = restore_legacy_data(v, seen)
-        end
-
-        if out.__class == "Player" then
-            setmetatable(out, registry.Player)
-        elseif out.__class == "Thing" then
-            setmetatable(out, registry.Thing)
-        elseif out.__class == "Slab" then
-            setmetatable(out, registry.Slab)
-        end
-        return out
-    end
-    return value
-end
-
 function GetSerializedData()
     local ok, result = pcall(function()
-        return binser.serialize(Game, serialization_version)
+        return state_prefix .. binser.serialize(Game, serialization_version)
     end)
     print("GetSerializedData ok: " .. tostring(ok))
     if not ok then
@@ -86,11 +58,11 @@ end
 
 function SetSerializedData(serialized_data)
     local ok, result = pcall(function()
-        local values = binser.deserialize(serialized_data)
-        if values[2] == serialization_version then
-            return values[1]
-        end
-        return restore_legacy_data(values[1], {})
+        assert(serialized_data:sub(1, #state_prefix) == state_prefix, 'Incompatible Lua state format or VM')
+        local values = binser.deserialize(serialized_data:sub(#state_prefix + 1))
+        assert(values[2] == serialization_version, 'Incompatible Lua state version')
+        assert(type(values[1]) == 'table', 'Invalid Lua Game state')
+        return values[1]
     end)
     if not ok then
         error("binser load failed: " .. result)

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -25,6 +26,7 @@
 #include "player_instances.h"
 #include "player_data.h"
 #include "player_utils.h"
+#include "replay.h"
 #include "thing_effects.h"
 #include "lvl_filesdk1.h"
 #include "keeperfx.hpp"
@@ -1147,6 +1149,17 @@ void process_level_script(void)
   SYNCDBG(6,"Starting");
   struct PlayerInfo *player;
   player = get_my_player();
+  if (replay.load_enable && game.game_kind != GKind_MultiGame) {
+      // The observer and its selectable camera are presentation state, not
+      // the human player whose single-player script lifetime was recorded.
+      player = replay_recording_player();
+      if (player == NULL) {
+          ERRORLOG("Replay script player identity is invalid");
+          quit_game = 1;
+          exit_keeper = 1;
+          return;
+      }
+  }
   TbBool process_script = false;
   if (game.game_kind == GKind_MultiGame) {
       process_script = true;

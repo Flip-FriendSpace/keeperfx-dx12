@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "bflib_fmvids.h"
 #include "bflib_video.h"
@@ -427,7 +428,7 @@ struct movie_t {
 			}
 			wait_for_pts();
 			output_video_frame();
-			if (!poll_inputs()) {
+			if (RendererFatalFailureReason()[0] || !poll_inputs()) {
 				return false;
 			} else if (m_flags & SMK_NoStopOnUserInput) {
 				return true;
@@ -1135,7 +1136,7 @@ short anim_open(char *fname, int arg1, short arg2, int width, int height, int bp
 				return false;
 			}
 		} else {
-			LbFileSeek(animation.inpfhndl, -sizeof(AnimFLIChunk), Lb_FILE_SEEK_CURRENT);
+                        LbFileSeek(animation.inpfhndl, -static_cast<long>(sizeof(AnimFLIChunk)), Lb_FILE_SEEK_CURRENT);
 		}
 		animation.frame_count = 0;
 	}

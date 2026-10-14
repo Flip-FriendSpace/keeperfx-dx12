@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -45,6 +46,16 @@ static WindowSystemSDL s_sdlWindowSystem;
 WindowSystemSDL* GetSDLWindowSystem()
 {
     return &s_sdlWindowSystem;
+}
+
+void* WindowSystemSDL::GetNativeWindowHandle() const
+{
+#ifdef _WIN32
+    if (m_window)
+        return SDL_GetPointerProperty(SDL_GetWindowProperties(m_window),
+            SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+#endif
+    return nullptr;
 }
 
 // Translate a 0-based display index (as used by the span-all-displays loop in
@@ -149,17 +160,27 @@ bool WindowSystemSDL::GetCursorPosition(int* out_x, int* out_y) const
         return false;
     float wx = 0.0f, wy = 0.0f;
     SDL_GetMouseState(&wx, &wy);
-    int px = 0, py = 0, pw = 0, ph = 0;
-    GetPresentRect(&px, &py, &pw, &ph);
-    float ux = 1.0f, uy = 1.0f;
-    GetPixelsPerWindowUnit(&ux, &uy);
-    int gx = (int)wx;
-    int gy = (int)wy;
-    if (m_gameW > 0 && m_gameH > 0 && pw > 0 && ph > 0)
-    {
-        gx = (int)SDL_floor((wx * ux - px) * m_gameW / pw);
-        gy = (int)SDL_floor((wy * uy - py) * m_gameH / ph);
-    }
+    return WindowToGameCoordinates(wx, wy, out_x, out_y);
+}
+
+WindowMouseMapping WindowSystemSDL::GetMouseMapping() const
+{
+    WindowMouseMapping mapping;
+    if (!m_window)
+        return mapping;
+    GetWindowSize(&mapping.window_w, &mapping.window_h);
+    GetDrawableSize(&mapping.drawable_w, &mapping.drawable_h);
+    GetPresentRect(&mapping.present_x, &mapping.present_y, &mapping.present_w, &mapping.present_h);
+    mapping.native_w = m_gameW;
+    mapping.native_h = m_gameH;
+    return mapping;
+}
+
+bool WindowSystemSDL::WindowToGameCoordinates(float x, float y, int* out_x, int* out_y) const
+{
+    int gx = 0, gy = 0;
+    if (!GetMouseMapping().Convert(x, y, gx, gy))
+        return false;
     if (out_x) *out_x = gx;
     if (out_y) *out_y = gy;
     return true;
@@ -215,6 +236,8 @@ unsigned int WindowSystemSDL::GetWindowFlags() const
     }
     if (sdl_flags & SDL_WINDOW_BORDERLESS) kfx_flags |= KFX_WF_BORDERLESS;
     if (sdl_flags & SDL_WINDOW_HIDDEN)     kfx_flags |= KFX_WF_HIDDEN;
+    if (sdl_flags & SDL_WINDOW_MINIMIZED)  kfx_flags |= KFX_WF_MINIMIZED;
+    if (sdl_flags & SDL_WINDOW_RESIZABLE)  kfx_flags |= KFX_WF_RESIZABLE;
     return kfx_flags;
 }
 
@@ -458,6 +481,15 @@ bool WindowSystemSDL::CreateWindow(const char* title, int x, int y, int w, int h
     m_window = SDL_CreateWindow(title, w, h, sdl3_flags);
     if (!m_window)
         return false;
+    // Enable resizing after creation: requesting it at creation may constrain
+    // an explicit game resolution to the compositor's desktop work area.
+    if ((flags & KFX_WF_RESIZABLE) && !SDL_SetWindowResizable(m_window, true))
+    {
+        ERRORLOG("Could not enable window resizing: %s", SDL_GetError());
+        SDL_DestroyWindow(m_window);
+        m_window = nullptr;
+        return false;
+    }
     m_keepComposited = (flags & KFX_WF_KEEP_COMPOSITED) != 0;
     m_desktopFullscreenOnly = (flags & KFX_WF_DESKTOP_FULLSCREEN_ONLY) != 0;
     ApplyWindowIcon(m_window);

@@ -1,5 +1,8 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "kfx/renderer/RendererOpenGL.h"
+#include "kfx/renderer/WorldScene.h"
+#include "kfx/renderer/SceneReferenceImage.h"
 #include "bflib_basics.h"
 #include "globals.h"        // ERRORLOG/SYNCDBG
 #include "bflib_video.h"    // lbDisplay
@@ -7,6 +10,7 @@
 #include "kfx/platform/IWindowSystem.h"
 #include "kfx/platform/IGLContext.h"
 #include "kfx/renderer/opengl/GLFunctions.h"
+#include "kfx/renderer/opengl/GLRenderBenchmark.h"
 #include "kfx/renderer/opengl/GLSpriteAtlas.h"
 #include "kfx/renderer/opengl/GLUIRenderer.h"
 #include "kfx/renderer/opengl/GLTextRenderer.h"
@@ -74,6 +78,7 @@ struct GLFrameData {
     unsigned char palette_rgba[256 * 4] = {};
     // Palette index the frame is cleared to, as RendererClearScreen() fills the software screen.
     unsigned char clear_index = 0;
+    bool indexed_world_fallback = false;
 
     GLCursorSnapshot cursor_snapshot;
 };
@@ -88,6 +93,7 @@ static void frame_clear_colour(const GLFrameData& fd, GLfloat* rgba)
 }
 
 struct RendererOpenGL::Impl {
+    GLRenderBenchmark benchmark;
     GLSpriteAtlas      atlas;
     GLUIRenderer       ui;
     GLTextRenderer     text;
@@ -96,6 +102,7 @@ struct RendererOpenGL::Impl {
     GLWorldViewRenderer world;
     GLMapFadePass      mapfade;
     GLImagePresentPass imgpresent;
+    GLImagePresentPass indexed_world_present;
     GLZoomBoxTilesPass zoomboxtiles;
 
     // Game thread: PresentHugeSprite() scratch -- sprite pixels, and its coverage.
@@ -121,6 +128,7 @@ struct RendererOpenGL::Impl {
     bool          fg_lens_captured      = false;
 
     std::string screenshot_path;
+    uint64_t reference_sequence = 0;
     int         screenshot_fmt = 0;
 
     int swap_interval = -1; // render thread: interval last applied to the context
@@ -363,6 +371,8 @@ void RendererOpenGL::render_thread_init()
         m_impl->init_ok = false;
         return;
     }
+    m_impl->world.RecordAppliedPaletteForCapture(black_palette, m_impl->palette_tex_handle,
+        m_impl->resource_mapper.ResolveTexture(m_impl->palette_tex_handle)->id);
 
     // 256x64 R8 remap/fade table, matching pixmap.fade_tables.
     GpuTextureDesc fade_table_desc;
@@ -381,6 +391,8 @@ void RendererOpenGL::render_thread_init()
         return;
     }
 
+    m_impl->world.RecordAppliedFadeForCapture(fade_table_desc.initial_pixels.data(), m_impl->fade_table_tex_handle,
+        m_impl->resource_mapper.ResolveTexture(m_impl->fade_table_tex_handle)->id);
     if (!m_impl->palette_index_lookup.Init(&m_impl->resource_mapper))
     {
         ERRORLOG("RendererOpenGL::Init: palette index lookup texture realization failed");
@@ -403,6 +415,7 @@ void RendererOpenGL::render_thread_init()
     m_impl->world.SetFadeTexture(m_impl->fade_table_tex_handle);
     m_impl->world.SetPaletteTexture(m_impl->palette_tex_handle);
     m_impl->world.SetPaletteIndexTexture(m_impl->palette_index_lookup.GetTexture());
+    m_impl->world.SetIndexMirrorForCapture(&m_impl->palette_index_lookup.UploadedForCapture());
     m_impl->world.SetScreenSize((int)RendererPhysicalWidth(), (int)lbDisplay.PhysicalScreenHeight);
     if (!m_impl->world.CompileShaders())
     {
@@ -426,6 +439,10 @@ void RendererOpenGL::render_thread_init()
     {
         WARNLOG("RendererOpenGL::Init: raw image present shaders unavailable -- FMV/splash/backgrounds will not be drawn");
     }
+    m_impl->indexed_world_present.SetResourceMapper(&m_impl->resource_mapper);
+    m_impl->indexed_world_present.SetPaletteTexture(m_impl->palette_tex_handle);
+    if (!m_impl->indexed_world_present.CompileShaders())
+        WARNLOG("Indexed custom-lens world presentation unavailable");
 
     m_impl->zoomboxtiles.SetResourceMapper(&m_impl->resource_mapper);
     m_impl->zoomboxtiles.SetPaletteTexture(m_impl->palette_tex_handle);
@@ -457,6 +474,8 @@ void RendererOpenGL::render_thread_work()
     KFX_GPU_ZONE("GL Frame");
 
     GLFrameData& fd = m_impl->frames[m_impl->render_idx];
+    const auto screenshot = m_impl->benchmark.Begin(fd.screen_w, fd.screen_h, fd.world_cmds.tile_verts.size());
+    if (!screenshot.empty()) ScheduleScreenshot(screenshot.c_str(), 1);
 
     {
         KFX_ZONE_COLOR("RendererOpenGL::FrameHousekeeping", KFX_COLOR_RENDER_GPU);
@@ -470,6 +489,7 @@ void RendererOpenGL::render_thread_work()
             {
                 glBindTexture(GL_TEXTURE_2D, tex->id);
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, fd.palette_rgba);
+                m_impl->world.RecordAppliedPaletteForCapture(fd.palette_rgba);
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
             m_impl->palette_index_lookup.SetPalette(fd.palette_rgba);
@@ -500,6 +520,7 @@ void RendererOpenGL::render_thread_work()
         KFX_ZONE_COLOR("RendererOpenGL::PresentScreenTarget", KFX_COLOR_RENDER_GPU);
         m_impl->PresentScreenTarget(fd);
     }
+    m_impl->benchmark.EndWork();
 }
 
 void RendererOpenGL::render_thread_present()
@@ -513,7 +534,9 @@ void RendererOpenGL::render_thread_present()
     {
         // blocks on vsync
         KFX_ZONE_COLOR("RendererOpenGL::SwapBuffers", KFX_COLOR_RENDER_GPU);
+        m_impl->benchmark.BeginSwap();
         m_gl_context->SwapBuffers();
+        m_impl->benchmark.EndSwap();
     }
     KFX_GPU_COLLECT();
     KFX_FRAMEMARK();
@@ -530,10 +553,19 @@ void RendererOpenGL::FGClearFrame()
     glViewport(0, 0, fd.screen_w, fd.screen_h);
     GLfloat clear_rgba[4];
     frame_clear_colour(fd, clear_rgba);
+    if (fd.indexed_world_fallback) {
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_FRAMEBUFFER_SRGB);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_TRUE);
+    }
     glClearColor(clear_rgba[0], clear_rgba[1], clear_rgba[2], clear_rgba[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    m_impl->ui.BuildQuadsFromIR(fd.ui_cmds);
+    m_impl->world.RecordWorldTargetForCapture(fd.screen_w, fd.screen_h,
+        kfx::render::SceneGLWorldTargetKind::Screen, clear_rgba);
+    m_impl->world.BeginCompositionForCapture(clear_rgba);
+    m_impl->ui.BuildQuadsFromIR(fd.ui_cmds, m_impl->world.CompositionSession());
 }
 
 void RendererOpenGL::FGBeginWorldCapture()
@@ -553,13 +585,26 @@ void RendererOpenGL::FGFlushSwipeOverlay()
 {
     GLFrameData& fd = m_impl->frames[m_impl->render_idx];
     static const TextCommandBuffers s_no_text; // swipe never submits text
+    m_impl->ui.BeginSceneOverlayCapture(m_impl->world.CompositionSession(), kfx::render::SceneGLOverlayPhase::Swipe,
+        m_impl->world.PaletteMirrorForCapture(), m_impl->world.FadeMirrorForCapture(), m_impl->world.CompositionTargetForCapture());
     m_impl->ui.DrawFromIR(fd.swipe_cmds, s_no_text, nullptr);
+    m_impl->ui.EndSceneOverlayCapture();
 }
 
 void RendererOpenGL::FGResolveWorldCapture()
 {
     if (m_impl->fg_lens_captured)
         m_impl->world.ResolveLensComposite();
+    m_impl->world.FinishCompositionForCapture();
+    // Custom Lua lenses already consumed the original indexed software world.
+    // Their result is a world replacement, before map-fade snapshots and UI.
+    const auto& fd = m_impl->frames[m_impl->render_idx];
+    if (fd.indexed_world_fallback) {
+        const GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+        glDisable(GL_SCISSOR_TEST);
+        m_impl->indexed_world_present.Resolve(fd.screen_w, fd.screen_h, false);
+        if (scissor) glEnable(GL_SCISSOR_TEST);
+    }
 }
 
 void RendererOpenGL::FGCaptureMapFadeWorld()
@@ -607,12 +652,18 @@ void RendererOpenGL::FGDrawZoomBoxes()
 
 void RendererOpenGL::FGDrawWorldSpriteLayer()
 {
+    m_impl->ui.BeginSceneOverlayCapture(m_impl->world.CompositionSession(), kfx::render::SceneGLOverlayPhase::DepthWorld,
+        m_impl->world.PaletteMirrorForCapture(), m_impl->world.FadeMirrorForCapture(), m_impl->world.CompositionTargetForCapture());
     m_impl->ui.DrawWorldSpriteLayerRT();
+    m_impl->ui.EndSceneOverlayCapture();
 }
 
 void RendererOpenGL::FGDrawWorldOverlayFlatLayer()
 {
+    m_impl->ui.BeginSceneOverlayCapture(m_impl->world.CompositionSession(), kfx::render::SceneGLOverlayPhase::FlatWorld,
+        m_impl->world.PaletteMirrorForCapture(), m_impl->world.FadeMirrorForCapture(), m_impl->world.CompositionTargetForCapture());
     m_impl->ui.DrawWorldOverlayFlatLayerRT();
+    m_impl->ui.EndSceneOverlayCapture();
 }
 
 void RendererOpenGL::FGDrawGameUI()
@@ -637,10 +688,14 @@ bool RendererOpenGL::ScheduleScreenshot(const char* path, int fmt)
 
 void RendererOpenGL::FGCaptureScreenshot()
 {
+    GLFrameData& fd = m_impl->frames[m_impl->render_idx];
+    const auto& scene = fd.world_cmds.scene;
+    const bool reference = scene && !scene->reference_image.empty()
+        && scene->sequence != m_impl->reference_sequence;
+    if (reference) ScheduleScreenshot(scene->reference_image.c_str(), 1);
     if (m_impl->screenshot_path.empty())
         return;
 
-    GLFrameData& fd = m_impl->frames[m_impl->render_idx];
     const int w = fd.screen_w;
     const int h = fd.screen_h;
     if (w <= 0 || h <= 0)
@@ -664,10 +719,12 @@ void RendererOpenGL::FGCaptureScreenshot()
                                               flipped.data(), (int)row_bytes);
     if (surf != nullptr)
     {
-        bool ok = (m_impl->screenshot_fmt == 1) ? IMG_SavePNG(surf, m_impl->screenshot_path.c_str())
+        bool ok = reference ? SaveSceneReferenceImage(surf, *scene)
+            : (m_impl->screenshot_fmt == 1) ? IMG_SavePNG(surf, m_impl->screenshot_path.c_str())
                                                  : SDL_SaveBMP(surf, m_impl->screenshot_path.c_str());
         if (!ok)
             ERRORLOG("Screenshot save failed (%s): %s", m_impl->screenshot_path.c_str(), SDL_GetError());
+        else if (reference) m_impl->reference_sequence = scene->sequence;
         SDL_DestroySurface(surf);
     }
     m_impl->screenshot_path.clear();
@@ -684,6 +741,7 @@ void RendererOpenGL::render_thread_cleanup()
 {
     if (m_impl->functions_loaded)
     {
+        m_impl->benchmark.Shutdown();
         m_impl->resource_mapper.ShutdownAll();
         m_impl->ui.Shutdown();
         m_impl->atlas.Free();
@@ -691,6 +749,7 @@ void RendererOpenGL::render_thread_cleanup()
         m_impl->world_atlas.Free();
         m_impl->mapfade.Shutdown();
         m_impl->imgpresent.Shutdown();
+        m_impl->indexed_world_present.Shutdown();
         m_impl->zoomboxtiles.Shutdown();
     }
     m_gl_context.reset();
@@ -714,6 +773,11 @@ void RendererOpenGL::ClearScreen(unsigned char colour)
 {
     if (m_impl == nullptr) return;
     m_impl->frames[m_impl->write_idx].clear_index = colour;
+}
+
+void RendererOpenGL::WaitForSettingsChange()
+{
+    if (m_impl) m_impl->thread_mgr.WaitForCompletion();
 }
 
 void RendererOpenGL::PresentFrame()
@@ -757,6 +821,7 @@ void RendererOpenGL::PresentFrame()
     next_fd.parchment_text_cmds.Reset();
     next_fd.swipe_cmds.Reset();
     next_fd.frame_seq = 0;
+    next_fd.indexed_world_fallback = false;
     next_fd.palette_dirty = false; // defensive; a real change always re-sets this itself
     // Both slots must hold the current palette, not the one last written into them.
     std::memcpy(next_fd.palette_rgba, m_impl->frames[filled].palette_rgba, sizeof(next_fd.palette_rgba));
@@ -766,6 +831,7 @@ void RendererOpenGL::PresentFrame()
     m_impl->world.FlipBuffers();
     m_impl->mapfade.FlipBuffers();
     m_impl->imgpresent.FlipBuffers();
+    m_impl->indexed_world_present.FlipBuffers();
     m_impl->zoomboxtiles.FlipBuffers();
 
     m_impl->ui.SetUICommandBuffers(&next_fd.ui_cmds);
@@ -824,6 +890,58 @@ bool RendererOpenGL::PresentImage(const struct RendererPresentImageDesc* desc)
     if (m_impl == nullptr || !m_impl->imgpresent.IsReady())
         return false;
     m_impl->imgpresent.Submit(desc);
+    return true;
+}
+
+bool RendererOpenGL::BeginIndexedWorldFallback(int width, int height, unsigned char& clear_index)
+{
+    if (!m_impl || !m_impl->indexed_world_present.IsReady() || width != RendererPhysicalWidth()
+        || height != lbDisplay.PhysicalScreenHeight) return false;
+    auto& fd = m_impl->frames[m_impl->write_idx];
+    // FGClearFrame precedes all world draws. Reject earlier submissions rather
+    // than invent indices for their colours or discard their ordering.
+    const auto empty_ui = [](const UICommandBuffers& ui) {
+        return ui.sprites.Empty() && ui.sprites_one_colour.Empty() && ui.sprites_scaled.Empty()
+            && ui.sprites_scaled_one_colour.Empty() && ui.sprites_scaled_remap.Empty()
+            && ui.solid_boxes.Empty() && ui.slab_backgrounds.Empty() && ui.minimaps.Empty();
+    };
+    if (fd.indexed_world_fallback || fd.world_cmds.scene || !fd.world_cmds.tiles.Empty()
+        || !fd.world_cmds.tex_quads.Empty() || !fd.world_cmds.keeper_sprites.Empty()
+        || !fd.world_cmds.shadows.Empty() || !fd.world_cmds.tile_verts.empty()
+        || fd.frame_seq || !empty_ui(fd.ui_cmds) || !empty_ui(fd.swipe_cmds)
+        || !empty_ui(fd.parchment_ui_cmds) || !fd.text_cmds.draws.Empty() || !fd.text_cmds.glyphs.Empty()
+        || !fd.parchment_text_cmds.draws.Empty() || !fd.parchment_text_cmds.glyphs.Empty()
+        || m_impl->imgpresent.IsActiveGT()) return false;
+    clear_index = fd.clear_index;
+    fd.indexed_world_fallback = true;
+    return true;
+}
+
+bool RendererOpenGL::SubmitIndexedWorldFallback(const RendererPresentImageDesc* desc)
+{
+    if (!m_impl || !desc || !m_impl->frames[m_impl->write_idx].indexed_world_fallback
+        || desc->kind != PRESENT_KIND_COMPOSITE || desc->format != PRESENT_FORMAT_INDEXED8
+        || !desc->src || desc->src_w <= 0 || desc->src_h <= 0 || desc->src_pitch < desc->src_w
+        || desc->src_w != desc->dst_w || desc->src_h != desc->dst_h
+        || desc->dst_x < 0 || desc->dst_y < 0
+        || int64_t(desc->dst_x) + desc->dst_w > RendererPhysicalWidth()
+        || int64_t(desc->dst_y) + desc->dst_h > lbDisplay.PhysicalScreenHeight
+        || uint64_t(desc->src_w) * desc->src_h > 64 * 1024 * 1024
+        || m_impl->indexed_world_present.IsActiveGT()) return false;
+    try {
+        m_impl->indexed_world_present.Submit(desc);
+    } catch (...) {
+        m_impl->indexed_world_present.DiscardPending();
+        return false;
+    }
+    return true;
+}
+
+bool RendererOpenGL::GetIndexedWorldFallbackPalette(std::array<uint8_t, 1024>& rgba) const
+{
+    if (!m_impl) return false;
+    std::memcpy(rgba.data(), m_impl->frames[m_impl->write_idx].palette_rgba, rgba.size());
+    for (size_t i = 3; i < rgba.size(); i += 4) rgba[i] = 255;
     return true;
 }
 

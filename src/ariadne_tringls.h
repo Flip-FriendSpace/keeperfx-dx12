@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -23,6 +24,7 @@
 #include "globals.h"
 
 #define TRIANLGLES_COUNT 100000
+#define EDGELEN_BITS 6
 
 #ifdef __cplusplus
 extern "C" {

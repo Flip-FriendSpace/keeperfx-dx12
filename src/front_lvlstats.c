@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -190,9 +191,14 @@ long calculate_traps_unused(PlayerNumber plyr_idx)
 
 void frontstats_initialise(void)
 {
+    frontstats_initialise_for_player(get_my_player());
+}
+
+void frontstats_initialise_for_player(const struct PlayerInfo *player)
+{
     // Initialize stats in dungeon
-    struct Dungeon* dungeon = get_my_dungeon();
-    if (!dungeon) {
+    struct Dungeon* dungeon = get_players_dungeon(player);
+    if (dungeon_invalid(dungeon)) {
         ERRORLOG("Tried to generate stats for invalid dungeon");
         return;
     }
@@ -211,14 +217,14 @@ void frontstats_initialise(void)
     dungeon->lvstats.creatures_summoned = dungeon->creatures_scavenge_lost;
     dungeon->lvstats.spells_stolen = dungeon->spells_stolen;
     dungeon->lvstats.gold_pots_stolen = dungeon->gold_pots_stolen;
-    dungeon->lvstats.average_room_efficiency  = calculate_efficiency(my_player_number);
-    dungeon->lvstats.player_rating = calculate_rating(my_player_number);
-    dungeon->lvstats.player_style = calculate_style(my_player_number);
-    dungeon->lvstats.doors_unused = calculate_doors_unused(my_player_number);
-    dungeon->lvstats.traps_unused = calculate_traps_unused(my_player_number);
-    dungeon->lvstats.num_rooms = calculate_player_num_rooms_built(my_player_number);
+    dungeon->lvstats.average_room_efficiency  = calculate_efficiency(player->id_number);
+    dungeon->lvstats.player_rating = calculate_rating(player->id_number);
+    dungeon->lvstats.player_style = calculate_style(player->id_number);
+    dungeon->lvstats.doors_unused = calculate_doors_unused(player->id_number);
+    dungeon->lvstats.traps_unused = calculate_traps_unused(player->id_number);
+    dungeon->lvstats.num_rooms = calculate_player_num_rooms_built(player->id_number);
     dungeon->lvstats.gameplay_time = (dungeon->lvstats.end_time - dungeon->lvstats.start_time) / 1000;
-    dungeon->lvstats.num_entrances = count_player_rooms_entrances(my_player_number);
+    dungeon->lvstats.num_entrances = count_player_rooms_entrances(player->id_number);
     dungeon->lvstats.hopes_dashed = get_gameturn();
     memcpy(&frontstats_data, &dungeon->lvstats, sizeof(struct LevelStats));
 }

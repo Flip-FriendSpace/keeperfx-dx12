@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -31,6 +32,8 @@ void animate_resync_progress_bar(int current_phase, int total_phases);
 void resync_game(void);
 TbBool apply_recorded_resync(const char *message_buffer, size_t message_size);
 TbBool send_spectator_resync(uint64_t user_mask);
+// Opt-in, offline development check; never available in normal sessions.
+TbBool state_resync_self_test(void);
 
 void intentional_desync();
 

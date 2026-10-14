@@ -1,5 +1,6 @@
+# KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 # Dependencies.cmake - third-party libraries, per platform. Mirrors the hand
-# Makefiles: Windows/MinGW uses prebuilt kfx-deps mingw32 static libs + SDL3 dev
+# Makefiles: Windows/MinGW uses architecture-specific static libs + SDL3 dev
 # tarballs (../Makefile); Linux uses system/pkg-config libs + a few prebuilt
 # lin64 static libs (../linux.mk). Dep URLs/tags track those Makefiles.
 #
@@ -52,7 +53,7 @@ macro(kfx_imported name lib incdir)
 endmacro()
 
 if(WIN32)
-    # --- SDL3 (prebuilt MinGW dev tarballs; each wraps <name>-<ver>/i686-w64-mingw32/*)
+    # --- SDL3 (the MinGW dev archives contain both Windows architectures)
     # SDL_net is intentionally absent: api.c now uses a native Winsock socket
     # layer (SDL3_net is not reliably packaged). See docs SDL3-MIGRATION notes.
     set(SDL3_VER      3.4.12)
@@ -63,9 +64,9 @@ if(WIN32)
     kfx_fetch(sdl3_mixer "https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL3_MIX_VER}/SDL3_mixer-devel-${SDL3_MIX_VER}-mingw.tar.gz")
     kfx_fetch(sdl3_image "https://github.com/libsdl-org/SDL_image/releases/download/release-${SDL3_IMG_VER}/SDL3_image-devel-${SDL3_IMG_VER}-mingw.tar.gz")
 
-    set(SDL3_PREFIX      "${D}/sdl3/SDL3-${SDL3_VER}/i686-w64-mingw32")
-    set(SDL3_MIX_PREFIX  "${D}/sdl3_mixer/SDL3_mixer-${SDL3_MIX_VER}/i686-w64-mingw32")
-    set(SDL3_IMG_PREFIX  "${D}/sdl3_image/SDL3_image-${SDL3_IMG_VER}/i686-w64-mingw32")
+    set(SDL3_PREFIX      "${D}/sdl3/SDL3-${SDL3_VER}/${KFX_MINGW_TRIPLET}")
+    set(SDL3_MIX_PREFIX  "${D}/sdl3_mixer/SDL3_mixer-${SDL3_MIX_VER}/${KFX_MINGW_TRIPLET}")
+    set(SDL3_IMG_PREFIX  "${D}/sdl3_image/SDL3_image-${SDL3_IMG_VER}/${KFX_MINGW_TRIPLET}")
 
     add_library(kfx_sdl3 INTERFACE)
     # SDL3 headers live under include/SDL3/*.h; code uses <SDL3/SDL.h>,
@@ -86,24 +87,52 @@ if(WIN32)
         "${SDL3_IMG_PREFIX}/bin/SDL3_image.dll"
         DESTINATION .)
 
-    # --- Static libs from kfx-deps (mirror ../Makefile URLs/tags)
-    kfx_fetch(enet6      "${KFX_DEPS_BASE}/20260212/enet6-mingw32.tar.gz")
-    kfx_fetch(zlib       "${KFX_DEPS_BASE}/initial/zlib-mingw32.tar.gz")
-    kfx_fetch(spng       "${KFX_DEPS_BASE}/initial/spng-mingw32.tar.gz")
-    kfx_fetch(astronomy  "${KFX_DEPS_BASE}/astronomy_fix/astronomy-mingw32.tar.gz")
-    kfx_fetch(centijson  "${KFX_DEPS_BASE}/initial/centijson-mingw32.tar.gz")
-    kfx_fetch(ffmpeg     "${KFX_DEPS_BASE}/initial/ffmpeg-mingw32.tar.gz")
-    kfx_fetch(luajit     "${KFX_DEPS_BASE}/20250418/luajit-mingw32.tar.gz")
-    kfx_fetch(miniupnpc  "${KFX_DEPS_BASE}/20260102/miniupnpc-mingw32.tar.gz")
-    kfx_fetch(libnatpmp  "${KFX_DEPS_BASE}/20260102/libnatpmp-mingw32.tar.gz")
-    kfx_fetch(libcurl    "${KFX_DEPS_BASE}/20260310/libcurl-mingw32.tar.gz")
+    # --- Static libs from kfx-deps (x86 mirrors ../Makefile URLs/tags)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        # A separately pinned x64 package set; keep the existing i686 lock intact.
+        file(READ "${CMAKE_SOURCE_DIR}/local-dev/dependencies-x64.json" _x64_deps)
+        string(JSON _count LENGTH "${_x64_deps}")
+        math(EXPR _last "${_count} - 1")
+        foreach(_i RANGE ${_last})
+            string(JSON _name GET "${_x64_deps}" ${_i} name)
+            string(JSON _url GET "${_x64_deps}" ${_i} url)
+            string(JSON _hash GET "${_x64_deps}" ${_i} sha256)
+            if(NOT EXISTS "${D}/${_name}")
+                file(MAKE_DIRECTORY "${D}")
+                file(DOWNLOAD "${_url}" "${D}/${_name}.tar.gz"
+                    EXPECTED_HASH "SHA256=${_hash}" TLS_VERIFY ON)
+                kfx_fetch(${_name} "${_url}")
+            endif()
+        endforeach()
+    else()
+        kfx_fetch(enet6      "${KFX_DEPS_BASE}/20260212/enet6-mingw32.tar.gz")
+        kfx_fetch(zlib       "${KFX_DEPS_BASE}/initial/zlib-mingw32.tar.gz")
+        kfx_fetch(spng       "${KFX_DEPS_BASE}/initial/spng-mingw32.tar.gz")
+        kfx_fetch(astronomy  "${KFX_DEPS_BASE}/astronomy_fix/astronomy-mingw32.tar.gz")
+        kfx_fetch(centijson  "${KFX_DEPS_BASE}/initial/centijson-mingw32.tar.gz")
+        kfx_fetch(ffmpeg     "${KFX_DEPS_BASE}/initial/ffmpeg-mingw32.tar.gz")
+        kfx_fetch(luajit     "${KFX_DEPS_BASE}/20250418/luajit-mingw32.tar.gz")
+        kfx_fetch(miniupnpc  "${KFX_DEPS_BASE}/20260102/miniupnpc-mingw32.tar.gz")
+        kfx_fetch(libnatpmp  "${KFX_DEPS_BASE}/20260102/libnatpmp-mingw32.tar.gz")
+        kfx_fetch(libcurl    "${KFX_DEPS_BASE}/20260310/libcurl-mingw32.tar.gz")
+    endif()
 
     kfx_imported(enet6_static      "${D}/enet6/lib/libenet6.a"       "${D}/enet6/include")
     target_link_libraries(enet6_static INTERFACE ws2_32 winmm)
     kfx_imported(spng_static       "${D}/spng/libspng.a"             "${D}/spng/include")
     kfx_imported(centijson_static  "${D}/centijson/libjson.a"        "${D}/centijson/include")
     kfx_imported(astronomy_static  "${D}/astronomy/libastronomy.a"   "${D}/astronomy/include")
-    kfx_imported(zlib_static       "${D}/zlib/libz.a"                "${D}/zlib/include")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        # The published x64 package contains minizip but omits libz.a.
+        set(ZLIB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+        set(ZLIB_BUILD_STATIC ON CACHE BOOL "" FORCE)
+        set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+        set(ZLIB_INSTALL OFF CACHE BOOL "" FORCE)
+        add_subdirectory("${D}/zlib-source/zlib-1.3.2" "${D}/zlib-build" EXCLUDE_FROM_ALL)
+        add_library(zlib_static ALIAS zlibstatic)
+    else()
+        kfx_imported(zlib_static "${D}/zlib/libz.a" "${D}/zlib/include")
+    endif()
     kfx_imported(minizip_static    "${D}/zlib/libminizip.a"          "${D}/zlib/include")
     target_link_libraries(minizip_static INTERFACE zlib_static)
     # OpenAL: the kfx-deps prebuilt tarball is win32-thread-model MinGW, built
@@ -118,7 +147,9 @@ if(WIN32)
     if(VCPKG_TOOLCHAIN)
         find_package(OpenAL CONFIG REQUIRED)
     else()
-        kfx_fetch(openal "${KFX_DEPS_BASE}/2024-11-14/openal-mingw32.tar.gz")
+        if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+            kfx_fetch(openal "${KFX_DEPS_BASE}/2024-11-14/openal-mingw32.tar.gz")
+        endif()
         kfx_imported(openal_static "${D}/openal/libOpenAL32.a" "${D}/openal/include")
         target_link_libraries(openal_static INTERFACE winmm ole32 uuid)
     endif()

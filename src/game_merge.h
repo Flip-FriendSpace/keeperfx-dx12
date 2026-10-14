@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -138,7 +139,7 @@ struct LevelEnsignOverride {
  * Structure which stores data copied between levels.
  * This data is not lost between levels of a campaign.
  */
-#define INTRALEVEL_DATA_VER 1
+#define INTRALEVEL_DATA_VER 2
 struct IntralevelData {
     unsigned char bonuses_found[BONUS_LEVEL_STORAGE_COUNT];
     struct CreatureStorage transferred_creatures[PLAYERS_COUNT][TRANSFER_CREATURE_STORAGE_COUNT];

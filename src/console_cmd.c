@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -17,6 +18,8 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/WorldSceneCapture.h"
+#include "kfx/renderer/IndexedWorldFallbackDiagnostic.h"
 #include "observer.h"
 #include "console_cmd.h"
 #include "globals.h"
@@ -54,6 +57,7 @@
 #include "map_columns.h"
 #include "map_utils.h"
 #include "packets.h"
+#include "replay.h"
 #include "player_computer.h"
 #include "player_instances.h"
 #include "config_players.h"
@@ -75,8 +79,15 @@
 #include "net_resync.h"
 #include "net_game.h"
 #include "local_camera.h"
+#include "engine_redraw.h"
+#include "engine_render.h"
+#include "engine_buckets.h"
+#include "kfx/renderer/RenderBenchmark.h"
+#include "kfx/renderer/RendererManager.h"
+#include "kfx/renderer/RendererSettings.h"
 #include "kjm_input.h"
 #include "timer.h"
+#include "vidfade.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -646,6 +657,300 @@ TbBool cmd_turn(PlayerNumber plyr_idx, char * args)
 TbBool cmd_pause(PlayerNumber plyr_idx, char * args)
 {
     toggle_flag(game.operation_flags, GOF_Paused);
+    if (!flag_is_set(game.operation_flags, GOF_Paused)) clear_local_camera_reference_pose();
+    return true;
+}
+
+static TbBool cmd_statecheck(PlayerNumber plyr_idx, char *args)
+{
+    char *action = strsep_param_with_space(&args);
+    if (action != NULL) {
+        if (strcmp(action, "replay-start") != 0 || strsep_param_with_space(&args) != NULL)
+            return false;
+        return request_replay_test_recording();
+    }
+    return state_resync_self_test() && state_packet_self_test() && lua_state_self_test();
+}
+
+static TbBool cmd_scene_reference(char *args)
+{
+    if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)) return false;
+    char *action = strsep_param_with_space(&args);
+    if (!action) return false;
+    if (strcmp(action, "reader-hold") == 0 || strcmp(action, "reader-release") == 0) {
+        if (strsep_param_with_space(&args)) return false;
+        return RendererSetDiagnosticReaderHold(strcmp(action, "reader-hold") == 0);
+    }
+    if (strcmp(action, "reader-hold-screenshot") == 0) {
+        const char *directory = getenv("KFX_SCENE_TEST_DIR");
+        char path[2048];
+        if (!directory || !*directory || strsep_param_with_space(&args)) return false;
+        const int length = snprintf(path, sizeof(path), "%s/presentation.png", directory);
+        if (length < 0 || (size_t)length >= sizeof(path)) return false;
+        // Arm and schedule in one game-thread dispatch, before another frame
+        // can occupy the held slots. A refused arm must not queue a screenshot.
+        if (!RendererSetDiagnosticReaderHold(true)) return false;
+        if (RendererScheduleScreenshot(path, 1)) return true;
+        if (!RendererSetDiagnosticReaderHold(false))
+            ERRORLOG("Could not release diagnostic readers after screenshot scheduling failed");
+        return false;
+    }
+    if (strcmp(action, "renderer-stats") == 0) {
+        const char *directory = getenv("KFX_SCENE_TEST_DIR");
+        char path[2048];
+        if (!directory || !*directory || strsep_param_with_space(&args)) return false;
+        const int length = snprintf(path, sizeof(path), "%s/renderer-stats.json", directory);
+        if (length < 0 || (size_t)length >= sizeof(path)) return false;
+        return RendererWriteDiagnostics(path);
+    }
+    if (strcmp(action, "palette-fade") == 0) {
+        if (strsep_param_with_space(&args)) return false;
+        unsigned char original[PALETTE_SIZE], current[PALETTE_SIZE];
+        if (LbPaletteGet(original) != Lb_SUCCESS) return false;
+        const GameTurn turn = get_gameturn();
+        // Use the real blocking fade/present loop, with a bounded four-step
+        // round trip. Always restore the starting palette before reporting.
+        LbPaletteStopOpenFade();
+        ProperFadePalette(NULL, 4, Lb_PALETTE_FADE_CLOSED);
+        TbBool reached_black = LbPaletteGet(current) == Lb_SUCCESS;
+        if (reached_black) {
+            for (int i = 0; i < PALETTE_SIZE; ++i)
+                if (current[i] != 0) reached_black = false;
+        }
+        LbPaletteStopOpenFade();
+        ProperFadePalette(original, 4, Lb_PALETTE_FADE_CLOSED);
+        const TbBool restored = LbPaletteGet(current) == Lb_SUCCESS
+            && memcmp(original, current, sizeof(original)) == 0;
+        if (!restored) RendererPaletteSet(original);
+        if (!reached_black || !restored || get_gameturn() != turn) return false;
+        SYNCDBG(0, "Reference palette fade: black reached, palette restored, turn unchanged");
+        return true;
+    }
+    if (strcmp(action, "screenshot") == 0) {
+        // Inspect the live presenter without invoking the frozen capture codec.
+        // This shares the disposable, paused, local reference-session guard.
+        const char *directory = getenv("KFX_SCENE_TEST_DIR");
+        char path[2048];
+        if (!directory || !*directory || strsep_param_with_space(&args)) return false;
+        const int length = snprintf(path, sizeof(path), "%s/presentation.png", directory);
+        if (length < 0 || (size_t)length >= sizeof(path)) return false;
+        return RendererScheduleScreenshot(path, 1);
+    }
+    if (strcmp(action, "hover") == 0) {
+        if (!console_cmd_cheats_allowed(my_player_number)) return false;
+        char *token = strsep_param_with_space(&args);
+        if (!token) return false;
+        if (strcmp(token, "reset") == 0) {
+            if (strsep_param_with_space(&args)) return false;
+            clear_engine_reference_hover();
+            return true;
+        }
+        int values[6];
+        for (int i = 0; i < 6; ++i) {
+            if (!token) return false;
+            char *end = NULL;
+            const long value = strtol(token, &end, 10);
+            if (end == token || *end || value < 0 || value > 65535) return false;
+            values[i] = (int)value;
+            token = strsep_param_with_space(&args);
+        }
+        if (token) return false;
+        return set_engine_reference_hover(values[0], values[1], values[2], values[3], values[4], values[5]);
+    }
+    if (strcmp(action, "room-preview") == 0) {
+        if (!console_cmd_cheats_allowed(my_player_number)) return false;
+        char *token = strsep_param_with_space(&args);
+        int values[6];
+        for (int i = 0; i < 6; ++i) {
+            if (!token) return false;
+            char *end = NULL;
+            const long value = strtol(token, &end, 10);
+            if (end == token || *end || value < 0 || value > 512) return false;
+            values[i] = (int)value;
+            token = strsep_param_with_space(&args);
+        }
+        if (token) return false;
+        return set_engine_reference_room_preview(values[0], values[1], values[2], values[3], values[4], values[5]);
+    }
+    if (strcmp(action, "selector") == 0) {
+        if (!console_cmd_cheats_allowed(my_player_number)) return false;
+        char *token = strsep_param_with_space(&args);
+        if (!token) return false;
+        if (strcmp(token, "reset") == 0) {
+            if (strsep_param_with_space(&args)) return false;
+            clear_engine_reference_selector();
+            return true;
+        }
+        int values[4];
+        for (int i = 0; i < 4; ++i) {
+            if (!token) return false;
+            char *end = NULL;
+            const long value = strtol(token, &end, 10);
+            if (end == token || *end || value < 0 || value > 512) return false;
+            values[i] = (int)value;
+            token = strsep_param_with_space(&args);
+        }
+        if (token) return false;
+        return set_engine_reference_selector(values[0], values[1], values[2], values[3]);
+    }
+    if (strcmp(action, "fallback") == 0) {
+        if (strsep_param_with_space(&args)) return false;
+        return WorldSceneWriteIndexedFallback();
+    }
+    if (strcmp(action, "setting") == 0) {
+        static struct RendererSettings initial;
+        static unsigned char initial_shadow_count;
+        static TbBool have_initial = false;
+        char *key = strsep_param_with_space(&args);
+        if (!key) return false;
+        if (!have_initial) {
+            initial = *RendererGetSettings();
+            initial_shadow_count = settings.video_shadows;
+            have_initial = true;
+        }
+        if (strcmp(key, "reset") == 0) {
+            if (strsep_param_with_space(&args)) return false;
+            RendererApplySettings(&initial);
+            settings.video_shadows = initial_shadow_count;
+            return true;
+        }
+        char *token = strsep_param_with_space(&args);
+        if (!token || strsep_param_with_space(&args)) return false;
+        char *end = NULL;
+        const long value = strtol(token, &end, 10);
+        if (end == token || *end || value < 0 || value > 5) return false;
+        if (strcmp(key, "shadow-count") == 0) {
+            if (value > SHADOW_SOURCES_MAX_COUNT) return false;
+            settings.video_shadows = (unsigned char)value;
+            return true;
+        }
+        struct RendererSettings render_settings = *RendererGetSettings();
+        int *field = NULL;
+        int maximum = 1;
+        if (strcmp(key, "lighting") == 0) field = &render_settings.lighting_mode;
+        else if (strcmp(key, "shadow") == 0) { field = &render_settings.shadow_type; maximum = 5; }
+        else if (strcmp(key, "outline") == 0) { field = &render_settings.creature_outline_mode; maximum = 2; }
+        else if (strcmp(key, "darkness") == 0) { field = &render_settings.darkness_mode; maximum = 2; }
+        else if (strcmp(key, "tile-filter") == 0) field = &render_settings.tile_filter;
+        else if (strcmp(key, "lens-colour") == 0) field = &render_settings.lens_color_mode;
+        else if (strcmp(key, "glow-blend") == 0) field = &render_settings.glow_blend_mode;
+        if (!field || value > maximum) return false;
+        *field = value;
+        RendererApplySettings(&render_settings);
+        return true;
+    }
+    if (strcmp(action, "setup") == 0) {
+        // Explicit disposable-reference setup may change the test session while
+        // paused so visibility controls can share an exact simulation instant.
+        // Never available in normal play, remote sessions, or without cheats.
+        if (!args || !*args || !console_cmd_cheats_allowed(my_player_number)) return false;
+        return execute_lua_code_from_console(args);
+    }
+    if (strcmp(action, "clear-ui") == 0) {
+        if (strsep_param_with_space(&args)) return false;
+        gui_close_objective(NULL);
+        settings.tooltips_on = false;
+        memset(&tool_tip_box, 0, sizeof(tool_tip_box));
+        return true;
+    }
+    if (strcmp(action, "short-walls") == 0) {
+        char *value = strsep_param_with_space(&args);
+        if (!value || strlen(value) != 1 || (*value != '0' && *value != '1') || strsep_param_with_space(&args)) return false;
+        settings.video_cluedo_mode = *value - '0';
+        get_player_user_state(get_my_player())->prefs[UPref_WallHeight] = settings.video_cluedo_mode;
+        return true;
+    }
+    if (strcmp(action, "camera") != 0) return false;
+    struct Camera pose = *get_local_active_camera(get_my_player());
+    const TbBool first_person = get_local_view_type(get_my_player()) == PVT_CreatureContrl;
+    int values[] = {pose.mappos.x.val, pose.mappos.y.val, pose.mappos.z.val,
+        pose.rotation_angle_x, pose.rotation_angle_y, pose.zoom, pose.horizontal_fov};
+    // Explicit '*' retains a field. Reject partial/malformed/out-of-range poses.
+    for (int i = 0; i < 7; ++i) {
+        char *token = strsep_param_with_space(&args);
+        if (!token) return false;
+        if (strcmp(token, "*") == 0) continue;
+        char *end = NULL;
+        const long value = strtol(token, &end, 10);
+        if (end == token || *end || value < -65536 || value > 65536) return false;
+        values[i] = value;
+    }
+    if (strsep_param_with_space(&args) || values[0] < 0 || values[0] >= (game.map_subtiles_x + 1) * 256
+        || values[1] < 0 || values[1] >= (game.map_subtiles_y + 1) * 256
+        || values[2] < 0 || values[2] > 2048 || values[3] < 0 || values[3] > ANGLE_MASK
+        || values[4] < -1024 || values[4] > ANGLE_MASK || values[5] < (first_person ? 0 : 1) || values[5] > 65536
+        || values[6] < 30 || values[6] > 150) return false;
+    pose.mappos.x.val = values[0]; pose.mappos.y.val = values[1]; pose.mappos.z.val = values[2];
+    pose.rotation_angle_x = values[3]; pose.rotation_angle_y = values[4];
+    pose.zoom = values[5]; pose.horizontal_fov = values[6];
+    return set_local_camera_reference_pose(&pose);
+}
+
+static TbBool cmd_scenecheck(PlayerNumber plyr_idx, char *args)
+{
+    const char* directory = getenv("KFX_SCENE_TEST_DIR");
+    if (!directory || !*directory || (local_system_flags & GSF_NetworkActive) || plyr_idx != my_player_number) return false;
+    char* view = strsep_param_with_space(&args);
+    if (view != NULL) {
+        if (strcmp(view, "reference") == 0) return cmd_scene_reference(args);
+        if (strcmp(view, "capture") == 0) return WorldSceneRequestCapture();
+        if (strcmp(view, "receipt") == 0)
+            return !strsep_param_with_space(&args) && WorldSceneRequestReceipt();
+        // Fixed local regression fixtures. Ordinary launches cannot activate
+        // these controls, and the runner restores saved user settings on exit.
+        struct PlayerInfo* player = get_my_player();
+        if (strcmp(view, "possession") == 0) {
+            char* model_name = strsep_param_with_space(&args);
+            const long model = model_name ? get_creature_model_for_command(model_name) : 0;
+            if ((model_name && model <= 0) || strsep_param_with_space(&args)) return false;
+            for (int i = 1; i < THINGS_COUNT; ++i) {
+                struct Thing* thing = thing_get(i);
+                if (thing_exists(thing) && thing->class_id == TCls_Creature && thing->owner == plyr_idx
+                    && (!model || thing->model == model)
+                    && thing_can_be_controlled_as_controller(thing)) return control_creature_as_controller(player, thing);
+            }
+            return false;
+        }
+        if (strcmp(view, "front") != 0 && strcmp(view, "overhead") != 0) return false;
+        if (get_player_view_type(player) == PVT_CreatureContrl) {
+            struct Thing* thing = thing_get(player->controlled_thing_idx);
+            if (thing_exists(thing)) leave_creature_as_controller(player, thing);
+        }
+        get_player_user_state(player)->prefs[UPref_FrontView] = strcmp(view, "front") == 0;
+        update_engine_view(player, false);
+        init_local_cameras(player);
+        return true;
+    }
+    return WorldSceneCheck();
+}
+
+static TbBool cmd_renderbench(PlayerNumber plyr_idx, char *args)
+{
+    if (!RenderBenchmarkEnabled() || flag_is_set(local_system_flags, GSF_NetworkActive)) return false;
+    struct PlayerInfo *player = console_cmd_player(plyr_idx);
+    if (!is_my_player(player)) return false;
+    char *value = strsep_param_with_space(&args);
+    if (value != NULL && strcmp(value, "live") == 0) {
+        if (RendererGetActiveType() != RENDERER_DX12
+            || flag_is_set(game.operation_flags, GOF_Paused)
+            || strsep_param_with_space(&args)) return false;
+        return RenderBenchmarkRequest(3);
+    }
+    if (RendererGetActiveType() != RENDERER_OPENGL
+        || !flag_is_set(game.operation_flags, GOF_Paused)) return false;
+    if (value == NULL || strlen(value) != 1 || value[0] < '0' || value[0] > '2') return false;
+    const int scene = value[0] - '0';
+    struct Thing *heart = get_player_soul_container(plyr_idx);
+    if (!thing_is_dungeon_heart(heart)) return false;
+    if (!RenderBenchmarkRequest(scene)) return false;
+    struct DungeonCamera pose = get_player_user_state(player)->dungeon_camera;
+    pose.x = heart->mappos.x.val;
+    pose.y = heart->mappos.y.val;
+    pose.zoom[0] = (scene == 2) ? 1600 : 6000;
+    pose.yaw[0] = (scene == 1) ? 256 : 0;
+    pose.pitch = CAMERA_TILT_DEFAULT;
+    // Presentation-only snap while paused; do not modify saved user/game state.
+    set_local_camera_benchmark_pose(&pose);
     return true;
 }
 
@@ -2864,6 +3169,9 @@ static const struct ConsoleCommand console_commands[] = {
     { "timer.switch", cmd_timer_switch, NULL },
     { "turn", cmd_turn, NULL },
     { "pause", cmd_pause, NULL },
+    { "renderbench", cmd_renderbench, NULL },
+    { "statecheck", cmd_statecheck, NULL },
+    { "scenecheck", cmd_scenecheck, NULL },
     { "step", cmd_step, NULL },
     { "game.save", cmd_game_save, NULL },
     { "game.load", cmd_game_load, NULL },

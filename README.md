@@ -1,5 +1,17 @@
 # KeeperFX
 
+## Unofficial Windows x64 and DirectX 12 preview
+
+This is an unofficial development fork of [KeeperFX](https://github.com/dkfans/keeperfx), adding a Windows x64 engine and an opt-in DirectX 12 renderer. KeeperFX and its contributors provide the underlying engine, gameplay and content. OpenGL remains available as a manual fallback. The preview scope is single-player; multiplayer qualification is deferred.
+
+Representative native 3840 x 2160 training and combat display measurements on an RX 7900 GRE met the scoped 60 FPS target. This is not an all-map or wider-hardware guarantee; the 120 FPS stretch target is unqualified. See the [developer guide](local-dev/README.md) for the dedicated WSL build, runtime layout, checks and known limits.
+
+This is a source release, with no packaged binaries yet. Original Dungeon Keeper files, runtime packages, installed texture packs, saves and captured test data are not included. A legally obtained copy of the original game is required. Back up existing saves: this fork rejects legacy raw-memory saves and older replay versions without migration.
+
+Source is GPL version 2 or, at your option, any later version; see [LICENSE](LICENSE) and source headers. Upstream licences and contributor credits are preserved; dependencies and original game assets retain their own terms.
+
+The upstream project overview follows.
+
 ![KeeperFX Logo](/docs/assets/readme-banner.png)
 
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)
@@ -100,5 +112,5 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 
 
 ## License
-This project is licensed under the [GNU General Public License v2.0](LICENSE).
+This project is licensed under the [GNU General Public License version 2 or, at your option, any later version](LICENSE), as stated in the source headers.
 Feel free to use, modify, and distribute it according to the terms of this license.

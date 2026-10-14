@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -632,6 +633,11 @@ void redraw_creature_view(void)
         store_engine_window(&ewnd, pixel_size);
         smooth_screen_area(lbDisplay.WScreen, ewnd.x, ewnd.y,
             ewnd.width, ewnd.height, RendererScreenWidth());
+    }
+    if (RendererIsSoftwareLensFallbackActive()) {
+        RendererEndSoftwareLensFallback(local_state.engine_window_x / pixel_size,
+            local_state.engine_window_y / pixel_size, local_state.engine_window_width / pixel_size,
+            local_state.engine_window_height / pixel_size);
     }
     remove_explored_flags_for_power_sight(player);
     GameUI_DrawFrame(player);

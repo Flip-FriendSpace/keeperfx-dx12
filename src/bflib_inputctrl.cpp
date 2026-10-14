@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -35,6 +36,7 @@
 #include "config_keeperfx.h"
 #include "config_settings.h"
 #include "front_input.h"
+#include "local_camera.h"
 #include "game_legacy.h"
 #include "keeperfx.hpp"
 #include <SDL3/SDL.h>
@@ -289,6 +291,43 @@ static TbKeyCode mousebutton_to_keycode(const Uint8 *button)
     return (KC_MOUSE1 + 1 - *button);
 }
 
+// Possession resets only its virtual cursor each turn. Keep that path relative;
+// ordinary ungrabbed pointer input must follow the actual fitted presentation.
+static bool ordinary_absolute_mouse()
+{
+    const auto view = get_local_view_type(get_my_player());
+    return !lbMouseGrabbed && view != PVT_CreatureContrl && view != PVT_CreaturePasngr;
+}
+
+static bool sync_mouse_event(float x, float y)
+{
+    int native_x = 0, native_y = 0;
+    if (!GetSDLWindowSystem()->WindowToGameCoordinates(x, y, &native_x, &native_y))
+        return false;
+    // SetMousePosition accepts absolute native coordinates and clips them to
+    // MouseWindow. Adding its origin here would apply the offset twice.
+    return pointerHandler.SetMousePosition(native_x, native_y);
+}
+
+static void rebase_ordinary_mouse()
+{
+    static WindowMouseMapping previous;
+    static bool was_absolute = false;
+    auto* ws = GetSDLWindowSystem();
+    const auto mapping = ws->GetMouseMapping();
+    const bool absolute = ordinary_absolute_mouse();
+    const bool changed = mapping != previous || absolute != was_absolute;
+    previous = mapping;
+    was_absolute = absolute;
+    if (changed && absolute && last_used_input_device == ID_Keyboard_Mouse
+        && isMouseActive && ws->IsAppActive() && ws->IsCursorInWindow())
+    {
+        int x = 0, y = 0;
+        if (ws->GetCursorPosition(&x, &y))
+            pointerHandler.SetMousePosition(x, y);
+    }
+}
+
 static void process_event(const SDL_Event *ev)
 {
     struct TbPoint mouseDelta;
@@ -329,6 +368,18 @@ static void process_event(const SDL_Event *ev)
         }
         static int frac_x = 0, frac_y = 0;
         static bool s_recenter_pending = false;
+        if (ordinary_absolute_mouse())
+        {
+            last_used_input_device = ID_Keyboard_Mouse;
+            if (sync_mouse_event(ev->motion.x, ev->motion.y))
+            {
+                isMouseActivated = false;
+                frac_x = frac_y = 0;
+                mouseDelta.x = mouseDelta.y = 0;
+                mouseControl(MActn_MOUSEMOVE, &mouseDelta);
+            }
+            break;
+        }
         if (lbMouseGrabbed && lbDisplay.MouseMoveRatio > 0)
         {
             // Warp-based relative motion (Wine-safe).
@@ -379,7 +430,7 @@ static void process_event(const SDL_Event *ev)
                 GetSDLWindowSystem()->GetCursorPosition(&game_x, &game_y);
                 rel_x = 0.0f;
                 rel_y = 0.0f;
-                pointerHandler.SetMousePosition(game_x + lbDisplay.MouseWindowY, game_y + lbDisplay.MouseWindowY);
+                pointerHandler.SetMousePosition(game_x, game_y);
                 mouseDelta.x = 0;
                 mouseDelta.y = 0;
                 frac_x = 0;
@@ -399,6 +450,11 @@ static void process_event(const SDL_Event *ev)
             {
             return;
             }
+            // A release must clear an earlier press even while a resize has
+            // no usable presentation rectangle. Keep its last valid position.
+            if (ordinary_absolute_mouse() && !sync_mouse_event(ev->button.x, ev->button.y)
+                && ev->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+                break;
             mouseDelta.x = 0;
             mouseDelta.y = 0;
             mouseControl(mouse_button_actions_mapping(ev->type, &ev->button), &mouseDelta);
@@ -538,6 +594,7 @@ TbBool LbPollInputs(void)
         process_event(&ev);
     }
 
+    rebase_ordinary_mouse();
     return (lbUserQuit < 1);
 }
 

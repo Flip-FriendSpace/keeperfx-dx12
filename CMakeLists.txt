@@ -1,3 +1,4 @@
+# KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 cmake_minimum_required(VERSION 3.20)
 
 # Do not allow building in root
@@ -10,8 +11,16 @@ project(keeperfx C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 
+option(KFX_ENABLE_DX12 "Build the developer-only Windows x64 DX12 backend" OFF)
+if(KFX_ENABLE_DX12 AND (NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR
+    NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"))
+    message(FATAL_ERROR "KFX_ENABLE_DX12 requires Windows x64")
+endif()
+
 find_package(Git REQUIRED)
-execute_process(COMMAND "${GIT_EXECUTABLE}" describe --always OUTPUT_VARIABLE COMMIT_ID OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND "${GIT_EXECUTABLE}" describe --always
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE COMMIT_ID OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 file(STRINGS "${CMAKE_SOURCE_DIR}/version.mk" _kfx_version_lines)
 foreach(_line IN LISTS _kfx_version_lines)

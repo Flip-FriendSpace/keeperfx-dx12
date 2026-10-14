@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -103,6 +104,7 @@
 
 #include "keeperfx.hpp"
 #include "kfx/profiling/KfxProfilingC.h"
+#include "kfx/renderer/SceneAssetCapture.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -4396,9 +4398,18 @@ void draw_creature_view(struct Thing *thing)
   unsigned char* scrmem = lens_get_render_target();
   unsigned int render_width = lens_get_render_target_width();
   unsigned int render_height = lens_get_render_target_height();
+
+  // Custom callbacks consume and may modify original palette indices. Route
+  // this one world/swipe walk through software without changing the presenter.
+  const TbBool indexed_fallback = RendererGetActiveType() != RENDERER_SOFTWARE
+      && LensManager_RequiresIndexedSource(LensManager_GetInstance());
+  if (indexed_fallback && !RendererBeginSoftwareLensFallback())
+      return;
   
   // Store previous graphics settings
   unsigned char* wscr_cp = lbDisplay.WScreen;
+  const long screen_width_cp = lbDisplay.GraphicsScreenWidth;
+  const long screen_height_cp = lbDisplay.GraphicsScreenHeight;
   TbGraphicsWindow grwnd;
   LbScreenStoreGraphicsWindow(&grwnd);
   // Prepare new settings
@@ -4409,7 +4420,11 @@ void draw_creature_view(struct Thing *thing)
   LbScreenSetGraphicsWindow(0, 0, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
   // Draw on our buffer
   setup_engine_window(0, 0, MyScreenWidth, MyScreenHeight);
+  if (RendererGetActiveType() == RENDERER_SOFTWARE)
+      WorldSceneSoftwareLensBegin(scrmem, render_width, render_height, game.applied_lens_type);
   engine(player, render_cam);
+  if (RendererGetActiveType() == RENDERER_SOFTWARE)
+      WorldSceneSoftwareTargetEnd();
   // Draw swipe into buffer BEFORE lens effects (so overlay renders on top of swipe)
   draw_swipe_graphic();
   // Get the actual viewport dimensions (accounts for sidebar)
@@ -4420,9 +4435,12 @@ void draw_creature_view(struct Thing *thing)
   // GPU lens capture/composite. No-op for software (its CPU lens
   // path below is unaffected); for GL this is the actual lens trigger --
   // the WScreen swap above is otherwise inert for GL, which never reads it.
-  RendererSubmitPossessionLens(view_x, view_y, view_width, view_height);
+  if (!indexed_fallback)
+      RendererSubmitPossessionLens(view_x, view_y, view_width, view_height);
   // Restore original graphics settings
   lbDisplay.WScreen = wscr_cp;
+  lbDisplay.GraphicsScreenWidth = screen_width_cp;
+  lbDisplay.GraphicsScreenHeight = screen_height_cp;
   LbScreenLoadGraphicsWindow(&grwnd);
   // Draw the buffer on real screen using actual viewport dimensions
   setup_engine_window(0, 0, MyScreenWidth, MyScreenHeight);
@@ -4438,6 +4456,8 @@ void draw_creature_view(struct Thing *thing)
       draw_lens_effect(lbDisplay.WScreen + dst_offset, lbDisplay.GraphicsScreenWidth,
           scrmem, render_width, view_width, view_height, view_x, game.applied_lens_type);
   }
+  // redraw_creature_view submits/restores the indexed fallback after the
+  // original optional smoothing step and before ordinary GameUI.
 }
 
 struct Thing *get_creature_near_for_controlling(PlayerNumber plyr_idx, MapCoord x, MapCoord y)

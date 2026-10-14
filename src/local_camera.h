@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of the Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -39,6 +40,10 @@ void update_local_cameras(void);
 void interpolate_local_cameras(void);
 void sync_local_camera(struct PlayerInfo *player);
 void sync_local_camera_pose(struct PlayerInfo *player, const struct DungeonCamera *pose);
+void set_local_camera_benchmark_pose(const struct DungeonCamera *pose);
+TbBool local_camera_reference_enabled(void);
+TbBool set_local_camera_reference_pose(const struct Camera *pose);
+void clear_local_camera_reference_pose(void);
 void update_local_dungeon_view_mode(struct PlayerInfo *player);
 void rotate_local_camera(int32_t angle);
 void set_local_camera_destination(struct PlayerInfo *player);

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -31,17 +32,19 @@ extern "C" {
 /******************************************************************************/
 struct CatalogueEntry;
 struct Packet;
+struct PlayerInfo;
 
 #pragma pack(1)
 
 // save file header for .fxpkt files.
 // (Bump the version if this struct or the .fxpkt format changes.)
-#define PACKET_SAVE_HEAD_VER 6
+#define PACKET_SAVE_HEAD_VER 9
 
 enum PacketSaveHeadFlags {
     PSHF_Checksum   = 0x01,
     PSHF_Compressed = 0x02,
     PSHF_MultiGame  = 0x04,
+    PSHF_64Bit     = 0x08,
 };
 
 // Replay file header.
@@ -77,6 +80,7 @@ struct PacketSaveHead {
 struct ReplayState {
     unsigned char save_enable;
     unsigned char load_enable;
+    TbBool snapshot_loaded; // Runtime lifecycle only; never serialized.
     char fname[OS_ABSPATH_SIZE];
     char fopened;
     TbFileHandle fp;
@@ -100,9 +104,15 @@ extern volatile GameTurn replay_crashlog_turn;
 extern unsigned long initial_replay_seed;
 
 TbBigChecksum compute_replay_integrity(void);
-void restore_users_from_packet_save(void);
+void restore_users_from_packet_save(TbBool initialize);
 TbBool setup_auto_replay_save(void);
 TbBool open_new_packet_file_for_save(void);
+TbBool request_replay_test_recording(void);
+void replay_begin_requested_recording(void);
+void replay_report_startup(void);
+struct PlayerInfo *replay_recording_player(void);
+TbBool replay_process_finish_game(NetUserId user, int32_t recorded_outcome);
+void replay_complete_game(void);
 void load_packets_for_turn(GameTurn nturn);
 void verify_replay_checksum(void);
 TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry);

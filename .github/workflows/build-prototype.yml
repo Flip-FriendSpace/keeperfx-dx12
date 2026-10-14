@@ -1,3 +1,4 @@
+# 2026-10-14 preview: upstream binary packaging is disabled in this fork.
 name: Test Prototypes
 
 on:
@@ -6,6 +7,7 @@ on:
 
 jobs:
   build-prototype:
+    if: github.repository == 'dkfans/keeperfx'
     name: "Build Prototype Windows x86"
     runs-on: ubuntu-24.04
     environment:
@@ -64,6 +66,7 @@ jobs:
           out/keeperfx_hvlog.exe.debug
 
   build-prototype-linux:
+    if: github.repository == 'dkfans/keeperfx'
     name: "Build Prototype Linux x86_64"
     runs-on: ubuntu-24.04
     environment:

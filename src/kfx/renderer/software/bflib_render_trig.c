@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -19,6 +20,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "bflib_render.h"
+#include "kfx/renderer/SceneAssetCapture.h"
 
 #include "globals.h"
 #include "bflib_basics.h"
@@ -4452,6 +4454,7 @@ void trig_render_md26(struct TrigLocalRend *tlr)
  */
 void trig(struct PolyPoint *point_a, struct PolyPoint *point_b, struct PolyPoint *point_c)
 {
+    WorldSceneTraceTriangle(1, point_a, point_b, point_c, vec_mode, vec_colour, vec_map);
     struct PolyPoint *opt_a;
     struct PolyPoint *opt_b;
     struct PolyPoint *opt_c;

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 
 #ifdef _WIN32
@@ -40,6 +41,7 @@
 #include "player_instances.h"
 #include "game_legacy.h"
 #include "console_cmd.h"
+#include "kfx/renderer/RenderBenchmark.h"
 #include "post_inc.h"
 #include "value_util.h"
 #include "keeperfx.hpp"
@@ -1312,14 +1314,6 @@ static void api_process_buffer(const char *buffer, size_t buf_size)
     // Handle console command
     if (strcasecmp("console_command", action) == 0)
     {
-        // Do not allow this command when the game is paused
-        if ((game.operation_flags & GOF_Paused) != 0)
-        {
-            api_err("GAME_IS_PAUSED", ack_id);
-            value_fini(&json_data);
-            return;
-        }
-
         // Get console command
         char *console_command = (char *)value_string(value_dict_get(value, "command"));
         if (console_command == NULL || strlen(console_command) < 1)
@@ -1333,6 +1327,29 @@ static void api_process_buffer(const char *buffer, size_t buf_size)
         if (console_command[0] == cmd_char)
         {
             console_command += 1;
+        }
+
+        // Only explicit local benchmark/reference sessions allow this small
+        // diagnostic command set while paused.
+        // Preserve the usual paused-game guard for every other API caller.
+        const TbBool benchmark_command = RenderBenchmarkEnabled()
+            && ((strncmp(console_command, "renderbench ", 12) == 0)
+                || strcmp(console_command, "quit") == 0);
+        const char* reference_mode = getenv("KFX_SCENE_REFERENCE");
+        const char* reference_directory = getenv("KFX_SCENE_TEST_DIR");
+        const TbBool reference_command = reference_mode && strcmp(reference_mode, "1") == 0
+            && reference_directory && *reference_directory && !(local_system_flags & GSF_NetworkActive)
+            && (strcmp(console_command, "scenecheck capture") == 0
+                || strcmp(console_command, "scenecheck receipt") == 0
+                || strcmp(console_command, "scenecheck") == 0
+                || strncmp(console_command, "scenecheck reference ", 21) == 0
+                || strcmp(console_command, "pause") == 0 || strcmp(console_command, "step") == 0
+                || strcmp(console_command, "quit") == 0);
+        if ((game.operation_flags & GOF_Paused) != 0 && !benchmark_command && !reference_command)
+        {
+            api_err("GAME_IS_PAUSED", ack_id);
+            value_fini(&json_data);
+            return;
         }
 
         // Execute console command

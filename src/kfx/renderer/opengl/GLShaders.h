@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef RENDERER_OPENGL_GLSHADERS_H
 #define RENDERER_OPENGL_GLSHADERS_H
 
@@ -139,6 +140,9 @@ layout(location = 7) in float a_tile;      // tile index within the atlas layer
 out vec2  v_uv;
 out float v_shade;
 out vec2  v_stl;
+out float v_vertex_light;
+uniform usampler2D u_lightmap;
+uniform int u_lighting_mode;
 flat out float v_layer;
 flat out int v_tile;
 out vec3  vWorldPos;
@@ -157,6 +161,11 @@ void main()
     v_layer     = a_layer;
     v_tile      = int(a_tile + 0.5);
     vWorldPos   = aWorldPos;
+    v_vertex_light = 0.0;
+    if (u_lighting_mode == 1 && all(greaterThanEqual(a_stl, vec2(0.0)))) {
+        ivec2 p = clamp(ivec2(a_stl), ivec2(0), textureSize(u_lightmap, 0) - 1);
+        v_vertex_light = float(texelFetch(u_lightmap, p, 0).r) / 8192.0;
+    }
 }
 )glsl";
 
@@ -165,6 +174,7 @@ constexpr const char* WORLD_FRAGMENT_SHADER = R"glsl(
 in vec2  v_uv;                          // texel coords within the tile, wrapped below
 in float v_shade;
 in vec2  v_stl;                         // subtile coords [0..511], mode 1 only
+in float v_vertex_light;
 flat in float v_layer;                  // texture array layer (atlas variation)
 flat in int v_tile;                     // tile index within the layer
 in vec3  vWorldPos;                     // reserved for future dynamic lighting / shadow mapping
@@ -184,6 +194,22 @@ uniform float      u_time;             // seconds since start (fog animation)
 uniform float      u_fog_speed;        // fog scroll speed multiplier
 uniform float      u_fog_density;      // fog opacity [0,1]
 out vec4 fragColor;
+
+// Integer textures cannot use GL_LINEAR. Interpolate the four grid samples
+// explicitly, without a normalized-UV half-texel offset or a fixed map stride.
+float sample_lightmap(vec2 position)
+{
+    ivec2 limit = textureSize(u_lightmap, 0) - 1;
+    vec2 p = clamp(position, vec2(0.0), vec2(limit));
+    ivec2 lo = ivec2(floor(p));
+    ivec2 hi = min(lo + ivec2(1), limit);
+    vec2 f = fract(p);
+    float a = float(texelFetch(u_lightmap, lo, 0).r);
+    float b = float(texelFetch(u_lightmap, ivec2(hi.x, lo.y), 0).r);
+    float c = float(texelFetch(u_lightmap, ivec2(lo.x, hi.y), 0).r);
+    float d = float(texelFetch(u_lightmap, hi, 0).r);
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y) / 8192.0;
+}
 
 // Simple 2D hash for procedural noise (fog mode)
 float hash21(vec2 p)
@@ -247,15 +273,15 @@ void main()
     // v_shade = (S>>16) / 32.0 where S = shade_intensity<<8.
     // This directly maps to fade table rows: 0.0 = row 0 (black),
     // 1.0 = row 32 (full brightness).  Used as-is for palette LUT modes.
-    float raw_shade;
-    if (u_lighting_mode == 0) {
-        raw_shade = mix(v_shade, 1.0, u_fullbright);
-    } else {
-        vec2 lm_uv  = v_stl / vec2(511.0, 511.0);
-        uint lm_raw = texture(u_lightmap, lm_uv).r;
-        raw_shade = float(lm_raw) / 8192.0;
-        raw_shade = mix(raw_shade, 1.0, u_fullbright);
+    float raw_shade = v_shade;
+    if (u_lighting_mode == 1 && all(greaterThanEqual(v_stl, vec2(0.0)))
+        && v_vertex_light > 0.0001) {
+        // Replace only the triangular interpolation of the map light. Keep the
+        // engine's face shading, wibble, abyss fade and unrevealed-area darkness.
+        // Missing coordinates and a zero map light retain the original shade.
+        raw_shade *= sample_lightmap(v_stl) / v_vertex_light;
     }
+    raw_shade = mix(raw_shade, 1.0, u_fullbright);
 
     // Pre-compute fade_v for palette-mode darkness so bilinear path can use it
     // per-neighbour without repeating the arithmetic.

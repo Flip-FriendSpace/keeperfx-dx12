@@ -1,0 +1,62 @@
+[
+  {
+    "name": "zlib-source",
+    "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
+    "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+  },
+  {
+    "name": "astronomy",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/astronomy-mingw64.tar.gz",
+    "sha256": "b61d0c4a6f662a115727e2c8a2a4899624cdc27f19377387663a4cb5b10f1f7a"
+  },
+  {
+    "name": "centijson",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/centijson-mingw64.tar.gz",
+    "sha256": "238a85a1e7ca63f29c0c137600ff550ee66da08bdfd14368713fd2e7f27bbd46"
+  },
+  {
+    "name": "enet6",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/enet6-mingw64.tar.gz",
+    "sha256": "58529e173094110c5fc9ff749737a6a44afdb4880765785a279e7bc5ac48c12b"
+  },
+  {
+    "name": "ffmpeg",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/ffmpeg-mingw64.tar.gz",
+    "sha256": "f7c523acbac85b70cc176a7c6fdffe0e457667cd8635d461932886a9cae57c51"
+  },
+  {
+    "name": "libcurl",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/libcurl-mingw64.tar.gz",
+    "sha256": "3d333313203e74f05ce4b5be707560554d812852234500e7159d8301bd60f760"
+  },
+  {
+    "name": "libnatpmp",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/libnatpmp-mingw64.tar.gz",
+    "sha256": "8ba0cc4ed7b5a36f4f3455a84fda5d0994dcd639be85b250c1cbd1e36d17ad47"
+  },
+  {
+    "name": "luajit",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/luajit-mingw64.tar.gz",
+    "sha256": "eef59c2fb448451f3edbd8de44b608b2ea781430f1eff18575c9af9467953b61"
+  },
+  {
+    "name": "miniupnpc",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/miniupnpc-mingw64.tar.gz",
+    "sha256": "7a01a893ba20a8898652941c83b6140c215e434fffab9594d89fd5201c67cb9c"
+  },
+  {
+    "name": "openal",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/openal-mingw64.tar.gz",
+    "sha256": "6f4a65f815aeea84ea419a2df675931cc256c5462b52cfbb407f95913ccc5d35"
+  },
+  {
+    "name": "spng",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/spng-mingw64.tar.gz",
+    "sha256": "3a4ad54f490d96ba3299b865e08df43b3bcb443114ef7c2f53bbac84d086871a"
+  },
+  {
+    "name": "zlib",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260608/zlib-mingw64.tar.gz",
+    "sha256": "87e12efeec6a8106637b1f57263d37eb7f6753707d07d75922ec5bda2a50e67f"
+  }
+]

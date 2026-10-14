@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -39,8 +40,8 @@ struct WorldVertex {
     float u;         /**< Texel U within the tile, PolyPoint U / 65536; wraps every 32 texels */
     float v;         /**< Texel V within the tile, PolyPoint V / 65536; wraps every 32 texels */
     float shade;     /**< Lighting:   [0, 1], 0 = dark, 1 = full-bright */
-    float stl_x;     /**< Map subtile X [0..511]; for lightmap sampling in modern mode */
-    float stl_y;     /**< Map subtile Y [0..511]; for lightmap sampling in modern mode */
+    float stl_x;     /**< Map subtile X; negative retains legacy shading */
+    float stl_y;     /**< Map subtile Y; negative retains legacy shading */
     float camera_z;  /**< Camera-space Z for perspective-correct interpolation; 1.0 = no correction */
     float atlas_layer; /**< Texture array layer index (tile atlas variation); 0.0 = default */
     float wx;        /**< World-space X from EngineCoord.x */
@@ -108,8 +109,8 @@ struct WorldVertex {
         (wv)->u     = FP_U_TO_UV((pp)->U); \
         (wv)->v     = FP_V_TO_UV((pp)->V); \
         (wv)->shade = FP_S_TO_SHADE((pp)->S); \
-        (wv)->stl_x = 0.0f; \
-        (wv)->stl_y = 0.0f; \
+        (wv)->stl_x = -1.0f; \
+        (wv)->stl_y = -1.0f; \
         (wv)->camera_z = 1.0f; \
         (wv)->atlas_layer = 0.0f; \
         (wv)->wx = 0.0f; \

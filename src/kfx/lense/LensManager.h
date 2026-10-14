@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -84,7 +85,9 @@ public:
     // the currently applied lens. viewport_w/h is the real on-screen viewport
     // size (not the full-screen capture resolution). The command is always
     // active; its type stays None when there is no pixel effect (palette-only
-    // or custom lens), which composites as a plain copy. The lens palette
+    // lens), which composites as a plain copy. Custom lenses instead require
+    // the original indexed software source and never submit this GPU command.
+    // The lens palette
     // itself is applied through the game palette, not this command.
     void BuildActiveGPULensCmd(long viewport_w, long viewport_h, struct IRWorldLensCmd& out) const;
 
@@ -99,6 +102,8 @@ public:
     LensEffect* GetCustomLens(const char* name);
     TbBool SetLensByName(const char* name);
     const char* GetActiveCustomLensName() const;
+    TbBool RequiresIndexedSource() const { return m_initialized && !m_active_custom_lens.empty(); }
+    uint64_t CustomDrawAttempts() const { return m_custom_draw_attempts; }
     
     // State query
     TbBool IsReady() const { return m_initialized; }
@@ -138,6 +143,7 @@ private:
     // Custom lenses (created dynamically via LUA)
     std::map<std::string, LensEffect*> m_custom_lenses;
     std::string m_active_custom_lens;  // Name of currently active custom lens
+    uint64_t m_custom_draw_attempts = 0;
     
     // Buffers (managed internally)
     uint32_t* m_lens_memory;

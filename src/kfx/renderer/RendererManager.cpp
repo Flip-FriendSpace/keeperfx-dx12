@@ -1,8 +1,12 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "kfx/renderer/RendererManager.h"
 #include "kfx/renderer/RendererManager_Internal.h"
 #include "kfx/renderer/RendererSoftware.h"
 #include "kfx/renderer/RendererOpenGL.h"
+#if defined(KFX_ENABLE_DX12)
+#include "kfx/renderer/RendererDX12.h"
+#endif
 #include "bflib_basics.h"
 #include "bflib_mouse.h"
 #include "bflib_video.h"
@@ -13,14 +17,182 @@
 #include "kfx/renderer/ir/WorldCommands.h"
 #include "kfx/lense/LensManager.h"
 #include "kfx/renderer/RendererSettings.h"
+#include "kfx/renderer/WorldSceneCapture.h"
+#include "kfx/renderer/SceneAssetCapture.h"
+#include "kfx/renderer/IndexedWorldFallback.h"
+#include "kfx/renderer/WorldSubmissionCapture.h"
+#include "kfx/renderer/RendererThread.h"
+#include "kfx/renderer/backends/SoftwareWorldViewRenderer.h"
+#include "kfx/renderer/backends/SoftwareUIRenderer.h"
+#include "kfx/renderer/backends/SoftwareTextRenderer.h"
+#include "bflib_vidraw.h"
+#include "keeperfx.hpp"
 #include <cstring>          // memcpy (s_last_palette_rgb8 buffering)
+#include <cstdlib>
+#include <stdexcept>
 #include "post_inc.h"
 
 static IRenderer*   s_active_renderer = nullptr;
 static RendererType s_active_type     = RENDERER_INVALID;
 static bool         s_frame_open      = false;
+static char s_fatal_failure[2048] = {};
+
+void RendererReportFatalFailure(const char* reason)
+{
+    ASSERT_GAME_THREAD();
+    if (!s_fatal_failure[0]) {
+        snprintf(s_fatal_failure, sizeof(s_fatal_failure), "%s", reason ? reason : "Renderer failure");
+        ERRORLOG("Fatal renderer failure: %s", s_fatal_failure);
+    }
+    // Exit at the ordinary engine boundary. Never replace the backend mid-frame.
+    quit_game = 1;
+    exit_keeper = 1;
+}
+
+const char* RendererFatalFailureReason(void)
+{
+    return s_fatal_failure;
+}
 static unsigned char s_draw_colour = 0;
 static unsigned short s_draw_flags = 0;
+
+namespace {
+struct SoftwareLensScope {
+    bool active = false;
+    std::vector<uint8_t> destination;
+    unsigned char* screen = nullptr;
+    unsigned char* window_ptr = nullptr;
+    unsigned char* remap = nullptr;
+    long pitch = 0, height = 0;
+    TbGraphicsWindow window{};
+    unsigned short flags = 0;
+    unsigned char colour = 0, alpha = 0, clear_index = 0;
+    uint64_t attempts_before = 0;
+};
+SoftwareLensScope s_software_lens;
+SoftwareWorldViewRenderer s_lens_world;
+SoftwareUIRenderer s_lens_ui;
+SoftwareTextRenderer s_lens_text;
+uint64_t s_software_lens_frames = 0;
+std::shared_ptr<const kfx::render::IndexedWorldFallbackFrame> s_lens_diagnostic;
+thread_local kfx::render::WorldSubmissionCapture* s_world_submission_capture = nullptr;
+
+void RestoreSoftwareLensScope()
+{
+    if (!s_software_lens.active) return;
+    auto& scope = s_software_lens;
+    lbDisplay.WScreen = scope.screen;
+    lbDisplay.GraphicsScreenWidth = scope.pitch;
+    lbDisplay.GraphicsScreenHeight = scope.height;
+    LbScreenLoadGraphicsWindow(&scope.window);
+    lbDisplay.GraphicsWindowPtr = scope.window_ptr;
+    s_draw_flags = scope.flags; s_draw_colour = scope.colour;
+    lbSpriteReMapPtr = scope.remap; EngineSpriteDrawUsingAlpha = scope.alpha;
+    scope.active = false;
+}
+}
+
+kfx::render::ScopedWorldSubmissionCapture::ScopedWorldSubmissionCapture(
+    WorldSubmissionCapture& capture) noexcept
+{
+    ASSERT_GAME_THREAD();
+    if (s_world_submission_capture || s_software_lens.active) return;
+    m_capture = &capture;
+    s_world_submission_capture = m_capture;
+}
+
+kfx::render::ScopedWorldSubmissionCapture::~ScopedWorldSubmissionCapture()
+{
+    ASSERT_GAME_THREAD();
+    if (m_capture) s_world_submission_capture = nullptr;
+}
+
+TbBool RendererIsSoftwareLensFallbackActive(void) { return s_software_lens.active; }
+unsigned long long RendererSoftwareLensFallbackFrames(void) { return s_software_lens_frames; }
+std::shared_ptr<const kfx::render::IndexedWorldFallbackFrame> RendererGetIndexedWorldFallbackDiagnostic()
+{
+    return s_lens_diagnostic;
+}
+
+TbBool RendererBeginSoftwareLensFallback(void)
+{
+    WorldSceneRejectPendingCapture("custom lens uses indexed software fallback; ordinary scene capture is unsupported");
+    if (!s_frame_open || !s_active_renderer || s_active_type == RENDERER_SOFTWARE
+        || s_software_lens.active || s_world_submission_capture)
+        return false;
+    try {
+        auto& scope = s_software_lens;
+        const long width = RendererPhysicalWidth(), height = RendererPhysicalHeight();
+        if (width <= 0 || height <= 0 || uint64_t(width) * height > 64 * 1024 * 1024
+            || !s_active_renderer->BeginIndexedWorldFallback(int(width), int(height), scope.clear_index))
+            throw std::runtime_error("presenter cannot prove an untouched indexed world destination");
+        scope.destination.assign(size_t(width) * height, scope.clear_index);
+        scope.screen = lbDisplay.WScreen; scope.window_ptr = lbDisplay.GraphicsWindowPtr;
+        scope.pitch = lbDisplay.GraphicsScreenWidth; scope.height = lbDisplay.GraphicsScreenHeight;
+        LbScreenStoreGraphicsWindow(&scope.window);
+        scope.flags = s_draw_flags; scope.colour = s_draw_colour;
+        scope.remap = lbSpriteReMapPtr; scope.alpha = EngineSpriteDrawUsingAlpha;
+        scope.attempts_before = LensManager::GetInstance()->CustomDrawAttempts();
+        scope.active = true;
+        lbDisplay.WScreen = scope.destination.data();
+        lbDisplay.GraphicsScreenWidth = width; lbDisplay.GraphicsScreenHeight = height;
+        LbScreenSetGraphicsWindow(0, 0, width, height);
+        s_lens_diagnostic.reset();
+        return true;
+    } catch (const std::exception& e) {
+        RestoreSoftwareLensScope();
+        ERRORLOG("Indexed custom-lens fallback rejected: %s", e.what());
+        return false;
+    }
+}
+
+TbBool RendererEndSoftwareLensFallback(int x, int y, int width, int height)
+{
+    if (!s_software_lens.active) return false;
+    bool submitted = false;
+    std::shared_ptr<kfx::render::IndexedWorldFallbackFrame> diagnostic;
+    try {
+        const int native_width = int(RendererPhysicalWidth()), native_height = int(RendererPhysicalHeight());
+        if (x < 0 || y < 0 || width <= 0 || height <= 0 || int64_t(x) + width > native_width
+            || int64_t(y) + height > native_height
+            || s_software_lens.destination.size() != size_t(native_width) * native_height)
+            throw std::runtime_error("invalid indexed custom-lens output viewport");
+        RendererPresentImageDesc desc{};
+        desc.dst_x = x; desc.dst_y = y; desc.dst_w = desc.src_w = width; desc.dst_h = desc.src_h = height;
+        desc.src = s_software_lens.destination.data() + size_t(y) * native_width + x;
+        desc.src_pitch = native_width; desc.kind = PRESENT_KIND_COMPOSITE;
+        if (!s_active_renderer->SubmitIndexedWorldFallback(&desc))
+            throw std::runtime_error("presenter rejected indexed custom-lens output");
+        submitted = true;
+        ++s_software_lens_frames;
+        if (const char* directory = std::getenv("KFX_SCENE_TEST_DIR"); directory && *directory) {
+            diagnostic = std::make_shared<kfx::render::IndexedWorldFallbackFrame>();
+            diagnostic->sequence = s_software_lens_frames;
+            diagnostic->native_width = native_width; diagnostic->native_height = native_height;
+            diagnostic->x = x; diagnostic->y = y; diagnostic->width = width; diagnostic->height = height;
+            diagnostic->destination_clear_index = s_software_lens.clear_index;
+            diagnostic->custom_draw_attempts_before = s_software_lens.attempts_before;
+            diagnostic->custom_draw_attempts_after = LensManager::GetInstance()->CustomDrawAttempts();
+            if (!s_active_renderer->GetIndexedWorldFallbackPalette(diagnostic->display_palette_rgba))
+                throw std::runtime_error("indexed fallback diagnostic palette unavailable");
+            diagnostic->indices.resize(size_t(width) * height);
+            for (int row = 0; row < height; ++row)
+                std::memcpy(diagnostic->indices.data() + size_t(row) * width, desc.src + size_t(row) * desc.src_pitch, width);
+        }
+    } catch (const std::exception& e) {
+        diagnostic.reset();
+        ERRORLOG("Indexed custom-lens fallback: %s", e.what());
+    }
+    RestoreSoftwareLensScope();
+    if (diagnostic) {
+        diagnostic->renderer_state_restored = !s_software_lens.active && lbDisplay.WScreen == s_software_lens.screen
+            && lbDisplay.GraphicsWindowPtr == s_software_lens.window_ptr
+            && lbDisplay.GraphicsScreenWidth == s_software_lens.pitch && lbDisplay.GraphicsScreenHeight == s_software_lens.height
+            && s_draw_flags == s_software_lens.flags && s_draw_colour == s_software_lens.colour;
+        s_lens_diagnostic = std::move(diagnostic);
+    }
+    return submitted;
+}
 
 static unsigned char s_last_palette_rgb8[PALETTE_SIZE];
 static bool          s_have_last_palette = false;
@@ -32,6 +204,9 @@ static IRenderer* create_renderer(RendererType type)
     {
         case RENDERER_SOFTWARE: return new RendererSoftware();
         case RENDERER_OPENGL:   return new RendererOpenGL();
+#if defined(KFX_ENABLE_DX12)
+        case RENDERER_DX12:     return new RendererDX12();
+#endif
         default:                return nullptr;
     }
 }
@@ -49,12 +224,16 @@ unsigned int RendererGetRequiredWindowFlags(RendererType type)
         // monitor, and a real display mode change does the same, so GL scales
         // into a composited desktop fullscreen window instead.
         case RENDERER_OPENGL: return KFX_WF_OPENGL | KFX_WF_KEEP_COMPOSITED | KFX_WF_DESKTOP_FULLSCREEN_ONLY;
+        // The DXGI flip-model swapchain should cover the desktop exactly so
+        // Windows can select direct/independent flip where supported.
+        case RENDERER_DX12: return KFX_WF_DESKTOP_FULLSCREEN_ONLY | KFX_WF_RESIZABLE;
         default:               return 0;
     }
 }
 
 int RendererInit(RendererType type)
 {
+    WorldSceneSoftwareTargetEnd();
     static int s_settings_initialised = 0;
     if (!s_settings_initialised) {
         RendererSettings_Reset();
@@ -87,9 +266,13 @@ int RendererInit(RendererType type)
 
 void RendererShutdown(void)
 {
+    RestoreSoftwareLensScope();
+    s_software_lens.destination.clear();
+    s_lens_diagnostic.reset();
     if (s_active_renderer == nullptr)
         return;
     s_active_renderer->Shutdown();
+    WorldSceneReset();
     delete s_active_renderer;
     s_active_renderer = nullptr;
     s_active_type     = RENDERER_INVALID;
@@ -148,12 +331,24 @@ void RendererPresentFrame(void)
 
 TbBool RendererBeginFrame(void)
 {
-    if (!lbScreenInitialised || s_active_renderer == nullptr)
+    if (!lbScreenInitialised || s_active_renderer == nullptr || !s_active_renderer->BeginFrame()) {
+        WorldSceneSoftwareTargetEnd();
         return 0;
-    if (!s_active_renderer->BeginFrame())
-        return 0;
+    }
     s_frame_open = true;
+    if (const char* directory = std::getenv("KFX_SCENE_TEST_DIR"); !directory || !*directory)
+        s_lens_diagnostic.reset();
     return 1;
+}
+
+TbBool RendererWriteDiagnostics(const char* path)
+{
+    return s_active_renderer && path && *path && s_active_renderer->WriteDiagnostics(path);
+}
+
+TbBool RendererSetDiagnosticReaderHold(TbBool active)
+{
+    return s_active_renderer && s_active_renderer->SetDiagnosticReaderHold(active != 0);
 }
 
 TbBool RendererIsFrameOpen(void)
@@ -163,6 +358,8 @@ TbBool RendererIsFrameOpen(void)
 
 void RendererEndFrame(void)
 {
+    RestoreSoftwareLensScope();
+    WorldSceneSoftwareTargetEnd();
     s_frame_open = false;
     if (s_active_renderer != nullptr)
         s_active_renderer->EndFrame();
@@ -294,7 +491,10 @@ TbResult RendererSetDoubleBuffering(TbBool state)
 
 TbBool RendererTextDrawResized(int posx, int posy, int units_per_px, const char *text)
 {
-    ITextRenderer* tr = (s_active_renderer != nullptr) ? s_active_renderer->GetTextRenderer() : nullptr;
+    if (s_world_submission_capture)
+        return s_world_submission_capture->DrawTextResized(posx, posy, units_per_px, text);
+    ITextRenderer* tr = s_software_lens.active ? &s_lens_text
+        : (s_active_renderer != nullptr) ? s_active_renderer->GetTextRenderer() : nullptr;
     if (tr == nullptr)
         return false;
     return tr->DrawTextResized(posx, posy, units_per_px, text);
@@ -302,6 +502,8 @@ TbBool RendererTextDrawResized(int posx, int posy, int units_per_px, const char 
 
 IUIRenderer* RendererGetActiveUIRenderer(void)
 {
+    if (s_world_submission_capture) return &s_world_submission_capture->UI();
+    if (s_software_lens.active) return &s_lens_ui;
     return (s_active_renderer != nullptr) ? s_active_renderer->GetUIRenderer() : nullptr;
 }
 
@@ -358,6 +560,10 @@ TbScreenCoord RendererScreenHeight(void)   { return lbDisplay.GraphicsScreenHeig
 void RendererApplySettings(const RendererSettings* s)
 {
     if (!s) return;
+    // Infrequent settings edits must not race render-thread reads. This is a
+    // CPU frame handoff, not a GPU-idle wait or a per-frame upload barrier.
+    if (s_active_renderer && s_active_type == RENDERER_OPENGL)
+        static_cast<RendererOpenGL*>(s_active_renderer)->WaitForSettingsChange();
     g_renderer_settings = *s;
 }
 
@@ -399,6 +605,7 @@ void CursorLayer_SubmitPointerSprite(const struct TbSprite* spr, int32_t x, int3
 
 static IWorldViewRenderer* active_world_renderer(void)
 {
+    if (s_software_lens.active) return &s_lens_world;
     return (s_active_renderer != nullptr) ? s_active_renderer->GetWorldViewRenderer() : nullptr;
 }
 
@@ -407,6 +614,10 @@ void RendererSetPaletteForRenderers(const unsigned char* pal6)
     IWorldViewRenderer* world = active_world_renderer();
     if (world != nullptr)
         world->SetPaletteSource(pal6);
+    // Palette changes are persistent game state, even while drawing this
+    // frame through the scoped software source.
+    if (s_software_lens.active && s_active_renderer && s_active_renderer->GetWorldViewRenderer())
+        s_active_renderer->GetWorldViewRenderer()->SetPaletteSource(pal6);
 }
 
 void WorldViewRenderer_BeginWorldPass(int w, int h, int vp_x, int vp_y)
@@ -419,15 +630,23 @@ void WorldViewRenderer_BeginWorldPass(int w, int h, int vp_x, int vp_y)
 void WorldViewRenderer_DrawIsometricView(void)
 {
     IWorldViewRenderer* world = active_world_renderer();
+    auto scene = WorldSceneSeal();
+    if (scene && s_active_type == RENDERER_SOFTWARE) WorldSceneValidateConsumed(*scene);
+    if (world != nullptr) world->SetSceneSnapshot(std::move(scene));
     if (world != nullptr)
         world->DrawIsometricView();
+    WorldSceneCompleteCapture();
 }
 
 void WorldViewRenderer_DrawFrontView(struct Camera* cam)
 {
     IWorldViewRenderer* world = active_world_renderer();
+    auto scene = WorldSceneSeal();
+    if (scene && s_active_type == RENDERER_SOFTWARE) WorldSceneValidateConsumed(*scene);
+    if (world != nullptr) world->SetSceneSnapshot(std::move(scene));
     if (world != nullptr)
         world->DrawFrontView(cam);
+    WorldSceneCompleteCapture();
 }
 
 void RendererSubmitKeeperHandSprite(short x, short y, unsigned short kspr_base,
@@ -440,6 +659,10 @@ void RendererSubmitKeeperHandSprite(short x, short y, unsigned short kspr_base,
 
 void RendererBeginWorldSpriteCapture(int32_t bucket_idx)
 {
+    if (s_world_submission_capture) {
+        s_world_submission_capture->BeginSpriteBucket(bucket_idx);
+        return;
+    }
     IWorldViewRenderer* world = active_world_renderer();
     if (world != nullptr)
         world->BeginWorldSpriteCapture(bucket_idx);
@@ -449,6 +672,13 @@ void RendererSubmitKeeperSprite(const struct SpriteScale* scale,
     const unsigned char* data, int src_w, int src_h, int32_t content_h,
     unsigned int draw_flags, const unsigned char* remap, int32_t sprite_id)
 {
+    if (s_world_submission_capture) {
+        s_world_submission_capture->CaptureKeeperSprite(scale, data, src_w, src_h,
+            content_h, draw_flags, remap, sprite_id, RendererGetCurrentSpriteOwner(),
+            RendererGetCurrentSpriteWantsOutline() != 0, EngineSpriteDrawUsingAlpha);
+        return;
+    }
+    WorldSceneTraceSprite(scale, data, src_w, src_h, content_h, draw_flags, remap, sprite_id, EngineSpriteDrawUsingAlpha);
     IWorldViewRenderer* world = active_world_renderer();
     if (world != nullptr)
         world->SubmitKeeperSprite(scale, data, src_w, src_h,
@@ -508,12 +738,14 @@ void RendererSubmitMapFadeStep(int tick_step, float display_step, float warp_sca
 
 void RendererBeginOverlayCapture(OverlayCaptureKind kind)
 {
+    if (s_software_lens.active) return;
     if (s_active_renderer != nullptr)
         s_active_renderer->BeginOverlayCapture(kind);
 }
 
 void RendererEndOverlayCapture(OverlayCaptureKind kind)
 {
+    if (s_software_lens.active) return;
     if (s_active_renderer != nullptr)
         s_active_renderer->EndOverlayCapture(kind);
 }
@@ -552,6 +784,7 @@ int RendererPointInZoomBoxScreenRect(int x, int y)
 
 void RendererSubmitPossessionLens(long viewport_x, long viewport_y, long viewport_w, long viewport_h)
 {
+    if (s_software_lens.active) return;
     IWorldViewRenderer* world = active_world_renderer();
     if (world == nullptr)
         return;

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "config_keeperfx.h"
 #include "cdrom.h"
@@ -664,6 +665,11 @@ extern "C" void sound_restore_id_redirect_snapshot(void) {
 }
 
 extern "C" void SetSoundMasterVolume(SoundVolume volume) {
+	if (!g_openal_context) {
+		// Focus events can arrive before OpenAL initialization.
+		g_master_volume = volume;
+		return;
+	}
 	try {
 		// Set OpenAL listener gain to maximum so we can split up the mentor speech volume slider from the sound effects volume slider
 		alListenerf(AL_GAIN, 1.0f);

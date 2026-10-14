@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -17,6 +18,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "bflib_render.h"
+#include "kfx/renderer/SceneAssetCapture.h"
 
 #include "globals.h"
 #include "bflib_basics.h"
@@ -703,7 +705,10 @@ static void next_line(struct GPolyDrawState *state)
     state->x_left   += slope_left;
     state->x_right  += slope_right;
     state->x        += state->x_left >> 16;
-    state->dst_line += vec_screen_width;
+    // Rows above the viewport advance interpolation only. Multiplying their
+    // negative Y by the unsigned 32-bit pitch wrapped by 4 GiB on Win64.
+    if (state->y >= 0)
+        state->dst_line += vec_screen_width;
     state->y        += 1;
 }
 
@@ -757,7 +762,7 @@ static void draw_gpoly_clipped(void)
     state.x        = vertex_a_x;
     state.y        = vertex_a_y;
     state.y_end    = min(vertex_b_y, vec_window_height);
-    state.dst_line = &vec_screen[vec_screen_width * state.y];
+    state.dst_line = &vec_screen[(size_t)vec_screen_width * max(state.y, 0)];
 
     draw_gpoly_clipped_half(&state);
 
@@ -791,7 +796,7 @@ static void draw_gpoly_whole(void)
     state.x_right  = vertex_a_x << 16;
     state.y        = vertex_a_y;
     state.y_end    = min(vertex_b_y, vec_window_height);
-    state.dst_line = &vec_screen[vec_screen_width * state.y];
+    state.dst_line = &vec_screen[(size_t)vec_screen_width * max(state.y, 0)];
 
     draw_gpoly_whole_half(&state);
 
@@ -816,6 +821,7 @@ static void draw_gpoly_whole(void)
 
 void draw_gpoly(struct PolyPoint *point_a, struct PolyPoint *point_b, struct PolyPoint *point_c)
 {
+    WorldSceneTraceTriangle(0, point_a, point_b, point_c, vec_mode, vec_colour, vec_map);
     if (vec_mode != VM_QuadTextured)
     {
         ERRORLOG("unexpected vec_mode %d in draw_gpoly", vec_mode);

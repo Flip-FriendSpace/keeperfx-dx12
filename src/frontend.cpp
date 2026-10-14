@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -74,6 +75,8 @@
 #include "frontmenu_ingame_opts.h"
 #include "lvl_filesdk1.h"
 #include "thing_stats.h"
+#include "thing_creature.h"
+#include "replay.h"
 #include "thing_traps.h"
 #include "power_hand.h"
 #include "magic_powers.h"
@@ -1661,6 +1664,30 @@ short frontend_save_continue_game(short allow_lvnum_grow)
         move_campaign_to_next_level();
     }
     return save_level_progress(lvnum, player->victory_state);
+}
+
+TbBool frontend_finish_replay_game(PlayerNumber player_number)
+{
+    struct PlayerInfo *player = replay_recording_player();
+    if (!replay.load_enable || network_is_active() || game.game_kind == GKind_MultiGame
+        || player == nullptr || player->id_number != player_number)
+        return false;
+    // Return the recorded outcome to the ordinary frontend, independently of
+    // whichever camera the replay viewer selected. Never advance the campaign.
+    observer_reset();
+    my_player_number = player_number;
+    turn_off_all_menus();
+    free_swipe_graphic();
+    struct Dungeon *dungeon = get_players_dungeon(player);
+    if (dungeon_invalid(dungeon))
+        return false;
+    dungeon->lvstats.allow_save_score = false;
+    clear_transfered_creatures();
+    player->allocflags &= ~PlaF_Allocated;
+    // load_enable deliberately remains true: this preserves outcome/statistics
+    // during Game cleanup but refuses progress/continue-file writes.
+    frontend_save_continue_game(false);
+    return true;
 }
 
 void frontend_load_continue_game(struct GuiButton *gbtn)

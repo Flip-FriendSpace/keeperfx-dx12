@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -96,6 +97,16 @@ static inline void LbSpriteDecode(unsigned char *dst, int dst_stride,
         }
     }
 }
+
+// Verified synchronous UI source view. Unknown/retired pointers are refused;
+// source_id remains stable across sprite-vector relocation and never wraps.
+struct TbSpriteSourceIdentity {
+    const unsigned char *data;
+    size_t bytes;
+    uint64_t source_id;
+    unsigned int width, height;
+};
+TbBool get_ui_sprite_source_identity(const struct TbSprite *sprite, struct TbSpriteSourceIdentity *output);
 
 struct TbSpriteSheet * create_spritesheet(void);
 struct TbSpriteSheet * load_spritesheet(const char * data_fname, const char * index_fname);

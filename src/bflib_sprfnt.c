@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -73,6 +74,8 @@ struct AsianFont {
   unsigned long wide_spacing;
   unsigned long baseline_offset;
   unsigned long line_spacing;
+  size_t data_bytes;
+  uint64_t publication_stamp;
 };
 
 /******************************************************************************/
@@ -98,10 +101,14 @@ struct AsianFont *active_dbcfont = NULL;
 
 
 struct AsianFont dbcfonts[] = {
-  {"font12", NULL,NULL,NULL , 12, 0, 1, 1, 1},
-  {"font16", NULL,NULL,NULL , 16, 0, 1, 4, 2},
+  {"font12", NULL,NULL,NULL , 12, 0, 1, 1, 1, 0, 0},
+  {"font16", NULL,NULL,NULL , 16, 0, 1, 4, 2, 0, 0},
   //{"font24", NULL,NULL,NULL , 24, 0, 1, 4, 2},
 };
+
+/* Saturation disables new owned identities without wrapping or changing valid
+ * legacy font rendering. Failed loads do not consume a publication identity. */
+static uint64_t dbc_publication_serial;
 
 /******************************************************************************/
 
@@ -218,6 +225,10 @@ int LbDbcGetGlyphBits(const struct AsianFont *font, uint32_t chr,
         return 6;
     unsigned int offset = font->offsets[(unsigned int)chr];
     int scanline = (width >> 3) + (((width & 7) != 0) ? 1 : 0);
+    if (font->height == 0 || font->height > INT_MAX
+        || (size_t)offset > font->data_bytes
+        || (size_t)scanline > (font->data_bytes - (size_t)offset) / font->height)
+        return 6;
     if (out_data)           *out_data = font->data + offset;
     if (out_scanline_bytes) *out_scanline_bytes = scanline;
     if (out_w)              *out_w = (int)width;
@@ -225,6 +236,26 @@ int LbDbcGetGlyphBits(const struct AsianFont *font, uint32_t chr,
     if (out_char_spacing)   *out_char_spacing = (int)(LbDbcIsDuospaceChar(font, chr) ? font->wide_spacing : font->narrow_spacing);
     if (out_v_offset)       *out_v_offset = (int)font->baseline_offset;
     return 0;
+}
+
+TbBool LbDbcGetGlyphSource(const struct AsianFont *font, uint32_t chr,
+    struct TbDbcGlyphSource *out_source)
+{
+    if (out_source == NULL) return false;
+    memset(out_source, 0, sizeof(*out_source));
+    /* Only successful publications owned by the normal font loader qualify. */
+    TbBool registered = false;
+    for (size_t i = 0; i < sizeof(dbcfonts) / sizeof(dbcfonts[0]); ++i)
+        if (font == &dbcfonts[i]) { registered = true; break; }
+    if (!registered || font->publication_stamp == 0) return false;
+    struct TbDbcGlyphSource source = {0};
+    if (LbDbcGetGlyphBits(font, chr, &source.data, &source.scanline_bytes,
+            &source.width, &source.height, &source.char_spacing, &source.vertical_offset) != 0)
+        return false;
+    source.data_bytes = (size_t)source.scanline_bytes * (size_t)source.height;
+    source.publication_stamp = font->publication_stamp;
+    *out_source = source;
+    return true;
 }
 
 /** Explicit-font word-width scan, mirroring LbTextWordWidthM() but taking
@@ -1676,8 +1707,9 @@ static short load_unifont_file(struct AsianFont * dbcfont)
         if (widths[i] != 0)
         {
             unsigned int row_bytes = (widths[i] + 7) >> 3;
-            unsigned long max_offset = offsets[i] + row_bytes * dbcfont->height;
-            if ((long)max_offset > data_len)
+            if (dbcfont->height == 0 || dbcfont->height > INT_MAX
+                || (size_t)offsets[i] > (size_t)data_len
+                || (size_t)row_bytes > ((size_t)data_len - (size_t)offsets[i]) / dbcfont->height)
             {
                 ERRORLOG("Invalid unifont offset for codepoint %u", i);
                 free(index_buf);
@@ -1692,6 +1724,9 @@ static short load_unifont_file(struct AsianFont * dbcfont)
     dbcfont->data = data_buf;
     dbcfont->widths = widths;
     dbcfont->offsets = offsets;
+    dbcfont->data_bytes = (size_t)data_len;
+    dbcfont->publication_stamp = dbc_publication_serial == UINT64_MAX
+        ? 0 : ++dbc_publication_serial;
     return 0;
 }
 

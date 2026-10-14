@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -18,9 +19,12 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "kfx/renderer/RendererManager.h"
+#include "kfx/renderer/WorldSceneCapture.h"
+#include "kfx/renderer/SceneAssetCapture.h"
 #include "kfx/renderer/RendererSettings.h" // g_renderer_settings.creature_outline_class_mask
 #include "kfx/renderer/SpriteScale.h"
 #include <stddef.h>
+#include <limits.h>
 
 #include "engine_render.h"
 #include "engine_buckets.h"
@@ -52,17 +56,21 @@
 #include "engine_camera.h"
 #include "engine_lenses.h"
 #include "engine_redraw.h"
+#include "kfx/renderer/TerrainColumnPlan.h"
+#include "kfx/renderer/FrontTerrainPlan.h"
 #include "engine_textures.h"
 #include "local_camera.h"
 #include "map_utils.h"
 #include "front_simple.h"
 #include "frontend.h"
+#include "observer.h"
 #include "game_heap.h"
 #include "game_lghtshdw.h"
 #include "gui_draw.h"
 #include "keeperfx.hpp"
 #include "kjm_input.h"
 #include "player_instances.h"
+#include "packets.h"
 #include "roomspace_prediction.h"
 #include "slab_data.h"
 #include "sprites.h"
@@ -104,6 +112,24 @@ struct PlayerInfo;
 struct EngineCol {
     struct EngineCoord cors[ENGINE_COL_CEILING_CORNER + 1];
 };
+
+static void set_column_lightmap_coords(struct EngineCol *col, int x, int y)
+{
+    for (int i = 0; i <= ENGINE_COL_CEILING_CORNER; i++) {
+        col->cors[i].lightmap_x = x;
+        col->cors[i].lightmap_y = y;
+    }
+}
+
+static void set_polygon_lightmap_coords(struct BucketKindPolygonStandard *poly,
+    const struct EngineCoord *a, const struct EngineCoord *b, const struct EngineCoord *c)
+{
+    const struct EngineCoord *coords[3] = {a, b, c};
+    for (int i = 0; i < 3; i++) {
+        poly->lightmap[i].x = coords[i] ? coords[i]->lightmap_x : -1;
+        poly->lightmap[i].y = coords[i] ? coords[i]->lightmap_y : -1;
+    }
+}
 
 struct SideOri {
     unsigned char back_texture_index;
@@ -256,10 +282,270 @@ struct Thing *thing_being_displayed;
 
 TbSpriteData *keepsprite[KEEPSPRITE_LENGTH];
 TbSpriteData sprite_heap_handle[KEEPSPRITE_LENGTH];
+// Initialized byte extent of each successful load, not mutable table metadata.
+static size_t keeper_sprite_loaded_bytes[KEEPSPRITE_LENGTH];
+static uint64_t keeper_sprite_source_stamps[KEEPSPRITE_LENGTH];
+// Process lifetime: never reset across source disposal or level changes.
+static uint64_t keeper_sprite_publication_serial;
 struct HeapMgrHeader *graphics_heap;
 TbFileHandle jty_file_handle;
 
 struct MapVolumeBox map_volume_box;
+static TbBool reference_selector_enabled;
+static TbBool reference_selector_drawing;
+static struct RoomSpace reference_selector_roomspace;
+static struct MapVolumeBox reference_selector_saved_box;
+static long reference_selector_saved_lag_x, reference_selector_saved_lag_y;
+static int reference_selector_room_kind, reference_selector_room_busy;
+static TbBool reference_room_emitting;
+static struct EngineReferenceRoomProof reference_room_proof;
+
+void clear_engine_reference_selector(void)
+{
+    reference_selector_enabled = false;
+}
+
+TbBool engine_reference_selector_is_drawing_for_player(PlayerNumber plyr_idx)
+{
+    return reference_selector_drawing && plyr_idx == my_player_number;
+}
+
+TbBool set_engine_reference_selector(int slab_x, int slab_y, int width, int height)
+{
+    if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
+        || get_my_player()->work_state != PSt_CtrlDungeon || reference_selector_drawing
+        || width < 1 || width > 9 || height < 1 || height > 9
+        || slab_x < 0 || slab_y < 0 || slab_x >= game.map_tiles_x || slab_y >= game.map_tiles_y)
+        return false;
+    const int left = slab_x - calc_distance_from_roomspace_centre(width, 0);
+    const int top = slab_y - calc_distance_from_roomspace_centre(height, 0);
+    if (left < 0 || top < 0 || left + width > game.map_tiles_x || top + height > game.map_tiles_y)
+        return false;
+    struct RoomSpace roomspace = {0};
+    reference_selector_roomspace = create_box_roomspace(roomspace, width, height, slab_x, slab_y);
+    reference_selector_room_kind = reference_selector_room_busy = 0;
+    reference_selector_enabled = true;
+    return true;
+}
+
+TbBool set_engine_reference_room_preview(int room_kind, int slab_x, int slab_y, int width, int height, int busy)
+{
+    if (room_kind <= 0 || room_kind >= game.conf.slab_conf.room_types_count || busy < 0 || busy > 1
+        || !set_engine_reference_selector(slab_x, slab_y, width, height)) return false;
+    reference_selector_room_kind = room_kind;
+    reference_selector_room_busy = busy;
+    return true;
+}
+
+static void begin_engine_reference_selector(void)
+{
+    if (!reference_selector_enabled) return;
+    if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
+        || get_my_player()->work_state != PSt_CtrlDungeon || lens_mode != 0) {
+        clear_engine_reference_selector();
+        return;
+    }
+    reference_selector_saved_box = map_volume_box;
+    reference_selector_saved_lag_x = box_lag_compensation_x;
+    reference_selector_saved_lag_y = box_lag_compensation_y;
+    reference_selector_drawing = true;
+    reference_room_proof = (struct EngineReferenceRoomProof){0};
+    map_volume_box.visible = false;
+    box_lag_compensation_x = box_lag_compensation_y = 0;
+    if (reference_selector_room_kind != 0) {
+        const int width = reference_selector_roomspace.width, height = reference_selector_roomspace.height;
+        const int x = reference_selector_roomspace.centreX, y = reference_selector_roomspace.centreY;
+        struct RoomSpace roomspace = {0};
+        roomspace.plyr_idx = my_player_number;
+        roomspace.user = get_local_user();
+        roomspace.rkind = reference_selector_room_kind;
+        roomspace = create_box_roomspace(roomspace, width, height, x, y);
+        roomspace = check_slabs_in_roomspace(roomspace, get_room_kind_stats(roomspace.rkind)->cost);
+        // Match the ordinary fixed-size build preview after its eligibility pass.
+        roomspace.width = width;
+        roomspace.height = height;
+        roomspace.render_roomspace_as_box = true;
+        reference_selector_roomspace = roomspace;
+        tag_cursor_blocks_place_roomspace(my_player_number, roomspace.rkind, &reference_selector_roomspace,
+            slab_subtile_center(x), slab_subtile_center(y), true);
+        reference_room_proof.active = 1;
+        reference_room_proof.room_kind = roomspace.rkind;
+        reference_room_proof.busy = reference_selector_room_busy;
+        reference_room_proof.valid_slabs = can_build_roomspace(my_player_number, roomspace.rkind, roomspace);
+        reference_room_proof.invalid_slabs = roomspace.invalid_slabs_count;
+        for (int dy = 0; dy < height; ++dy) for (int dx = 0; dx < width; ++dx)
+            reference_room_proof.hidden_slabs += !subtile_revealed(slab_subtile_center(x - calc_distance_from_roomspace_centre(width, 0) + dx),
+                slab_subtile_center(y - calc_distance_from_roomspace_centre(height, 0) + dy), my_player_number);
+        return;
+    }
+    reference_selector_roomspace = check_roomspace_for_diggable_slabs(reference_selector_roomspace, my_player_number, NULL);
+    struct Packet packet = {0};
+    packet.control_flags = PCtr_MapCoordsValid;
+    // The existing read-only preview computes the normal floor, validity and
+    // colour. Only this private roomspace and presentation box may be written.
+    tag_cursor_blocks_dig(get_my_player(), get_local_user(), &packet, &reference_selector_roomspace,
+        slab_subtile_center(reference_selector_roomspace.centreX), slab_subtile_center(reference_selector_roomspace.centreY), true);
+}
+
+static void end_engine_reference_selector(void)
+{
+    if (!reference_selector_drawing) return;
+    map_volume_box = reference_selector_saved_box;
+    box_lag_compensation_x = reference_selector_saved_lag_x;
+    box_lag_compensation_y = reference_selector_saved_lag_y;
+    reference_selector_drawing = false;
+    reference_room_emitting = false;
+}
+
+struct EngineReferenceSelectorProof get_engine_reference_selector_proof(void)
+{
+    struct EngineReferenceSelectorProof proof = {0};
+    if (reference_selector_drawing) {
+        proof.drawing = 1;
+        proof.displayed = is_player_displayed(my_player_number);
+        proof.minimap_drag = game.small_map_state == 2;
+        proof.observer = is_observer_camera_active();
+        proof.gui_busy = game_is_busy_doing_gui();
+        proof.gui_override = proof.displayed && !proof.minimap_drag && !proof.observer && proof.gui_busy;
+        proof.active = map_volume_box.visible;
+        proof.slab_x = reference_selector_roomspace.centreX;
+        proof.slab_y = reference_selector_roomspace.centreY;
+        proof.width = reference_selector_roomspace.width;
+        proof.height = reference_selector_roomspace.height;
+        proof.valid_slabs = reference_selector_roomspace.slab_count;
+        proof.invalid_slabs = reference_selector_roomspace.invalid_slabs_count;
+        proof.colour = map_volume_box.color;
+    }
+    return proof;
+}
+struct EngineReferenceRoomProof get_engine_reference_room_proof(void)
+{
+    const struct EngineReferenceRoomProof empty = {0};
+    return reference_selector_drawing && reference_selector_room_kind ? reference_room_proof : empty;
+}
+
+static TbBool map_volume_box_build_in_progress(const struct PlayerInfo *player)
+{
+    if (reference_selector_drawing && reference_selector_room_kind && player->id_number == my_player_number)
+        return reference_selector_room_busy;
+    return player->roomspace.is_active && (player->work_state == PSt_Sell || player->work_state == PSt_BuildRoom);
+}
+
+static void begin_reference_room_geometry(PlayerNumber plyr_idx, const struct RoomSpace *roomspace, int colour, TbBool busy)
+{
+    reference_room_emitting = reference_selector_drawing && reference_selector_room_kind && plyr_idx == my_player_number;
+    if (!reference_room_emitting) return;
+    ++reference_room_proof.process_calls;
+    reference_room_proof.busy_branches += busy;
+    reference_room_proof.colour = colour;
+    if (roomspace->render_roomspace_as_box && roomspace->is_roomspace_a_box) ++reference_room_proof.basic_calls;
+    else ++reference_room_proof.fancy_calls;
+}
+
+static TbBool reference_hover_enabled, reference_hover_drawing;
+static struct EngineReferenceHoverProof reference_hover;
+
+void clear_engine_reference_hover(void)
+{
+    reference_hover_enabled = false;
+}
+
+TbBool set_engine_reference_hover(int owner, int model, int stl_x, int stl_y, int hovered, int blink_on)
+{
+    if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
+        || get_my_player()->work_state != PSt_CtrlDungeon || reference_hover_drawing
+        || owner < 0 || owner >= PLAYERS_COUNT || model <= 0 || model > 65535
+        || stl_x < 0 || stl_y < 0 || stl_x >= game.map_subtiles_x || stl_y >= game.map_subtiles_y
+        || hovered < 0 || hovered > 1 || blink_on < 0 || blink_on > 1)
+        return false;
+    struct Thing *target = NULL;
+    for (int i = 1; i < THINGS_COUNT; ++i) {
+        struct Thing *thing = thing_get(i);
+        if (thing_exists(thing) && thing->class_id == TCls_Creature && thing->owner == owner
+            && thing->model == model && thing->mappos.x.stl.num == stl_x && thing->mappos.y.stl.num == stl_y) {
+            if (target != NULL) return false;
+            target = thing;
+        }
+    }
+    if (target == NULL) return false;
+    const uint64_t incarnation = WorldSceneThingIncarnation(target->index);
+    if (incarnation == 0) return false;
+    memset(&reference_hover, 0, sizeof(reference_hover));
+    reference_hover.target_slot = target->index;
+    reference_hover.target_incarnation = incarnation;
+    reference_hover.target_creation_turn = target->creation_turn;
+    reference_hover.owner = owner;
+    reference_hover.model = model;
+    reference_hover.hovered = hovered;
+    reference_hover.blink_on = blink_on;
+    reference_hover_enabled = true;
+    return true;
+}
+
+static void begin_engine_reference_hover(void)
+{
+    if (!reference_hover_enabled) return;
+    struct Thing *thing = thing_get(reference_hover.target_slot);
+    if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
+        || get_my_player()->work_state != PSt_CtrlDungeon || lens_mode != 0
+        || !thing_exists(thing) || thing->class_id != TCls_Creature
+        || thing->owner != reference_hover.owner || thing->model != reference_hover.model
+        || thing->creation_turn != reference_hover.target_creation_turn
+        || WorldSceneThingIncarnation(thing->index) != reference_hover.target_incarnation) {
+        clear_engine_reference_hover();
+        return;
+    }
+    reference_hover.actual_hit = thing->last_turn_damaged == get_gameturn();
+    reference_hover.last_turn_damaged = thing->last_turn_damaged;
+    reference_hover.render_flags = thing->rendering_flags;
+    reference_hover.considered = reference_hover.white = reference_hover.red = reference_hover.normal = 0;
+    reference_hover_drawing = true;
+}
+
+static void end_engine_reference_hover(void)
+{
+    reference_hover_drawing = false;
+}
+
+static TbBool reference_hover_matches(const struct Thing *thing)
+{
+    return reference_hover_drawing && thing->index == reference_hover.target_slot
+        && WorldSceneThingIncarnation(thing->index) == reference_hover.target_incarnation;
+}
+
+static TbBool render_thing_is_hovered(const struct Thing *thing)
+{
+    if (reference_hover_drawing) return reference_hover_matches(thing) && reference_hover.hovered;
+    return local_state.local_thing_under_hand == thing->index;
+}
+
+static TbBool render_hover_blink_on(void)
+{
+    if (reference_hover_drawing) return reference_hover.blink_on;
+    return (get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate;
+}
+
+static void record_engine_reference_hover_remap(const struct Thing *thing)
+{
+    if (!reference_hover_matches(thing)) return;
+    ++reference_hover.considered;
+    if ((RendererGetDrawFlags() & Lb_SPRITE_REMAP) && lbSpriteReMapPtr == white_pal) ++reference_hover.white;
+    else if ((RendererGetDrawFlags() & Lb_SPRITE_REMAP) && lbSpriteReMapPtr == red_pal) ++reference_hover.red;
+    else ++reference_hover.normal;
+}
+
+struct EngineReferenceHoverProof get_engine_reference_hover_proof(void)
+{
+    struct EngineReferenceHoverProof proof = {0};
+    if (reference_hover_drawing) {
+        proof = reference_hover;
+        proof.active = 1;
+        memcpy(proof.white_remap, white_pal, sizeof(proof.white_remap));
+        memcpy(proof.red_remap, red_pal, sizeof(proof.red_remap));
+    }
+    return proof;
+}
+
 long view_height_over_2;
 long view_width_over_2;
 long z_threshold_near;
@@ -341,29 +627,31 @@ float interpolate_synced(float previous, float current)
 struct ThingInterpolateResult interpolate_thing(struct Thing *thing)
 {
     struct ThingInterpolateResult result;
+    struct Coord3d previous_mappos = thing->previous_mappos;
+    unsigned short previous_floor_height = thing->previous_floor_height;
 
     if (get_gameturn() - thing->creation_turn <= 1)
     {
-        // Set initial interp position when Thing has just been created
-        thing->previous_mappos = thing->mappos;
-        thing->previous_floor_height = thing->floor_height;
+        // Use the creation pose without writing simulation-owned interpolation history.
+        previous_mappos = thing->mappos;
+        previous_floor_height = thing->floor_height;
     }
 
     // Interpolate position every frame
-    result.mappos.x.val = interpolate_synced(thing->previous_mappos.x.val, thing->mappos.x.val);
-    result.mappos.y.val = interpolate_synced(thing->previous_mappos.y.val, thing->mappos.y.val);
-    result.mappos.z.val = interpolate_synced(thing->previous_mappos.z.val, thing->mappos.z.val);
-    result.floor_height = interpolate_synced(thing->previous_floor_height, thing->floor_height);
+    result.mappos.x.val = interpolate_synced(previous_mappos.x.val, thing->mappos.x.val);
+    result.mappos.y.val = interpolate_synced(previous_mappos.y.val, thing->mappos.y.val);
+    result.mappos.z.val = interpolate_synced(previous_mappos.z.val, thing->mappos.z.val);
+    result.floor_height = interpolate_synced(previous_floor_height, thing->floor_height);
 
     // Cancel interpolation if distance to interpolate is too far. This is a
     // catch-all to solve any remaining interpolation bugs.
-    if ((abs(thing->previous_mappos.x.val - thing->mappos.x.val) >= 10000) ||
-        (abs(thing->previous_mappos.y.val - thing->mappos.y.val) >= 10000) ||
-        (abs(thing->previous_mappos.z.val - thing->mappos.z.val) >= 10000))
+    if ((abs(previous_mappos.x.val - thing->mappos.x.val) >= 10000) ||
+        (abs(previous_mappos.y.val - thing->mappos.y.val) >= 10000) ||
+        (abs(previous_mappos.z.val - thing->mappos.z.val) >= 10000))
     {
         ERRORLOG("The %s index %d owned by player %d moved an unrealistic distance((%d,%d,%d) to (%d,%d,%d)), refusing interpolation.",
                  thing_model_name(thing), (int)thing->index, (int)thing->owner,
-                 thing->previous_mappos.x.stl.num, thing->previous_mappos.y.stl.num, thing->previous_mappos.z.stl.num,
+                 previous_mappos.x.stl.num, previous_mappos.y.stl.num, previous_mappos.z.stl.num,
                  thing->mappos.x.stl.num, thing->mappos.y.stl.num, thing->mappos.z.stl.num);
         result.mappos = thing->mappos;
         result.floor_height = thing->floor_height;
@@ -898,6 +1186,7 @@ static void fill_in_points_perspective(struct Camera *cam, long bstl_x, long bst
         fulmask_and = nfulmask_and & pfulmask_and;
         pfulmask_or = nfulmask_or;
         pfulmask_and = nfulmask_and;
+        set_column_lightmap_coords(ecol, stl_x, stl_y + 1);
         int lightness;
         lightness = 0;
         if ((fulmask_or & 0x10000) == 0)
@@ -1124,6 +1413,7 @@ static void fill_in_points_cluedo(struct Camera *cam, long bstl_x, long bstl_y, 
         fulmask_and = nfulmask_and & pfulmask_and;
         pfulmask_or = nfulmask_or;
         pfulmask_and = nfulmask_and;
+        set_column_lightmap_coords(ecol, stl_x, stl_y + 1);
         int lightness;
         lightness = 0;
         if ((fulmask_or & 0x10000) == 0)
@@ -1365,6 +1655,7 @@ static void fill_in_points_isometric(struct Camera *cam, long bstl_x, long bstl_
         fulmask_and = nfulmask_and & pfulmask_and;
         pfulmask_or = nfulmask_or;
         pfulmask_and = nfulmask_and;
+        set_column_lightmap_coords(ecol, stl_x, stl_y + 1);
         int lightness;
         lightness = 0;
         if ((fulmask_or & 0x10000) == 0)
@@ -1449,13 +1740,20 @@ void frame_wibble_generate(void)
         wibl->lightness_offset = osc >> 6;
         wibl++;
     }
-    render_water_wibble += DEGREES_8_18 * game.delta_time;
+    // Pausing gameplay normally leaves liquid presentation running. Frozen
+    // reference variants must share the same deformation and scroll phase.
+    // Temporal reference sessions may explicitly exercise the normal live clock.
+    const char *live_surfaces = getenv("KFX_SCENE_LIVE_SURFACES");
+    const TbBool live_reference_surfaces = live_surfaces && strcmp(live_surfaces, "1") == 0;
+    const float surface_delta = flag_is_set(game.operation_flags, GOF_Paused)
+        && local_camera_reference_enabled() && !live_reference_surfaces ? 0.0f : game.delta_time;
+    render_water_wibble += DEGREES_8_18 * surface_delta;
     water_wibble_angle = (int)render_water_wibble & ANGLE_MASK;
-    render_abyss_lava_scroll += ABYSS_LAVA_SCROLL_SPEED * game.delta_time;
+    render_abyss_lava_scroll += ABYSS_LAVA_SCROLL_SPEED * surface_delta;
     if (render_abyss_lava_scroll >= ABYSS_LIQUID_SCROLL_CYCLE) {
         render_abyss_lava_scroll -= ABYSS_LIQUID_SCROLL_CYCLE;
     }
-    render_abyss_water_scroll += ABYSS_WATER_SCROLL_SPEED * game.delta_time;
+    render_abyss_water_scroll += ABYSS_WATER_SCROLL_SPEED * surface_delta;
     if (render_abyss_water_scroll >= ABYSS_LIQUID_SCROLL_CYCLE) {
         render_abyss_water_scroll -= ABYSS_LIQUID_SCROLL_CYCLE;
     }
@@ -2286,6 +2584,7 @@ static void create_line_element(long a1, long a2, long a3, long a4, long bckt_id
         poly->p.V = a4 / pixel_size;
     }
     poly->p.S = color;
+    if (reference_room_emitting) ++reference_room_proof.emitted_lines;
 }
 
 static void create_line_segment(struct EngineCoord *start, struct EngineCoord *end, TbPixel color)
@@ -2320,6 +2619,7 @@ static void create_line_segment(struct EngineCoord *start, struct EngineCoord *e
         poly->p.V = end->view_height;
     }
     poly->p.S = color;
+    if (reference_room_emitting) ++reference_room_proof.emitted_lines;
 }
 
 /**
@@ -2731,13 +3031,16 @@ static void process_isometric_map_volume_box(long x, long y, long z, PlayerNumbe
     unsigned char default_color = map_volume_box.color;
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
-    struct RoomSpace *render_roomspace = get_local_dig_prediction_render_roomspace(&current_player->render_roomspace);
+    struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
+        : get_local_dig_prediction_render_roomspace(&current_player->render_roomspace);
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
-    if ((current_player->roomspace.is_active) && ((current_player->work_state == PSt_Sell) || (current_player->work_state == PSt_BuildRoom)))
+    const TbBool build_in_progress = map_volume_box_build_in_progress(current_player);
+    if (build_in_progress)
     {
         line_color = SLC_REDYELLOW; // change the cursor color to indicate to the user that nothing else can be built or sold at the moment
     }
+    begin_reference_room_geometry(plyr_idx, render_roomspace, line_color, build_in_progress);
     if (render_roomspace->render_roomspace_as_box)
     {
         if (render_roomspace->is_roomspace_a_box)
@@ -2759,6 +3062,7 @@ static void process_isometric_map_volume_box(long x, long y, long z, PlayerNumbe
         create_fancy_map_volume_box(*render_roomspace, x + box_lag_compensation_x, y + box_lag_compensation_y, z, line_color, false);
     }
     map_volume_box.color = default_color;
+    reference_room_emitting = false;
 }
 
 static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct EngineCoord *engine_coordinate_2, struct EngineCoord *engine_coordinate_3, short textr_idx, long argument5)
@@ -2923,6 +3227,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                             triangle_bucket_near_1->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_1 * (engine_coordinate_1->x - engine_coordinate_3->x)) >> 8);
                             triangle_bucket_near_1->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_1 * (engine_coordinate_1->y - engine_coordinate_3->y)) >> 8);
                             triangle_bucket_near_1->coordinate_third.z = 32;
+                            WorldSceneNearPlaneIntersection();
                             perspective(&triangle_bucket_near_1->coordinate_third, &triangle_bucket_near_1->vertex_third);
                             triangle_bucket_near_1->vertex_third.U += (z_ratio_1 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_third.U)) >> 8;
                             triangle_bucket_near_1->vertex_third.V += (z_ratio_1 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_third.V)) >> 8;
@@ -2946,6 +3251,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                             triangle_bucket_near_4->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_2 * (engine_coordinate_2->x - engine_coordinate_3->x)) >> 8);
                             triangle_bucket_near_4->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_2 * (engine_coordinate_2->y - engine_coordinate_3->y)) >> 8);
                             triangle_bucket_near_4->coordinate_third.z = 32;
+                            WorldSceneNearPlaneIntersection();
                             perspective(&triangle_bucket_near_4->coordinate_third, &triangle_bucket_near_4->vertex_third);
                             triangle_bucket_near_4->vertex_third.U += (z_ratio_2 * (triangle_bucket_near_4->vertex_second.U - triangle_bucket_near_4->vertex_third.U)) >> 8;
                             triangle_bucket_near_4->vertex_third.V += (z_ratio_2 * (triangle_bucket_near_4->vertex_second.V - triangle_bucket_near_4->vertex_third.V)) >> 8;
@@ -2975,6 +3281,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_second.x = engine_coordinate_2->x + ((z_split_1 * (engine_coordinate_1->x - engine_coordinate_2->x)) >> 8);
                         triangle_bucket_near_1->coordinate_second.y = engine_coordinate_2->y + ((z_split_1 * (engine_coordinate_1->y - engine_coordinate_2->y)) >> 8);
                         triangle_bucket_near_1->coordinate_second.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_second, &triangle_bucket_near_1->vertex_second);
                         triangle_bucket_near_1->vertex_second.U += (z_split_1 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_second.U)) >> 8;
                         triangle_bucket_near_1->vertex_second.V += (z_split_1 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_second.V)) >> 8;
@@ -2998,6 +3305,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_3->coordinate_second.x = engine_coordinate_2->x + ((z_ratio_3 * (engine_coordinate_3->x - engine_coordinate_2->x)) >> 8);
                         triangle_bucket_near_3->coordinate_second.y = engine_coordinate_2->y + ((z_ratio_3 * (engine_coordinate_3->y - engine_coordinate_2->y)) >> 8);
                         triangle_bucket_near_3->coordinate_second.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_3->coordinate_second, &triangle_bucket_near_3->vertex_second);
                         triangle_bucket_near_3->vertex_second.U += (z_ratio_3 * (triangle_bucket_near_3->vertex_third.U - triangle_bucket_near_3->vertex_second.U)) >> 8;
                         triangle_bucket_near_3->vertex_second.V += (z_ratio_3 * (triangle_bucket_near_3->vertex_third.V - triangle_bucket_near_3->vertex_second.V)) >> 8;
@@ -3010,6 +3318,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_second.x = engine_coordinate_2->x + ((z_split_2 * (engine_coordinate_1->x - engine_coordinate_2->x)) >> 8);
                         triangle_bucket_near_1->coordinate_second.y = engine_coordinate_2->y + ((z_split_2 * (engine_coordinate_1->y - engine_coordinate_2->y)) >> 8);
                         triangle_bucket_near_1->coordinate_second.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_second, &triangle_bucket_near_1->vertex_second);
                         triangle_bucket_near_1->vertex_second.U += (z_split_2 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_second.U)) >> 8;
                         triangle_bucket_near_1->vertex_second.V += (z_split_2 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_second.V)) >> 8;
@@ -3020,6 +3329,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_4 * (engine_coordinate_1->x - engine_coordinate_3->x)) >> 8);
                         triangle_bucket_near_1->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_4 * (engine_coordinate_1->y - engine_coordinate_3->y)) >> 8);
                         triangle_bucket_near_1->coordinate_third.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_third, &triangle_bucket_near_1->vertex_third);
                         triangle_bucket_near_1->vertex_third.U += (z_ratio_4 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_third.U)) >> 8;
                         triangle_bucket_near_1->vertex_third.V += (z_ratio_4 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_third.V)) >> 8;
@@ -3059,6 +3369,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_first.x = engine_coordinate_1->x + ((z_split_3 * (engine_coordinate_2->x - engine_coordinate_1->x)) >> 8);
                         triangle_bucket_near_1->coordinate_first.y = engine_coordinate_1->y + ((z_split_3 * (engine_coordinate_2->y - engine_coordinate_1->y)) >> 8);
                         triangle_bucket_near_1->coordinate_first.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_first, &triangle_bucket_near_1->vertex_first);
                         triangle_bucket_near_1->vertex_first.U += (z_split_3 * (triangle_bucket_near_1->vertex_second.U - triangle_bucket_near_1->vertex_first.U)) >> 8;
                         triangle_bucket_near_1->vertex_first.V += (z_split_3 * (triangle_bucket_near_1->vertex_second.V - triangle_bucket_near_1->vertex_first.V)) >> 8;
@@ -3082,6 +3393,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_2->coordinate_first.x = engine_coordinate_1->x + ((z_ratio_5 * (engine_coordinate_3->x - engine_coordinate_1->x)) >> 8);
                         triangle_bucket_near_2->coordinate_first.y = engine_coordinate_1->y + ((z_ratio_5 * (engine_coordinate_3->y - engine_coordinate_1->y)) >> 8);
                         triangle_bucket_near_2->coordinate_first.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_2->coordinate_first, &triangle_bucket_near_2->vertex_first);
                         triangle_bucket_near_2->vertex_first.U += (z_ratio_5 * (triangle_bucket_near_2->vertex_third.U - triangle_bucket_near_2->vertex_first.U)) >> 8;
                         triangle_bucket_near_2->vertex_first.V += (z_ratio_5 * (triangle_bucket_near_2->vertex_third.V - triangle_bucket_near_2->vertex_first.V)) >> 8;
@@ -3098,6 +3410,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_first.x = engine_coordinate_1->x + ((z_split_4 * (engine_coordinate_2->x - engine_coordinate_1->x)) >> 8);
                         triangle_bucket_near_1->coordinate_first.y = engine_coordinate_1->y + ((z_split_4 * (engine_coordinate_2->y - engine_coordinate_1->y)) >> 8);
                         triangle_bucket_near_1->coordinate_first.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_first, &triangle_bucket_near_1->vertex_first);
                         triangle_bucket_near_1->vertex_first.U += (z_split_4 * (triangle_bucket_near_1->vertex_second.U - triangle_bucket_near_1->vertex_first.U)) >> 8;
                         triangle_bucket_near_1->vertex_first.V += (z_split_4 * (triangle_bucket_near_1->vertex_second.V - triangle_bucket_near_1->vertex_first.V)) >> 8;
@@ -3108,6 +3421,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_6 * (engine_coordinate_2->x - engine_coordinate_3->x)) >> 8);
                         triangle_bucket_near_1->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_6 * (engine_coordinate_2->y - engine_coordinate_3->y)) >> 8);
                         triangle_bucket_near_1->coordinate_third.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_third, &triangle_bucket_near_1->vertex_third);
                         triangle_bucket_near_1->vertex_third.U += (z_ratio_6 * (triangle_bucket_near_1->vertex_second.U - triangle_bucket_near_1->vertex_third.U)) >> 8;
                         triangle_bucket_near_1->vertex_third.V += (z_ratio_6 * (triangle_bucket_near_1->vertex_second.V - triangle_bucket_near_1->vertex_third.V)) >> 8;
@@ -3125,6 +3439,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                     triangle_bucket_near_1->coordinate_first.x = engine_coordinate_1->x + ((z_ratio_7 * (engine_coordinate_3->x - engine_coordinate_1->x)) >> 8);
                     triangle_bucket_near_1->coordinate_first.y = engine_coordinate_1->y + ((z_ratio_7 * (engine_coordinate_3->y - engine_coordinate_1->y)) >> 8);
                     triangle_bucket_near_1->coordinate_first.z = 32;
+                    WorldSceneNearPlaneIntersection();
                     perspective(&triangle_bucket_near_1->coordinate_first, &triangle_bucket_near_1->vertex_first);
                     triangle_bucket_near_1->vertex_first.U += (z_ratio_7 * (triangle_bucket_near_1->vertex_third.U - triangle_bucket_near_1->vertex_first.U)) >> 8;
                     triangle_bucket_near_1->vertex_first.V += (z_ratio_7 * (triangle_bucket_near_1->vertex_third.V - triangle_bucket_near_1->vertex_first.V)) >> 8;
@@ -3135,6 +3450,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                     triangle_bucket_near_1->coordinate_second.x = engine_coordinate_2->x + ((z_ratio_8 * (engine_coordinate_3->x - engine_coordinate_2->x)) >> 8);
                     triangle_bucket_near_1->coordinate_second.y = engine_coordinate_2->y + ((z_ratio_8 * (engine_coordinate_3->y - engine_coordinate_2->y)) >> 8);
                     triangle_bucket_near_1->coordinate_second.z = 32;
+                    WorldSceneNearPlaneIntersection();
                     perspective(&triangle_bucket_near_1->coordinate_second, &triangle_bucket_near_1->vertex_second);
                     triangle_bucket_near_1->vertex_second.U += (z_ratio_8 * (triangle_bucket_near_1->vertex_third.U - triangle_bucket_near_1->vertex_second.U)) >> 8;
                     triangle_bucket_near_1->vertex_second.V += (z_ratio_8 * (triangle_bucket_near_1->vertex_third.V - triangle_bucket_near_1->vertex_second.V)) >> 8;
@@ -3147,6 +3463,7 @@ static void do_a_trig_gourad_tr(struct EngineCoord *engine_coordinate_1, struct 
                 getpoly += sizeof(struct BucketKindPolygonStandard);
                 triangle_bucket_far->b.next = buckets[divided_z];
                 triangle_bucket_far->b.kind = QK_PolygonStandard;
+                set_polygon_lightmap_coords(triangle_bucket_far, NULL, NULL, NULL);
                 buckets[divided_z] = &triangle_bucket_far->b;
 
                 triangle_bucket_far->block = textr_idx;
@@ -3393,6 +3710,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                             triangle_bucket_near_1->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_1 * (engine_coordinate_1->x - engine_coordinate_3->x)) >> 8);
                             triangle_bucket_near_1->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_1 * (engine_coordinate_1->y - engine_coordinate_3->y)) >> 8);
                             triangle_bucket_near_1->coordinate_third.z = 32;
+                            WorldSceneNearPlaneIntersection();
                             perspective(&triangle_bucket_near_1->coordinate_third, &triangle_bucket_near_1->vertex_third);
                             triangle_bucket_near_1->vertex_third.U += (z_ratio_1 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_third.U)) >> 8;
                             triangle_bucket_near_1->vertex_third.V += (z_ratio_1 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_third.V)) >> 8;
@@ -3416,6 +3734,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                             triangle_bucket_near_4->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_2 * (engine_coordinate_2->x - engine_coordinate_3->x)) >> 8);
                             triangle_bucket_near_4->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_2 * (engine_coordinate_2->y - engine_coordinate_3->y)) >> 8);
                             triangle_bucket_near_4->coordinate_third.z = 32;
+                            WorldSceneNearPlaneIntersection();
                             perspective(&triangle_bucket_near_4->coordinate_third, &triangle_bucket_near_4->vertex_third);
                             triangle_bucket_near_4->vertex_third.U += (z_ratio_2 * (triangle_bucket_near_4->vertex_second.U - triangle_bucket_near_4->vertex_third.U)) >> 8;
                             triangle_bucket_near_4->vertex_third.V += (z_ratio_2 * (triangle_bucket_near_4->vertex_second.V - triangle_bucket_near_4->vertex_third.V)) >> 8;
@@ -3445,6 +3764,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_second.x = engine_coordinate_2->x + ((z_split_1 * (engine_coordinate_1->x - engine_coordinate_2->x)) >> 8);
                         triangle_bucket_near_1->coordinate_second.y = engine_coordinate_2->y + ((z_split_1 * (engine_coordinate_1->y - engine_coordinate_2->y)) >> 8);
                         triangle_bucket_near_1->coordinate_second.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_second, &triangle_bucket_near_1->vertex_second);
                         triangle_bucket_near_1->vertex_second.U += (z_split_1 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_second.U)) >> 8;
                         triangle_bucket_near_1->vertex_second.V += (z_split_1 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_second.V)) >> 8;
@@ -3468,6 +3788,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_3->coordinate_second.x = engine_coordinate_2->x + ((z_ratio_3 * (engine_coordinate_3->x - engine_coordinate_2->x)) >> 8);
                         triangle_bucket_near_3->coordinate_second.y = engine_coordinate_2->y + ((z_ratio_3 * (engine_coordinate_3->y - engine_coordinate_2->y)) >> 8);
                         triangle_bucket_near_3->coordinate_second.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_3->coordinate_second, &triangle_bucket_near_3->vertex_second);
                         triangle_bucket_near_3->vertex_second.U += (z_ratio_3 * (triangle_bucket_near_3->vertex_third.U - triangle_bucket_near_3->vertex_second.U)) >> 8;
                         triangle_bucket_near_3->vertex_second.V += (z_ratio_3 * (triangle_bucket_near_3->vertex_third.V - triangle_bucket_near_3->vertex_second.V)) >> 8;
@@ -3480,6 +3801,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_second.x = engine_coordinate_2->x + ((z_split_2 * (engine_coordinate_1->x - engine_coordinate_2->x)) >> 8);
                         triangle_bucket_near_1->coordinate_second.y = engine_coordinate_2->y + ((z_split_2 * (engine_coordinate_1->y - engine_coordinate_2->y)) >> 8);
                         triangle_bucket_near_1->coordinate_second.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_second, &triangle_bucket_near_1->vertex_second);
                         triangle_bucket_near_1->vertex_second.U += (z_split_2 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_second.U)) >> 8;
                         triangle_bucket_near_1->vertex_second.V += (z_split_2 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_second.V)) >> 8;
@@ -3490,6 +3812,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_4 * (engine_coordinate_1->x - engine_coordinate_3->x)) >> 8);
                         triangle_bucket_near_1->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_4 * (engine_coordinate_1->y - engine_coordinate_3->y)) >> 8);
                         triangle_bucket_near_1->coordinate_third.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_third, &triangle_bucket_near_1->vertex_third);
                         triangle_bucket_near_1->vertex_third.U += (z_ratio_4 * (triangle_bucket_near_1->vertex_first.U - triangle_bucket_near_1->vertex_third.U)) >> 8;
                         triangle_bucket_near_1->vertex_third.V += (z_ratio_4 * (triangle_bucket_near_1->vertex_first.V - triangle_bucket_near_1->vertex_third.V)) >> 8;
@@ -3529,6 +3852,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_first.x = engine_coordinate_1->x + ((z_split_3 * (engine_coordinate_2->x - engine_coordinate_1->x)) >> 8);
                         triangle_bucket_near_1->coordinate_first.y = engine_coordinate_1->y + ((z_split_3 * (engine_coordinate_2->y - engine_coordinate_1->y)) >> 8);
                         triangle_bucket_near_1->coordinate_first.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_first, &triangle_bucket_near_1->vertex_first);
                         triangle_bucket_near_1->vertex_first.U += (z_split_3 * (triangle_bucket_near_1->vertex_second.U - triangle_bucket_near_1->vertex_first.U)) >> 8;
                         triangle_bucket_near_1->vertex_first.V += (z_split_3 * (triangle_bucket_near_1->vertex_second.V - triangle_bucket_near_1->vertex_first.V)) >> 8;
@@ -3552,6 +3876,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_2->coordinate_first.x = engine_coordinate_1->x + ((z_ratio_5 * (engine_coordinate_3->x - engine_coordinate_1->x)) >> 8);
                         triangle_bucket_near_2->coordinate_first.y = engine_coordinate_1->y + ((z_ratio_5 * (engine_coordinate_3->y - engine_coordinate_1->y)) >> 8);
                         triangle_bucket_near_2->coordinate_first.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_2->coordinate_first, &triangle_bucket_near_2->vertex_first);
                         triangle_bucket_near_2->vertex_first.U += (z_ratio_5 * (triangle_bucket_near_2->vertex_third.U - triangle_bucket_near_2->vertex_first.U)) >> 8;
                         triangle_bucket_near_2->vertex_first.V += (z_ratio_5 * (triangle_bucket_near_2->vertex_third.V - triangle_bucket_near_2->vertex_first.V)) >> 8;
@@ -3568,6 +3893,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_first.x = engine_coordinate_1->x + ((z_split_4 * (engine_coordinate_2->x - engine_coordinate_1->x)) >> 8);
                         triangle_bucket_near_1->coordinate_first.y = engine_coordinate_1->y + ((z_split_4 * (engine_coordinate_2->y - engine_coordinate_1->y)) >> 8);
                         triangle_bucket_near_1->coordinate_first.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_first, &triangle_bucket_near_1->vertex_first);
                         triangle_bucket_near_1->vertex_first.U += (z_split_4 * (triangle_bucket_near_1->vertex_second.U - triangle_bucket_near_1->vertex_first.U)) >> 8;
                         triangle_bucket_near_1->vertex_first.V += (z_split_4 * (triangle_bucket_near_1->vertex_second.V - triangle_bucket_near_1->vertex_first.V)) >> 8;
@@ -3578,6 +3904,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                         triangle_bucket_near_1->coordinate_third.x = engine_coordinate_3->x + ((z_ratio_6 * (engine_coordinate_2->x - engine_coordinate_3->x)) >> 8);
                         triangle_bucket_near_1->coordinate_third.y = engine_coordinate_3->y + ((z_ratio_6 * (engine_coordinate_2->y - engine_coordinate_3->y)) >> 8);
                         triangle_bucket_near_1->coordinate_third.z = 32;
+                        WorldSceneNearPlaneIntersection();
                         perspective(&triangle_bucket_near_1->coordinate_third, &triangle_bucket_near_1->vertex_third);
                         triangle_bucket_near_1->vertex_third.U += (z_ratio_6 * (triangle_bucket_near_1->vertex_second.U - triangle_bucket_near_1->vertex_third.U)) >> 8;
                         triangle_bucket_near_1->vertex_third.V += (z_ratio_6 * (triangle_bucket_near_1->vertex_second.V - triangle_bucket_near_1->vertex_third.V)) >> 8;
@@ -3595,6 +3922,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                     triangle_bucket_near_1->coordinate_first.x = engine_coordinate_1->x + ((z_ratio_7 * (engine_coordinate_3->x - engine_coordinate_1->x)) >> 8);
                     triangle_bucket_near_1->coordinate_first.y = engine_coordinate_1->y + ((z_ratio_7 * (engine_coordinate_3->y - engine_coordinate_1->y)) >> 8);
                     triangle_bucket_near_1->coordinate_first.z = 32;
+                    WorldSceneNearPlaneIntersection();
                     perspective(&triangle_bucket_near_1->coordinate_first, &triangle_bucket_near_1->vertex_first);
                     triangle_bucket_near_1->vertex_first.U += (z_ratio_7 * (triangle_bucket_near_1->vertex_third.U - triangle_bucket_near_1->vertex_first.U)) >> 8;
                     triangle_bucket_near_1->vertex_first.V += (z_ratio_7 * (triangle_bucket_near_1->vertex_third.V - triangle_bucket_near_1->vertex_first.V)) >> 8;
@@ -3605,6 +3933,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                     triangle_bucket_near_1->coordinate_second.x = engine_coordinate_2->x + ((z_ratio_8 * (engine_coordinate_3->x - engine_coordinate_2->x)) >> 8);
                     triangle_bucket_near_1->coordinate_second.y = engine_coordinate_2->y + ((z_ratio_8 * (engine_coordinate_3->y - engine_coordinate_2->y)) >> 8);
                     triangle_bucket_near_1->coordinate_second.z = 32;
+                    WorldSceneNearPlaneIntersection();
                     perspective(&triangle_bucket_near_1->coordinate_second, &triangle_bucket_near_1->vertex_second);
                     triangle_bucket_near_1->vertex_second.U += (z_ratio_8 * (triangle_bucket_near_1->vertex_third.U - triangle_bucket_near_1->vertex_second.U)) >> 8;
                     triangle_bucket_near_1->vertex_second.V += (z_ratio_8 * (triangle_bucket_near_1->vertex_third.V - triangle_bucket_near_1->vertex_second.V)) >> 8;
@@ -3617,6 +3946,7 @@ static void do_a_trig_gourad_bl(struct EngineCoord *engine_coordinate_1, struct 
                 getpoly += sizeof(struct BucketKindPolygonStandard);
                 triangle_bucket_far->b.next = buckets[divided_z];
                 triangle_bucket_far->b.kind = QK_PolygonStandard;
+                set_polygon_lightmap_coords(triangle_bucket_far, NULL, NULL, NULL);
                 buckets[divided_z] = &triangle_bucket_far->b;
                 triangle_bucket_far->block = argument4;
 
@@ -3877,6 +4207,7 @@ static void create_shadows(struct Thing *thing, struct EngineCoord *ecor, struct
     if (kspr == NULL)
         return;
     kspr->bucket_idx = shadow_bckt_idx;
+    kspr->caster_slot = thing->index;
 
     kspr->vertex_first.X = ecor1.view_width;
     kspr->vertex_first.Y = ecor1.view_height;
@@ -4005,6 +4336,12 @@ static unsigned short engine_remap_abyss_wall_texture_blocks(MapSubtlCoord stl_x
 
 static void draw_abyss(const struct Column *colmn, const struct Map *mapblk, struct EngineCol *bec, struct EngineCol *fec, MapSubtlCoord stl_x, MapSubtlCoord stl_y);
 
+static void draw_cached_column_plan(unsigned mode, const struct Column *cur_colmn, const struct Map *cur_mapblk,
+    struct EngineCol *bec, struct EngineCol *fec, MapSubtlCoord stl_x, MapSubtlCoord stl_y,
+    unsigned short solidmsk_cur, unsigned short solidmsk_back, unsigned short solidmsk_front,
+    unsigned short solidmsk_left, unsigned short solidmsk_right, unsigned short solidmsk_cur_raw,
+    unsigned char render_map_flags);
+
 static void do_a_plane_of_engine_columns_perspective(long stl_x, long stl_y, long plane_start, long plane_end)
 {
     struct Column *blank_colmn;
@@ -4012,16 +4349,9 @@ static void do_a_plane_of_engine_columns_perspective(long stl_x, long stl_y, lon
     struct Map *mapblk;
     struct Map *sib_mapblk;
     struct Column *sib_colmn;
-    unsigned short textr_idx;
-    unsigned short height_bit;
     SubtlCodedCoords center_block_idx;
-    long fepos;
-    long bepos;
-    long ecpos;
     long clip_start;
     long clip_end;
-    struct CubeConfigStats *texturing;
-    unsigned short *cubenum_ptr;
     long i;
     long n;
     if ((stl_y <= 0) || (stl_y >= game.map_subtiles_y))
@@ -4042,6 +4372,7 @@ static void do_a_plane_of_engine_columns_perspective(long stl_x, long stl_y, lon
     for (i = clip_end-clip_start; i > 0; i--)
     {
         mapblk = get_map_block_at_pos(center_block_idx);
+        WorldSceneCaptureCell(center_x, stl_y);
         colmn = blank_colmn;
         if (map_block_revealed(mapblk, my_player_number))
         {
@@ -4081,85 +4412,8 @@ static void do_a_plane_of_engine_columns_perspective(long stl_x, long stl_y, lon
             sib_colmn = get_map_column(sib_mapblk);
             solidmsk_right = sib_colmn->solidmask;
         }
-        bepos = 0;
-        fepos = 0;
-        cubenum_ptr = &colmn->cubes[0];
-        height_bit = 1;
-        while (height_bit <= solidmsk_center)
-        {
-            texturing = get_cube_model_stats(*cubenum_ptr);
-            if ((solidmsk_center & height_bit) != 0)
-            {
-              if ((solidmsk_top & height_bit) == 0)
-              {
-
-                  textr_idx = engine_remap_texture_blocks(center_x, stl_y, texturing->texture_id[sideoris[0].back_texture_index]);
-                  do_a_trig_gourad_tr(&bec[1].cors[bepos+1], &bec[0].cors[bepos+1], &bec[0].cors[bepos],   textr_idx, normal_shade_back);
-                  do_a_trig_gourad_bl(&bec[0].cors[bepos],   &bec[1].cors[bepos],   &bec[1].cors[bepos+1], textr_idx, normal_shade_back);
-              }
-              if ((solidmsk_bottom & height_bit) == 0)
-              {
-                  textr_idx = engine_remap_texture_blocks(center_x, stl_y, texturing->texture_id[sideoris[0].front_texture_index]);
-                  do_a_trig_gourad_tr(&fec[0].cors[fepos+1], &fec[1].cors[fepos+1], &fec[1].cors[fepos],   textr_idx, normal_shade_front);
-                  do_a_trig_gourad_bl(&fec[1].cors[fepos],   &fec[0].cors[fepos],   &fec[0].cors[fepos+1], textr_idx, normal_shade_front);
-              }
-              if ((solidmsk_left & height_bit) == 0)
-              {
-                  textr_idx = engine_remap_texture_blocks(center_x, stl_y, texturing->texture_id[sideoris[0].bottom_texture_index]);
-                  do_a_trig_gourad_tr(&bec[0].cors[bepos+1], &fec[0].cors[fepos+1], &fec[0].cors[fepos],   textr_idx, normal_shade_left);
-                  do_a_trig_gourad_bl(&fec[0].cors[fepos],   &bec[0].cors[bepos],   &bec[0].cors[bepos+1], textr_idx, normal_shade_left);
-              }
-              if ((solidmsk_right & height_bit) == 0)
-              {
-                  textr_idx = engine_remap_texture_blocks(center_x, stl_y, texturing->texture_id[sideoris[0].top_texture_index]);
-                  do_a_trig_gourad_tr(&fec[1].cors[fepos+1], &bec[1].cors[bepos+1], &bec[1].cors[bepos],   textr_idx, normal_shade_right);
-                  do_a_trig_gourad_bl(&bec[1].cors[bepos],   &fec[1].cors[fepos],   &fec[1].cors[fepos+1], textr_idx, normal_shade_right);
-              }
-            }
-            bepos++; fepos++;
-            cubenum_ptr++;
-            height_bit = height_bit << 1;
-        }
-        TbBool abyss = cube_is_abyss(game.top_cube[colmn->floor_texture]);
-        draw_abyss(colmn, mapblk, bec, fec, center_x, stl_y);
-
-        ecpos = floor_height_table[solidmsk_center];
-        if (ecpos > 0)
-        {
-            cubenum_ptr = &colmn->cubes[ecpos-1];
-            texturing = get_cube_model_stats(*cubenum_ptr);
-            textr_idx = engine_remap_top_texture_blocks(center_x, stl_y, texturing->texture_id[4]);
-            do_a_trig_gourad_tr(&bec[0].cors[ecpos], &bec[1].cors[ecpos], &fec[1].cors[ecpos], textr_idx, -1);
-            do_a_trig_gourad_bl(&fec[1].cors[ecpos], &fec[0].cors[ecpos], &bec[0].cors[ecpos], textr_idx, -1);
-        } else if (!abyss) {
-            textr_idx = engine_remap_top_texture_blocks(center_x, stl_y, colmn->floor_texture);
-            do_a_trig_gourad_tr(&bec[0].cors[ecpos], &bec[1].cors[ecpos], &fec[1].cors[ecpos], textr_idx, -1);
-            do_a_trig_gourad_bl(&fec[1].cors[ecpos], &fec[0].cors[ecpos], &bec[0].cors[ecpos], textr_idx, -1);
-        }
-        // For tiles which have solid columns at top, draw them
-        ecpos = lintel_top_height[solidmsk_center];
-        if (ecpos > 0)
-        {
-            cubenum_ptr = &colmn->cubes[ecpos-1];
-            texturing = get_cube_model_stats(*cubenum_ptr);
-            textr_idx = engine_remap_top_texture_blocks(center_x, stl_y, texturing->texture_id[4]);
-            do_a_trig_gourad_tr(&bec[0].cors[ecpos], &bec[1].cors[ecpos], &fec[1].cors[ecpos], textr_idx, -1);
-            do_a_trig_gourad_bl(&fec[1].cors[ecpos], &fec[0].cors[ecpos], &bec[0].cors[ecpos], textr_idx, -1);
-
-            ecpos =  lintel_bottom_height[solidmsk_center];
-            textr_idx = engine_remap_texture_blocks(center_x, stl_y, texturing->texture_id[5]);
-            do_a_trig_gourad_tr(&fec[0].cors[ecpos], &fec[1].cors[ecpos], &bec[1].cors[ecpos], textr_idx, -1);
-            do_a_trig_gourad_bl(&bec[1].cors[ecpos], &bec[0].cors[ecpos], &fec[0].cors[ecpos], textr_idx, -1);
-        }
-        // Draw the universal ceiling on top of the columns
-        TbBool edge_abyss = abyss && ((center_x == 1) || (center_x == game.map_subtiles_x - 1) || (stl_y == 1) || (stl_y == game.map_subtiles_y - 1));
-        if (!edge_abyss) {
-            ecpos = ENGINE_COL_CEILING_CORNER;
-            textr_idx = floor_to_ceiling_map[colmn->floor_texture * !abyss];
-            textr_idx = engine_remap_texture_blocks(center_x, stl_y, textr_idx);
-            do_a_trig_gourad_tr(&fec[0].cors[ecpos], &fec[1].cors[ecpos], &bec[1].cors[ecpos], textr_idx, -1);
-            do_a_trig_gourad_bl(&bec[1].cors[ecpos], &bec[0].cors[ecpos], &fec[0].cors[ecpos], textr_idx, -1);
-        }
+        draw_cached_column_plan(TCP_Perspective, colmn, mapblk, bec, fec, center_x, stl_y,
+            solidmsk_center, solidmsk_top, solidmsk_bottom, solidmsk_left, solidmsk_right, solidmsk_center, 0);
         bec++;
         fec++;
         center_x++;
@@ -4203,6 +4457,7 @@ static void do_a_gpoly_gourad_tr(struct EngineCoord *ec1, struct EngineCoord *ec
             buckets[bucket_index] = &current_polygon_bucket->b;
             current_polygon_bucket->block = textr_id;
             ec1_fieldA = ec1->shade_intensity;
+            set_polygon_lightmap_coords(current_polygon_bucket, ec1, ec2, ec3);
             ec2_fieldA = ec2->shade_intensity;
             ec3_fieldA = ec3->shade_intensity;
             if ( a5 >= 0 )
@@ -4261,6 +4516,7 @@ static void do_a_gpoly_unlit_tr(struct EngineCoord *ec1, struct EngineCoord *ec2
             buckets[bucket_index] = &current_polygon_bucket->b;
             current_polygon_bucket->block = textr_id;
             current_polygon_bucket->vertex_first.X = ec1->view_width;
+            set_polygon_lightmap_coords(current_polygon_bucket, NULL, NULL, NULL);
             current_polygon_bucket->vertex_first.Y = ec1->view_height;
             current_polygon_bucket->vertex_first.U = 0;
             current_polygon_bucket->vertex_first.V = 0;
@@ -4306,6 +4562,7 @@ static void do_a_gpoly_unlit_bl(struct EngineCoord *ec1, struct EngineCoord *ec2
         buckets[bucket_index] = &current_polygon_bucket->b;
         current_polygon_bucket->block = textr_id;
         current_polygon_bucket->vertex_first.X = ec1->view_width;
+        set_polygon_lightmap_coords(current_polygon_bucket, NULL, NULL, NULL);
         current_polygon_bucket->vertex_first.Y = ec1->view_height;
         current_polygon_bucket->vertex_first.U = 0x1FFFFF;
         current_polygon_bucket->vertex_first.V = 0x1FFFFF;
@@ -4360,6 +4617,7 @@ static void do_a_gpoly_gourad_bl(struct EngineCoord *ec1, struct EngineCoord *ec
             buckets[zdiv16] = &current_polygon_bucket->b;
             current_polygon_bucket->block = textr_id;
             ec1_fieldA = ec1->shade_intensity;
+            set_polygon_lightmap_coords(current_polygon_bucket, ec1, ec2, ec3);
             ec2_fieldA = ec2->shade_intensity;
             ec3_fieldA = ec3->shade_intensity;
             if ( a5 >= 0 )
@@ -4421,6 +4679,115 @@ static void draw_abyss(const struct Column *colmn, const struct Map *mapblk, str
     }
 }
 
+static void emit_column_tr(unsigned mode, struct EngineCoord *a, struct EngineCoord *b, struct EngineCoord *c, short texture, int shade)
+{
+    if (mode == TCP_Perspective) do_a_trig_gourad_tr(a, b, c, texture, shade);
+    else do_a_gpoly_gourad_tr(a, b, c, texture, shade);
+}
+
+static void emit_column_bl(unsigned mode, struct EngineCoord *a, struct EngineCoord *b, struct EngineCoord *c, short texture, int shade)
+{
+    if (mode == TCP_Perspective) do_a_trig_gourad_bl(a, b, c, texture, shade);
+    else do_a_gpoly_gourad_bl(a, b, c, texture, shade);
+}
+
+static void draw_cached_column_plan(unsigned mode, const struct Column *cur_colmn, const struct Map *cur_mapblk,
+    struct EngineCol *bec, struct EngineCol *fec, MapSubtlCoord stl_x, MapSubtlCoord stl_y,
+    unsigned short solidmsk_cur, unsigned short solidmsk_back, unsigned short solidmsk_front,
+    unsigned short solidmsk_left, unsigned short solidmsk_right, unsigned short solidmsk_cur_raw,
+    unsigned char render_map_flags)
+{
+    struct TerrainColumnInputs topology = {0};
+    topology.mode = mode;
+    topology.raw_floor_height = floor_height_table[solidmsk_cur_raw];
+    topology.masks[0] = solidmsk_cur;
+    topology.masks[1] = solidmsk_back;
+    topology.masks[2] = solidmsk_front;
+    topology.masks[3] = solidmsk_left;
+    topology.masks[4] = solidmsk_right;
+    topology.floor_texture = cur_colmn->floor_texture;
+    topology.marked_land = TEXTURE_LAND_MARKED_LAND;
+    topology.marked_gold = TEXTURE_LAND_MARKED_GOLD;
+    topology.unexplored = (render_map_flags & SlbAtFlg_Unexplored) != 0;
+    topology.tagged_valuable = (render_map_flags & SlbAtFlg_TaggedValuable) != 0;
+    topology.valuable = (render_map_flags & SlbAtFlg_Valuable) != 0;
+    topology.floor_height = floor_height_table[solidmsk_cur];
+    topology.lintel_height = lintel_top_height[solidmsk_cur];
+    for (int height = 0; height < COLUMN_STACK_HEIGHT; ++height) {
+        if (!(solidmsk_cur & (1u << height))) continue;
+        const struct CubeConfigStats *cube = get_cube_model_stats(cur_colmn->cubes[height]);
+        topology.sides[height][0] = cube->texture_id[sideoris[0].back_texture_index];
+        topology.sides[height][1] = cube->texture_id[sideoris[0].front_texture_index];
+        topology.sides[height][2] = cube->texture_id[sideoris[0].bottom_texture_index];
+        topology.sides[height][3] = cube->texture_id[sideoris[0].top_texture_index];
+    }
+    const unsigned top_height = mode == TCP_Cluedo ? topology.raw_floor_height : topology.floor_height;
+    if (topology.floor_height && top_height && top_height <= COLUMN_STACK_HEIGHT
+        && (mode == TCP_Perspective || (!topology.unexplored && !topology.tagged_valuable)))
+        topology.top_texture = get_cube_model_stats(cur_colmn->cubes[top_height-1])->texture_id[4];
+    if (topology.lintel_height)
+        topology.lintel_texture = get_cube_model_stats(cur_colmn->cubes[topology.lintel_height-1])->texture_id[4];
+    if (!topology.floor_height || mode == TCP_Perspective)
+        topology.floor_abyss = cube_is_abyss(game.top_cube[cur_colmn->floor_texture]);
+    if (mode == TCP_Perspective) {
+        if (topology.lintel_height) {
+            topology.lintel_bottom_height = lintel_bottom_height[solidmsk_cur];
+            topology.lintel_bottom_texture = get_cube_model_stats(cur_colmn->cubes[topology.lintel_height-1])->texture_id[5];
+        }
+        topology.draw_ceiling = !(topology.floor_abyss && ((stl_x == 1) || (stl_x == game.map_subtiles_x-1)
+            || (stl_y == 1) || (stl_y == game.map_subtiles_y-1)));
+        topology.ceiling_height = ENGINE_COL_CEILING_CORNER;
+        if (topology.draw_ceiling)
+            topology.ceiling_texture = floor_to_ceiling_map[cur_colmn->floor_texture * !topology.floor_abyss];
+    }
+    const struct TerrainColumnPlan *plan = TerrainColumnPlanResolve(WorldSceneEpoch(),
+        stl_x, stl_y, &topology);
+    /* Only topology is cached. Projection, shading, scrolling, clipping and
+     * bucket insertion still execute with this frame's original emitters. */
+    for (unsigned operation = 0; operation < plan->count; ++operation) {
+        const struct TerrainColumnOperation *face = &plan->operations[operation];
+        const int ncor = face->height;
+        if (face->kind == TCP_Abyss) {
+            draw_abyss(cur_colmn, cur_mapblk, bec, fec, stl_x, stl_y);
+            continue;
+        }
+        const unsigned short textr_id = face->top_remap
+            ? engine_remap_top_texture_blocks(stl_x, stl_y, face->texture)
+            : engine_remap_texture_blocks(stl_x, stl_y, face->texture);
+        switch (face->kind) {
+        case TCP_Back:
+            emit_column_tr(mode, &bec[1].cors[ncor+1], &bec[0].cors[ncor+1], &bec[0].cors[ncor], textr_id, normal_shade_back);
+            emit_column_bl(mode, &bec[0].cors[ncor], &bec[1].cors[ncor], &bec[1].cors[ncor+1], textr_id, normal_shade_back);
+            break;
+        case TCP_Front:
+            emit_column_tr(mode, &fec[0].cors[ncor+1], &fec[1].cors[ncor+1], &fec[1].cors[ncor], textr_id, normal_shade_front);
+            emit_column_bl(mode, &fec[1].cors[ncor], &fec[0].cors[ncor], &fec[0].cors[ncor+1], textr_id, normal_shade_front);
+            break;
+        case TCP_Left:
+            emit_column_tr(mode, &bec[0].cors[ncor+1], &fec[0].cors[ncor+1], &fec[0].cors[ncor], textr_id, normal_shade_left);
+            emit_column_bl(mode, &fec[0].cors[ncor], &bec[0].cors[ncor], &bec[0].cors[ncor+1], textr_id, normal_shade_left);
+            break;
+        case TCP_Right:
+            emit_column_tr(mode, &fec[1].cors[ncor+1], &bec[1].cors[ncor+1], &bec[1].cors[ncor], textr_id, normal_shade_right);
+            emit_column_bl(mode, &bec[1].cors[ncor], &fec[1].cors[ncor], &fec[1].cors[ncor+1], textr_id, normal_shade_right);
+            break;
+        case TCP_Bottom:
+            emit_column_tr(mode, &fec[0].cors[ncor], &fec[1].cors[ncor], &bec[1].cors[ncor], textr_id, -1);
+            emit_column_bl(mode, &bec[1].cors[ncor], &bec[0].cors[ncor], &fec[0].cors[ncor], textr_id, -1);
+            break;
+        case TCP_Top:
+            if (face->unlit) {
+                do_a_gpoly_unlit_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id);
+                do_a_gpoly_unlit_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id);
+            } else {
+                emit_column_tr(mode, &bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id, -1);
+                emit_column_bl(mode, &fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id, -1);
+            }
+            break;
+        }
+    }
+}
+
 static void do_a_plane_of_engine_columns_cluedo(long stl_x, long stl_y, long plane_start, long plane_end)
 {
     if ((stl_y < 1) || (stl_y > (game.map_subtiles_y - 1))) {
@@ -4445,6 +4812,7 @@ static void do_a_plane_of_engine_columns_cluedo(long stl_x, long stl_y, long pla
     {
         struct Map *cur_mapblk;
         cur_mapblk = get_map_block_at(stl_x + xaval + xidx, stl_y);
+        WorldSceneCaptureCell(stl_x + xaval + xidx, stl_y);
         unsigned char render_map_flags = get_local_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
         // Get solidmasks of sibling columns
         unsigned short solidmsk_cur_raw;
@@ -4533,91 +4901,8 @@ static void do_a_plane_of_engine_columns_cluedo(long stl_x, long stl_y, long pla
         struct EngineCol *fec;
         bec = &back_ec[xaval + MINMAX_ALMOST_HALF + xidx];
         fec = &front_ec[xaval + MINMAX_ALMOST_HALF + xidx];
-        unsigned short mask;
-        int ncor;
-        for (mask=1,ncor=0; mask <= solidmsk_cur; mask*=2,ncor++)
-        {
-            unsigned short textr_id;
-            struct CubeConfigStats *cubed;
-            cubed = get_cube_model_stats(cur_colmn->cubes[ncor]);
-            if ((mask & solidmsk_cur) == 0)
-            {
-                continue;
-            }
-            if ((mask & solidmsk_back) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].back_texture_index]);
-                do_a_gpoly_gourad_tr(&bec[1].cors[ncor+1], &bec[0].cors[ncor+1], &bec[0].cors[ncor],   textr_id, normal_shade_back);
-                do_a_gpoly_gourad_bl(&bec[0].cors[ncor],   &bec[1].cors[ncor],   &bec[1].cors[ncor+1], textr_id, normal_shade_back);
-            }
-            if ((solidmsk_front & mask) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].front_texture_index]);
-                do_a_gpoly_gourad_tr(&fec[0].cors[ncor+1], &fec[1].cors[ncor+1], &fec[1].cors[ncor],   textr_id, normal_shade_front);
-                do_a_gpoly_gourad_bl(&fec[1].cors[ncor],   &fec[0].cors[ncor],   &fec[0].cors[ncor+1], textr_id, normal_shade_front);
-            }
-            if ((solidmsk_left & mask) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].bottom_texture_index]);
-                do_a_gpoly_gourad_tr(&bec[0].cors[ncor+1], &fec[0].cors[ncor+1], &fec[0].cors[ncor],   textr_id, normal_shade_left);
-                do_a_gpoly_gourad_bl(&fec[0].cors[ncor],   &bec[0].cors[ncor],   &bec[0].cors[ncor+1], textr_id, normal_shade_left);
-            }
-            if ((solidmsk_right & mask) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].top_texture_index]);
-                do_a_gpoly_gourad_tr(&fec[1].cors[ncor+1], &bec[1].cors[ncor+1], &bec[1].cors[ncor],   textr_id, normal_shade_right);
-                do_a_gpoly_gourad_bl(&bec[1].cors[ncor],   &fec[1].cors[ncor],   &fec[1].cors[ncor+1], textr_id, normal_shade_right);
-            }
-        }
-        draw_abyss(cur_colmn, cur_mapblk, bec, fec, stl_x + xaval + xidx, stl_y);
-
-        ncor = floor_height_table[solidmsk_cur];
-        if ((ncor > 0) && (ncor <= COLUMN_STACK_HEIGHT))
-        {
-            int ncor_raw;
-            ncor_raw = floor_height_table[solidmsk_cur_raw];
-            if ( (render_map_flags & SlbAtFlg_Unexplored) != 0 )
-            {
-                unsigned short textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, TEXTURE_LAND_MARKED_LAND);
-                do_a_gpoly_unlit_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id);
-                do_a_gpoly_unlit_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id);
-            } else
-            if ((render_map_flags & SlbAtFlg_TaggedValuable) != 0)
-            {
-                unsigned short textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, TEXTURE_LAND_MARKED_GOLD);
-                do_a_gpoly_unlit_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id);
-                do_a_gpoly_unlit_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id);
-            } else
-             {
-                if ((ncor_raw > 0) && (ncor_raw <= COLUMN_STACK_HEIGHT))
-                {
-                    struct CubeConfigStats * cubed = get_cube_model_stats(cur_colmn->cubes[ncor_raw-1]);
-                    unsigned short textr_id = engine_remap_top_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[4]);
-                    // Top surface in cluedo mode
-                    do_a_gpoly_gourad_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id, -1);
-                    do_a_gpoly_gourad_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id, -1);
-                }
-            }
-        } else if (!cube_is_abyss(game.top_cube[cur_colmn->floor_texture])) {
-            if ((render_map_flags & SlbAtFlg_Unexplored) == 0) {
-                unsigned short textr_id = engine_remap_top_texture_blocks(stl_x + xaval + xidx, stl_y, cur_colmn->floor_texture);
-                do_a_gpoly_gourad_tr(&bec[0].cors[0], &bec[1].cors[0], &fec[1].cors[0], textr_id, -1);
-                do_a_gpoly_gourad_bl(&fec[1].cors[0], &fec[0].cors[0], &bec[0].cors[0], textr_id, -1);
-            } else {
-                unsigned short textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, TEXTURE_LAND_MARKED_LAND);
-                do_a_gpoly_unlit_tr(&bec[0].cors[0], &bec[1].cors[0], &fec[1].cors[0], textr_id);
-                do_a_gpoly_unlit_bl(&fec[1].cors[0], &fec[0].cors[0], &bec[0].cors[0], textr_id);
-            }
-        }
-        ncor = lintel_top_height[solidmsk_cur];
-        if ((ncor > 0) && (ncor <= COLUMN_STACK_HEIGHT))
-        {
-            struct CubeConfigStats * cubed;
-            cubed = get_cube_model_stats(cur_colmn->cubes[ncor-1]);
-            unsigned short textr_id = engine_remap_top_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[4]);
-            do_a_gpoly_gourad_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id, -1);
-            do_a_gpoly_gourad_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id, -1);
-        }
+        draw_cached_column_plan(TCP_Cluedo, cur_colmn, cur_mapblk, bec, fec, stl_x+xaval+xidx, stl_y,
+            solidmsk_cur, solidmsk_back, solidmsk_front, solidmsk_left, solidmsk_right, solidmsk_cur_raw, render_map_flags);
     }
 }
 
@@ -4652,6 +4937,7 @@ static void do_a_plane_of_engine_columns_isometric(long stl_x, long stl_y, long 
     {
         struct Map *cur_mapblk;
         cur_mapblk = get_map_block_at(stl_x + xaval + xidx, stl_y);
+        WorldSceneCaptureCell(stl_x + xaval + xidx, stl_y);
         unsigned char render_map_flags = get_local_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
         // Get column to be drawn
         const struct Column *cur_colmn;
@@ -4721,88 +5007,8 @@ static void do_a_plane_of_engine_columns_isometric(long stl_x, long stl_y, long 
         struct EngineCol *fec;
         bec = &back_ec[xaval + MINMAX_ALMOST_HALF + xidx];
         fec = &front_ec[xaval + MINMAX_ALMOST_HALF + xidx];
-        unsigned short mask;
-        int ncor;
-        for (mask=1,ncor=0; mask <= solidmsk_cur; mask*=2,ncor++)
-        {
-            unsigned short textr_id;
-            struct CubeConfigStats *cubed;
-            cubed = get_cube_model_stats(cur_colmn->cubes[ncor]);
-            if ((mask & solidmsk_cur) == 0)
-            {
-                continue;
-            }
-            if ((mask & solidmsk_back) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].back_texture_index]);
-                do_a_gpoly_gourad_tr(&bec[1].cors[ncor+1], &bec[0].cors[ncor+1], &bec[0].cors[ncor],   textr_id, normal_shade_back);
-                do_a_gpoly_gourad_bl(&bec[0].cors[ncor],   &bec[1].cors[ncor],   &bec[1].cors[ncor+1], textr_id, normal_shade_back);
-            }
-            if ((solidmsk_front & mask) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].front_texture_index]);
-                do_a_gpoly_gourad_tr(&fec[0].cors[ncor+1], &fec[1].cors[ncor+1], &fec[1].cors[ncor],   textr_id, normal_shade_front);
-                do_a_gpoly_gourad_bl(&fec[1].cors[ncor],   &fec[0].cors[ncor],   &fec[0].cors[ncor+1], textr_id, normal_shade_front);
-            }
-            if ((solidmsk_left & mask) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].bottom_texture_index]);
-                do_a_gpoly_gourad_tr(&bec[0].cors[ncor+1], &fec[0].cors[ncor+1], &fec[0].cors[ncor],   textr_id, normal_shade_left);
-                do_a_gpoly_gourad_bl(&fec[0].cors[ncor],   &bec[0].cors[ncor],   &bec[0].cors[ncor+1], textr_id, normal_shade_left);
-            }
-            if ((solidmsk_right & mask) == 0)
-            {
-                textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[sideoris[0].top_texture_index]);
-                do_a_gpoly_gourad_tr(&fec[1].cors[ncor+1], &bec[1].cors[ncor+1], &bec[1].cors[ncor],   textr_id, normal_shade_right);
-                do_a_gpoly_gourad_bl(&bec[1].cors[ncor],   &fec[1].cors[ncor],   &fec[1].cors[ncor+1], textr_id, normal_shade_right);
-            }
-        }
-        draw_abyss(cur_colmn, cur_mapblk, bec, fec, stl_x + xaval + xidx, stl_y);
-
-        ncor = floor_height_table[solidmsk_cur];
-        if (ncor > 0)
-        {
-            if (render_map_flags & SlbAtFlg_Unexplored)
-            {
-                unsigned short textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, TEXTURE_LAND_MARKED_LAND);
-                do_a_gpoly_unlit_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id);
-                do_a_gpoly_unlit_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id);
-            }
-            else if ((render_map_flags & (SlbAtFlg_TaggedValuable|SlbAtFlg_Unexplored)) == 0)
-            {
-                struct CubeConfigStats * cubed;
-                cubed = get_cube_model_stats(*(short *)((char *)&cur_colmn->floor_texture + 2 * ncor + 1));
-                unsigned short textr_id = engine_remap_top_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[4]);
-                // Top surface on full iso mode
-                do_a_gpoly_gourad_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id, -1);
-                do_a_gpoly_gourad_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id, -1);
-            } else
-            if ((render_map_flags & SlbAtFlg_Valuable) != 0)
-            {
-                unsigned short textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, TEXTURE_LAND_MARKED_GOLD);
-                do_a_gpoly_unlit_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id);
-                do_a_gpoly_unlit_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id);
-            }
-        } else if (!cube_is_abyss(game.top_cube[cur_colmn->floor_texture])) {
-            if ((render_map_flags & SlbAtFlg_Unexplored) == 0) {
-                unsigned short textr_id = engine_remap_top_texture_blocks(stl_x + xaval + xidx, stl_y, cur_colmn->floor_texture);
-                do_a_gpoly_gourad_tr(&bec[0].cors[0], &bec[1].cors[0], &fec[1].cors[0], textr_id, -1);
-                do_a_gpoly_gourad_bl(&fec[1].cors[0], &fec[0].cors[0], &bec[0].cors[0], textr_id, -1);
-            } else {
-                unsigned short textr_id = engine_remap_texture_blocks(stl_x + xaval + xidx, stl_y, TEXTURE_LAND_MARKED_LAND);
-                do_a_gpoly_unlit_tr(&bec[0].cors[0], &bec[1].cors[0], &fec[1].cors[0], textr_id);
-                do_a_gpoly_unlit_bl(&fec[1].cors[0], &fec[0].cors[0], &bec[0].cors[0], textr_id);
-            }
-        }
-        ncor = lintel_top_height[solidmsk_cur];
-        if (ncor > 0)
-        {
-            struct CubeConfigStats * cubed;
-            cubed = get_cube_model_stats(*(short *)((char *)&cur_colmn->floor_texture + 2 * ncor + 1));
-            unsigned short textr_id = engine_remap_top_texture_blocks(stl_x + xaval + xidx, stl_y, cubed->texture_id[4]);
-            do_a_gpoly_gourad_tr(&bec[0].cors[ncor], &bec[1].cors[ncor], &fec[1].cors[ncor], textr_id, -1);
-            do_a_gpoly_gourad_bl(&fec[1].cors[ncor], &fec[0].cors[ncor], &bec[0].cors[ncor], textr_id, -1);
-        }
+        draw_cached_column_plan(TCP_Isometric, cur_colmn, cur_mapblk, bec, fec, stl_x+xaval+xidx, stl_y,
+            solidmsk_cur, solidmsk_back, solidmsk_front, solidmsk_left, solidmsk_right, solidmsk_cur, render_map_flags);
     }
 }
 
@@ -4906,7 +5112,7 @@ static void process_keeper_flame_on_sprite(struct BucketKindJontySprite* jspr, l
     }
 }
 
-static unsigned short get_thing_shade(struct Thing* thing);
+unsigned short get_thing_shade(struct Thing* thing);
 void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr)
 {
     unsigned short flg_mem;
@@ -4914,6 +5120,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
     const struct PlayerInfo *player = get_displayed_player();
     struct ObjectConfigStats* objst;
     struct Thing *thing = jspr->thing;
+    WorldSceneTraceObject(thing->index);
     unsigned short animation_sprite;
     unsigned char current_frame;
     short angle;
@@ -4986,7 +5193,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
         || (thing->class_id == TCls_DeadCreature)
         || (player->work_state == PSt_QueryAll))
     {
-        if ((local_state.local_thing_under_hand == thing->index) && ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)) {
+        if (render_thing_is_hovered(thing) && render_hover_blink_on()) {
             RendererAddDrawFlags(Lb_SPRITE_REMAP);
             lbSpriteReMapPtr = white_pal;
         } else {
@@ -5003,6 +5210,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
         thing_being_displayed_is_creature = 0;
         thing_being_displayed = NULL;
     }
+    record_engine_reference_hover_remap(thing);
     {
         int wants_outline = (g_renderer_settings.creature_outline_class_mask >> thing->class_id) & 1u;
         if ((get_player_view_type(player) == PVT_CreatureContrl) || (get_player_view_type(player) == PVT_CreaturePasngr))
@@ -6560,6 +6768,7 @@ void display_drawlist(void) // Draws isometric and 1st person view. Not frontvie
     render_alpha = (unsigned char *)&alpha_sprite_table;
     render_problems = 0;
     thing_pointed_at = 0;
+    WorldSceneTraceBegin(0);
 
     // The bucket list is the final step in drawing something to the screen. Visuals are added to the bucket list in previous functions.
     for (bucket_num = BUCKETS_COUNT-1; bucket_num > 0; bucket_num--)
@@ -6567,6 +6776,7 @@ void display_drawlist(void) // Draws isometric and 1st person view. Not frontvie
         for (item.b = buckets[bucket_num]; item.b != NULL; item.b = item.b->next)
         {
             //JUSTLOG("%d",(int)item.b->kind);
+            WorldSceneTraceBucket(bucket_num, item.b->kind);
             switch ( item.b->kind )
             {
             case QK_PolygonStandard: // All textured polygons for isometric and 'far' textures in 1st person view
@@ -6582,6 +6792,7 @@ void display_drawlist(void) // Draws isometric and 1st person view. Not frontvie
                 break;
             case QK_CreatureShadow: // Shadows of creatures in isometric and 1st person view
                 // TODO: this could be cached
+                WorldSceneTraceShadowBegin(item.creatureShadow->caster_slot);
                 draw_keepsprite_unscaled_in_buffer(item.creatureShadow->anim_sprite, item.creatureShadow->angle, item.creatureShadow->current_frame, big_scratch);
                 vec_map = big_scratch;
                 vec_mode = VM_SpriteTranslucent;
@@ -6626,6 +6837,7 @@ void display_drawlist(void) // Draws isometric and 1st person view. Not frontvie
             }
         }
     }
+    WorldSceneTraceEnd();
     if (render_problems > 0)
       WARNLOG("Incurred %lu rendering problems; last was with poly kind %ld",render_problems,render_prob_kind);
 }
@@ -6758,6 +6970,8 @@ void draw_view(struct Camera *cam, unsigned char a2)
     long y = cam->mappos.y.val;
     long z = cam->mappos.z.val;
 
+    begin_engine_reference_hover();
+    begin_engine_reference_selector();
     getpoly = poly_pool;
     memset(buckets, 0, sizeof(buckets));
     if (map_volume_box.visible)
@@ -6810,6 +7024,8 @@ void draw_view(struct Camera *cam, unsigned char a2)
     find_gamut();
     fiddle_gamut(xcell, ycell + (cells_away+1));
 
+    WorldSceneBegin(cam, &camera_matrix, 0, temp_cluedo_mode);
+    WorldSceneCaptureSurfaceMotion(render_abyss_lava_scroll, render_abyss_water_scroll);
     draw_view_map_plane(cam, aposc, bposc, xcell, ycell);
 
     if (map_volume_box.visible && should_draw_cursor_box(my_player_number)) {
@@ -6818,6 +7034,8 @@ void draw_view(struct Camera *cam, unsigned char a2)
     }
 
     WorldViewRenderer_DrawIsometricView();
+    end_engine_reference_selector();
+    end_engine_reference_hover();
     cam->zoom = zoom_mem;//TODO [zoom] remove when all cam->zoom will be changed to camera_zoom
     SYNCDBG(9,"Finished");
 }
@@ -6895,11 +7113,13 @@ void display_fast_drawlist(struct Camera *cam) // Draws frontview only. Not isom
     render_alpha = (unsigned char *)&alpha_sprite_table;
     render_problems = 0;
     thing_pointed_at = 0;
+    WorldSceneTraceBegin(0);
 
     for (bucket_num = BUCKETS_COUNT-1; bucket_num >= 0; bucket_num--)
     {
         for (item.b = buckets[bucket_num]; item.b != NULL; item.b = item.b->next)
         {
+            WorldSceneTraceBucket(bucket_num, item.b->kind);
             switch (item.b->kind)
             {
             case QK_JontySprite: // Creatures and things
@@ -6938,6 +7158,7 @@ void display_fast_drawlist(struct Camera *cam) // Draws frontview only. Not isom
             }
         }
     } // end for(bucket_num...
+    WorldSceneTraceEnd();
     if (render_problems > 0) {
         WARNLOG("Incurred %lu rendering problems; last was with poly kind %ld",render_problems,render_prob_kind);
     }
@@ -7262,14 +7483,13 @@ static void prepare_lightness_intensity_array(long stl_x, long stl_y, int32_t *a
 
 static void draw_element(struct Map *map, long lightness, long stl_x, long stl_y, long pos_x, long pos_y, long zoom, unsigned char qdrant, int32_t *ymax)
 {
+    WorldSceneCaptureCell(stl_x, stl_y);
     struct PlayerInfo *myplyr;
     TbBool sibrevealed[3][3];
-    struct CubeConfigStats *cube_config_stats;
     int32_t lightness_arr[4][9];
     long bckt_idx;
     long cube_itm;
     long delta_y;
-    long tc; // top cube index
     long x;
     long y;
     long i;
@@ -7360,84 +7580,54 @@ static void draw_element(struct Map *map, long lightness, long stl_x, long stl_y
         add_lgttextrdquad_to_polypool(pos_x, pos_y + zoom + i * delta_y, textr_idx, zoom, (ABYSS_DEPTH - i) * delta_y, 0, 0, 0, 0, 0, bckt_face);
     }
 
+    struct FrontTerrainInputs topology = {0};
+    topology.solidmask = col->solidmask;
+    topology.ceiling_filled = get_column_ceiling_filled_subtiles(col) != 0;
+    for (unsigned height = 0; height < COLUMN_STACK_HEIGHT; ++height) {
+        topology.present[height] = col->cubes[height] != 0;
+        if (topology.present[height]) {
+            const struct CubeConfigStats *cube = get_cube_model_stats(col->cubes[height]);
+            topology.side_texture[height] = cube->texture_id[cube_itm];
+            topology.top_texture[height] = cube->texture_id[4];
+        }
+    }
+    const struct FrontTerrainPlan *plan = FrontTerrainPlanResolve(WorldSceneEpoch(), stl_x, stl_y, &topology);
     y = zoom + pos_y;
-    cube_config_stats = NULL;
-    for (tc=0; tc < COLUMN_STACK_HEIGHT; tc++)
-    {
-      if (col->cubes[tc] == 0)
-        break;
-      y -= delta_y;
-      cube_config_stats = get_cube_model_stats(col->cubes[tc]);
-      if (*ymax > y)
-      {
-        *ymax = y;
-        textr_idx = engine_remap_texture_blocks(stl_x, stl_y, cube_config_stats->texture_id[cube_itm]);
-        add_lgttextrdquad_to_polypool(pos_x, y, textr_idx, zoom, delta_y, 0,
-            lightness_arr[3][tc+1], lightness_arr[2][tc+1], lightness_arr[2][tc], lightness_arr[3][tc], bckt_face);
-      }
-    }
-
-    if (cube_config_stats != NULL)
-    {
-      i = y - zoom;
-      if (*ymax > i)
-      {
-        *ymax = i;
-        if ((map->flags & SlbAtFlg_TaggedValuable) != 0)
-        {
-          add_textruredquad_to_polypool(pos_x, i, engine_remap_texture_blocks(stl_x, stl_y, cube_config_stats->texture_id[4]), zoom, qdrant, TO_FIXED(32), 1, bckt_top);
-        } else
-        if ((map->flags & SlbAtFlg_Unexplored) != 0)
-        {
-          add_textruredquad_to_polypool(pos_x, i, engine_remap_texture_blocks(stl_x, stl_y, cube_config_stats->texture_id[4]), zoom, qdrant, TO_FIXED(32), 0, bckt_top);
-        } else
-        {
-          textr_idx = engine_remap_top_texture_blocks(stl_x, stl_y, cube_config_stats->texture_id[4]);
-          add_lgttextrdquad_to_polypool(pos_x, i, textr_idx, zoom, zoom, qdrant,
-              lightness_arr[0][tc], lightness_arr[1][tc], lightness_arr[2][tc], lightness_arr[3][tc], bckt_top);
-        }
-      }
-    }
-
-    // If there are still some solid cubes higher than tc
-    if ((get_column_ceiling_filled_subtiles(col) != 0) && (col->solidmask > (1 << tc)))
-    {
-        // Find any top cube separated by empty space
-        for (;tc < COLUMN_STACK_HEIGHT; tc++)
-        {
-            if (col->cubes[tc] != 0)
-              break;
-            y -= delta_y;
-        }
-
-        for (;tc < COLUMN_STACK_HEIGHT; tc++)
-        {
-            if (col->cubes[tc] == 0)
-              break;
-            y -= delta_y;
-            cube_config_stats = get_cube_model_stats(col->cubes[tc]);
-            if (*ymax > y)
-            {
-              textr_idx = engine_remap_texture_blocks(stl_x, stl_y, cube_config_stats->texture_id[cube_itm]);
-              add_lgttextrdquad_to_polypool(pos_x, y, textr_idx, zoom, delta_y, 0,
-                  lightness_arr[3][tc+1], lightness_arr[2][tc+1], lightness_arr[2][tc], lightness_arr[3][tc], bckt_face);
+    unsigned height = 0;
+    for (unsigned operation = 0; operation < plan->count; ++operation) {
+        const struct FrontTerrainOperation *op = &plan->operations[operation];
+        // Keep the original subtraction order, including empty gaps in the column.
+        while (height < op->height) { y -= delta_y; ++height; }
+        if (op->kind == FTP_Side) {
+            if (*ymax > y) {
+                if (op->lower_run) *ymax = y;
+                textr_idx = engine_remap_texture_blocks(stl_x, stl_y, op->texture);
+                add_lgttextrdquad_to_polypool(pos_x, y, textr_idx, zoom, delta_y, 0,
+                    lightness_arr[3][height], lightness_arr[2][height],
+                    lightness_arr[2][height-1], lightness_arr[3][height-1], bckt_face);
+            }
+        } else {
+            i = y - zoom;
+            if (*ymax > i) {
+                // Upper-run faces deliberately do not change the scanline occluder.
+                if (op->lower_run) *ymax = i;
+                if (op->lower_run && (map->flags & SlbAtFlg_TaggedValuable)) {
+                    add_textruredquad_to_polypool(pos_x, i, engine_remap_texture_blocks(stl_x, stl_y, op->texture),
+                        zoom, qdrant, TO_FIXED(32), 1, bckt_top);
+                } else if (op->lower_run && (map->flags & SlbAtFlg_Unexplored)) {
+                    add_textruredquad_to_polypool(pos_x, i, engine_remap_texture_blocks(stl_x, stl_y, op->texture),
+                        zoom, qdrant, TO_FIXED(32), 0, bckt_top);
+                } else {
+                    textr_idx = engine_remap_top_texture_blocks(stl_x, stl_y, op->texture);
+                    add_lgttextrdquad_to_polypool(pos_x, i, textr_idx, zoom, zoom, qdrant,
+                        lightness_arr[0][height], lightness_arr[1][height], lightness_arr[2][height], lightness_arr[3][height], bckt_top);
+                }
             }
         }
-        if (cube_config_stats != NULL)
-        {
-          i = y - zoom;
-          if (*ymax > i)
-          {
-              textr_idx = engine_remap_top_texture_blocks(stl_x, stl_y, cube_config_stats->texture_id[4]);
-            add_lgttextrdquad_to_polypool(pos_x, i, textr_idx, zoom, zoom, qdrant,
-                lightness_arr[0][tc], lightness_arr[1][tc], lightness_arr[2][tc], lightness_arr[3][tc], bckt_top);
-          }
-        }
     }
-
 }
 
-static unsigned short get_thing_shade(struct Thing* thing)
+unsigned short get_thing_shade(struct Thing* thing)
 {
     MapSubtlCoord stl_x;
     MapSubtlCoord stl_y;
@@ -7475,17 +7665,132 @@ static unsigned short get_thing_shade(struct Thing* thing)
     return shval;
 }
 
+uint64_t next_keepersprite_publication_stamp(void)
+{
+    if (keeper_sprite_publication_serial != UINT64_MAX)
+        keeper_sprite_publication_serial++;
+    // Zero is unavailable; MAX permanently saturates instead of reusing identity.
+    return keeper_sprite_publication_serial == UINT64_MAX ? 0 : keeper_sprite_publication_serial;
+}
+
+void clear_standard_keepersprite_source_identity(void)
+{
+    memset(keeper_sprite_source_stamps, 0, sizeof(keeper_sprite_source_stamps));
+    memset(keeper_sprite_loaded_bytes, 0, sizeof(keeper_sprite_loaded_bytes));
+}
+
 static long load_single_frame(TbSpriteData *data_ptr, unsigned short kspr_idx)
 {
-    long nlength;
-    nlength = creature_table[kspr_idx+1].DataOffset - creature_table[kspr_idx].DataOffset;
-    *data_ptr = he_alloc(nlength);
+    if (creature_table == NULL || kspr_idx >= KEEPSPRITE_LENGTH || (size_t)kspr_idx + 1 >= creature_table_length
+        || data_ptr != &sprite_heap_handle[kspr_idx] || jty_file_handle == NULL)
+        return 0;
+    const uint32_t begin = creature_table[kspr_idx].DataOffset;
+    const uint32_t end = creature_table[kspr_idx + 1].DataOffset;
+    if (end <= begin || end - begin > INT_MAX)
+        return 0;
+#if LONG_MAX < UINT32_MAX
+    if (begin > LONG_MAX) return 0;
+#endif
+    const size_t length = (size_t)(end - begin);
+    const long file_length = LbFileLengthHandle(jty_file_handle);
+    if (file_length < 0 || (uint64_t)end > (uint64_t)file_length)
+        return 0;
 
-    LbFileSeek(jty_file_handle, creature_table[kspr_idx].DataOffset, 0);
-    LbFileRead(jty_file_handle, *data_ptr, nlength);
-
+    // Read into separately owned temporary storage. A failed read must never
+    // publish uninitialized bytes or require freeing a sprite-heap allocation.
+    unsigned char *loaded = malloc(length);
+    if (loaded == NULL)
+        return 0;
+    if (LbFileSeek(jty_file_handle, (long)begin, Lb_FILE_SEEK_BEGINNING) != 0
+        || LbFileRead(jty_file_handle, loaded, (unsigned long)length) != (int)length)
+    {
+        free(loaded);
+        return 0;
+    }
+    TbSpriteData resident = he_alloc(length);
+    if (resident == NULL)
+    {
+        free(loaded);
+        return 0;
+    }
+    memcpy(resident, loaded, length);
+    free(loaded);
+    keeper_sprite_loaded_bytes[kspr_idx] = length;
+    keeper_sprite_source_stamps[kspr_idx] = next_keepersprite_publication_stamp();
+    *data_ptr = resident;
     keepsprite[kspr_idx] = data_ptr;
     return 1;
+}
+
+TbBool get_keepersprite_source_extent(int32_t draw_idx,
+    const unsigned char *expected_data, size_t *out_bytes)
+{
+    if (out_bytes == NULL) return false;
+    *out_bytes = 0;
+    if (expected_data == NULL) return false;
+    if (draw_idx < 0)
+    {
+        // Identity-free fallback may still name known resident storage. Never
+        // infer a byte extent from image dimensions or an arbitrary pointer.
+        for (int32_t i = 0; i < KEEPSPRITE_LENGTH; ++i)
+            if (sprite_heap_handle[i] == expected_data
+                && get_keepersprite_source_extent(i, expected_data, out_bytes)) return true;
+        for (int32_t i = 0; i < KEEPERSPRITE_ADD_NUM; ++i)
+            if (keepersprite_add[i] == expected_data
+                && get_keepersprite_source_extent(i + KEEPERSPRITE_ADD_OFFSET,
+                    expected_data, out_bytes)) return true;
+        return false;
+    }
+    if (draw_idx >= KEEPERSPRITE_ADD_OFFSET)
+    {
+        const size_t index = (size_t)(draw_idx - KEEPERSPRITE_ADD_OFFSET);
+        if (index >= KEEPERSPRITE_ADD_NUM || keepersprite_add[index] != expected_data)
+            return false;
+        *out_bytes = keepersprite_add_bytes[index];
+    }
+    else
+    {
+        if (draw_idx >= KEEPSPRITE_LENGTH
+            || keepsprite[draw_idx] != &sprite_heap_handle[draw_idx]
+            || sprite_heap_handle[draw_idx] != expected_data)
+            return false;
+        *out_bytes = keeper_sprite_loaded_bytes[draw_idx];
+    }
+    return *out_bytes != 0;
+}
+
+TbBool get_keepersprite_source_identity(int32_t draw_idx,
+    const unsigned char *expected_data, int32_t *out_resolved_idx,
+    size_t *out_bytes, uint64_t *out_stamp)
+{
+    if (out_resolved_idx != NULL) *out_resolved_idx = -1;
+    if (out_bytes != NULL) *out_bytes = 0;
+    if (out_stamp != NULL) *out_stamp = 0;
+    if (out_resolved_idx == NULL || out_bytes == NULL || out_stamp == NULL
+        || expected_data == NULL || keeper_sprite_publication_serial == UINT64_MAX)
+        return false;
+    if (draw_idx < 0)
+    {
+        for (int32_t i = 0; i < KEEPSPRITE_LENGTH; ++i)
+            if (sprite_heap_handle[i] == expected_data
+                && get_keepersprite_source_identity(i, expected_data,
+                    out_resolved_idx, out_bytes, out_stamp)) return true;
+        for (int32_t i = 0; i < KEEPERSPRITE_ADD_NUM; ++i)
+            if (keepersprite_add[i] == expected_data
+                && get_keepersprite_source_identity(i + KEEPERSPRITE_ADD_OFFSET,
+                    expected_data, out_resolved_idx, out_bytes, out_stamp)) return true;
+        return false;
+    }
+    size_t bytes;
+    if (!get_keepersprite_source_extent(draw_idx, expected_data, &bytes)) return false;
+    const uint64_t stamp = draw_idx >= KEEPERSPRITE_ADD_OFFSET
+        ? keepersprite_add_stamps[draw_idx - KEEPERSPRITE_ADD_OFFSET]
+        : keeper_sprite_source_stamps[draw_idx];
+    if (stamp == 0) return false;
+    *out_resolved_idx = draw_idx;
+    *out_bytes = bytes;
+    *out_stamp = stamp;
+    return true;
 }
 
 static long load_keepersprite_if_needed(unsigned short kspr_idx)
@@ -7493,12 +7798,17 @@ static long load_keepersprite_if_needed(unsigned short kspr_idx)
     int frame_num;
     int frame_count;
     struct KeeperSprite *kspr_arr;
+    if (creature_table == NULL || kspr_idx >= KEEPSPRITE_LENGTH || (size_t)kspr_idx >= creature_table_length)
+        return 0;
     kspr_arr = &creature_table[kspr_idx];
     if (kspr_arr->Rotable) {
         frame_count = 5 * kspr_arr->FramesCount;
     } else {
         frame_count = kspr_arr->FramesCount;
     }
+    if (frame_count <= 0 || (size_t)kspr_idx + frame_count >= creature_table_length
+        || (size_t)kspr_idx + frame_count > KEEPSPRITE_LENGTH)
+        return 0;
     for (frame_num=0; frame_num < frame_count; frame_num++)
     {
         TbSpriteData *sprite_data_ptr = &sprite_heap_handle[kspr_idx+frame_num];
@@ -7596,6 +7906,17 @@ TbBool resolve_keepersprite_draw_data(unsigned short anim_sprite, short angle,
     return true;
 }
 
+TbBool resolve_keepersprite_draw_source(unsigned short anim_sprite, short angle,
+    unsigned char current_frame, int32_t *out_draw_idx,
+    const unsigned char **out_data, size_t *out_bytes, int *out_src_w, int *out_src_h,
+    const struct KeeperSprite **out_kspr)
+{
+    if (out_bytes == NULL) return false;
+    *out_bytes = 0;
+    return resolve_keepersprite_draw_data(anim_sprite, angle, current_frame,
+        out_draw_idx, out_data, out_src_w, out_src_h, out_kspr)
+        && get_keepersprite_source_extent(*out_draw_idx, *out_data, out_bytes);
+}
 TbBool resolve_keepersprite_cursor_geometry(short x, short y, unsigned short kspr_base,
     short kspr_angle, unsigned char sprgroup, long scale,
     struct SpriteScale *out_scale,
@@ -8016,6 +8337,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
     unsigned char alpha_mem;
     const struct PlayerInfo *player = get_displayed_player();
     struct Thing *thing = jspr->thing;
+    WorldSceneTraceObject(thing->index);
     unsigned short animation_sprite;
     unsigned char current_frame;
     long angle;
@@ -8054,7 +8376,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
 
     if (!thing_is_invalid(thing))
     {
-        if ((local_state.local_thing_under_hand == thing->index) && ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)) {
+        if (render_thing_is_hovered(thing) && render_hover_blink_on()) {
           struct Camera *active_cam = get_local_active_camera(get_my_player());
           if ((active_cam != NULL) && (active_cam->view_mode == PVM_IsoWibbleView || active_cam->view_mode == PVM_IsoStraightView))
           {
@@ -8101,6 +8423,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
         thing_being_displayed_is_creature = 0;
         thing_being_displayed = NULL;
     }
+    record_engine_reference_hover_remap(thing);
     {
         int wants_outline = (g_renderer_settings.creature_outline_class_mask >> thing->class_id) & 1u;
         if ((get_player_view_type(player) == PVT_CreatureContrl) || (get_player_view_type(player) == PVT_CreaturePasngr))
@@ -8409,6 +8732,11 @@ static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angl
             sprite_to_sbuff(sprite_data, &outbuf[0], kspr->SHeight, 256);
         }
     }
+    else
+    {
+        return;
+    }
+    WorldSceneTraceShadowMask(outbuf, fill_w, fill_h);
 }
 
 static void update_frontview_pointed_block(unsigned long laaa, unsigned char qdrant, long w, long h, long qx, long qy)
@@ -8725,13 +9053,16 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
     unsigned char default_color = map_volume_box.color;
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
-    struct RoomSpace *render_roomspace = get_local_dig_prediction_render_roomspace(&current_player->render_roomspace);
+    struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
+        : get_local_dig_prediction_render_roomspace(&current_player->render_roomspace);
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
-    if ((current_player->roomspace.is_active) && ((current_player->work_state == PSt_Sell) || (current_player->work_state == PSt_BuildRoom)))
+    const TbBool build_in_progress = map_volume_box_build_in_progress(current_player);
+    if (build_in_progress)
     {
         line_color = SLC_REDYELLOW; // change the cursor color to indicate to the user that nothing else can be built or sold at the moment
     }
+    begin_reference_room_geometry(plyr_idx, render_roomspace, line_color, build_in_progress);
     if (render_roomspace->render_roomspace_as_box)
     {
         if (render_roomspace->is_roomspace_a_box)
@@ -8753,6 +9084,7 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
         create_fancy_frontview_map_volume_box(*render_roomspace, cam, stl_width, line_color, false);
     }
     map_volume_box.color = default_color;
+    reference_room_emitting = false;
 }
 
 TbBool cursor_on_room(RoomIndex room_index)
@@ -8795,6 +9127,7 @@ static void do_map_who_for_thing(struct Thing *thing)
     struct NearestLights nearlgt;
 
     const struct ThingInterpolateResult interp = interpolate_thing(thing);
+    WorldSceneCaptureObject(thing, &interp);
     const int render_pos_x = interp.mappos.x.val;
     const int render_pos_y = interp.mappos.z.val;
     const int render_pos_z = interp.mappos.y.val;
@@ -8958,6 +9291,7 @@ static void draw_frontview_thing_on_element(struct Thing *thing, struct Map *map
 {
     // The draw_frontview_thing_on_element() function is the FrontView equivalent of do_map_who_for_thing()
     struct ThingInterpolateResult interp = interpolate_thing(thing);
+    WorldSceneCaptureObject(thing, &interp);
 
     int32_t cx;
     int32_t cy;
@@ -9156,6 +9490,8 @@ void draw_frontview_engine(struct Camera *cam)
 
     update_frontview_pointed_block(zoom, qdrant, px, py, qx, qy);
     update_local_mouse_light();
+    begin_engine_reference_hover();
+    begin_engine_reference_selector();
     if (map_volume_box.visible && should_draw_cursor_box(my_player_number)) {
         process_frontview_map_volume_box(cam, ((zoom >> 8) & 0xFF), player->id_number);
     }
@@ -9171,6 +9507,8 @@ void draw_frontview_engine(struct Camera *cam)
     lim_x = ewnd.width << 8;
     lim_y = -zoom - ABYSS_WALL_RENDER_HEIGHT * (zoom >> 1);
     SYNCDBG(19,"Range (%ld,%ld) to (%ld,%ld), quadrant %d",px,py,qx,qy,(int)qdrant);
+    WorldSceneBegin(cam, NULL, 1, temp_cluedo_mode);
+    WorldSceneCaptureSurfaceMotion(render_abyss_lava_scroll, render_abyss_water_scroll);
     for (pos_x=qx; pos_x < lim_x; pos_x += zoom)
     {
         i = (ewnd.height << 8);
@@ -9202,6 +9540,8 @@ void draw_frontview_engine(struct Camera *cam)
     }
 
     WorldViewRenderer_DrawFrontView(cam);
+    end_engine_reference_selector();
+    end_engine_reference_hover();
     LbScreenLoadGraphicsWindow(&grwnd);
     cam->zoom = zoom_mem;//TODO [zoom] remove when all cam->zoom will be changed to camera_zoom
     SYNCDBG(9,"Finished");

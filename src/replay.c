@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -59,6 +60,11 @@ static TbBool replay_map_mismatch;
 static size_t pending_resync_len;
 static TbBigChecksum replay_expected_checksum;
 static TbBool replay_checksum_pending;
+static GameTurn replay_base_turn;
+static PlayerNumber replay_terminal_player = -1;
+static uint64_t replay_verified_turns;
+static uint64_t replay_mismatched_turns;
+static char requested_recording[OS_ABSPATH_SIZE];
 extern TbBool IMPRISON_BUTTON_DEFAULT;
 extern TbBool FLEE_BUTTON_DEFAULT;
 /******************************************************************************/
@@ -817,6 +823,10 @@ static void set_replay_crashlog(uint8_t state, GameTurn turn)
 TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry)
 {
     replay_map_mismatch = false;
+    replay.snapshot_loaded = false;
+    replay_checksum_pending = false;
+    replay_verified_turns = 0;
+    replay_mismatched_turns = 0;
     memset(centry, 0, sizeof(struct CatalogueEntry));
     if (fname != replay.fname)
         snprintf(replay.fname, sizeof(replay.fname), "%s", fname);
@@ -829,7 +839,7 @@ TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry)
         replay.fopened = 0;
         return false;
     }
-    int i = load_game_chunks(replay.fp, centry);
+    int i = load_replay_chunks(replay.fp, centry);
     if ((i != GLoad_PacketStart) && (i != GLoad_PacketContinue))
     {
         set_replay_crashlog(0, 0);
@@ -839,6 +849,7 @@ TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry)
         WARNMSG("Couldn't correctly read packet file \"%s\" header.",fname);
         return false;
     }
+    replay.snapshot_loaded = (i == GLoad_PacketContinue);
     replay.file_pos = LbFilePosition(replay.fp);
     reset_packet_codec();
     replay.turns_stored = count_stored_turns();
@@ -857,7 +868,7 @@ TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry)
     return true;
 }
 
-void restore_users_from_packet_save(void)
+void restore_users_from_packet_save(TbBool initialize)
 {
     TbBool local_mapped = false;
     for (NetUserId user = 0; user < MAX_NET_USERS; user++)
@@ -877,15 +888,17 @@ void restore_users_from_packet_save(void)
             continue;
         }
         set_net_user_player_number(user, plyr_idx);
-        struct PlayerInfo *player = get_player(plyr_idx);
-        player->user_id = user;
-        snprintf(player->player_name, sizeof(player->player_name), "%s",
-            replay.head.user_names[user]);
-        init_user_state(user);
+        if (initialize) {
+            struct PlayerInfo *player = get_player(plyr_idx);
+            player->user_id = user;
+            snprintf(player->player_name, sizeof(player->player_name), "%s",
+                replay.head.user_names[user]);
+            init_user_state(user);
+        }
         local_mapped |= (plyr_idx == my_player_number);
         SYNCLOG("Replay user %d -> player %d", (int)user, (int)plyr_idx);
     }
-    if (!local_mapped)
+    if (initialize && !local_mapped)
     {
         set_net_user_player_number(SOLO_HUMAN_ID, my_player_number);
         get_player(my_player_number)->user_id = SOLO_HUMAN_ID;
@@ -1199,11 +1212,77 @@ void stop_replay_recording(const char *reason)
     replay.save_enable = false;
 }
 
+struct PlayerInfo *replay_recording_player(void)
+{
+    const int user = replay.head.recording_user;
+    if (!replay.load_enable || user < 0 || user >= MAX_NET_USERS)
+        return NULL;
+    const PlayerNumber player_number = replay.head.user_players[user];
+    if (player_number < 0 || player_number >= PLAYERS_COUNT
+        || !flag_is_set(replay.head.players_exist, to_flag(player_number))
+        || flag_is_set(replay.head.players_comp, to_flag(player_number)))
+        return NULL;
+    return get_player(player_number);
+}
+
+TbBool replay_process_finish_game(NetUserId user, int32_t recorded_outcome)
+{
+    if (!replay.load_enable || network_is_active() || game.game_kind == GKind_MultiGame
+        || user != replay.head.recording_user)
+        return false;
+    struct PlayerInfo *player = replay_recording_player();
+    const int simulated_outcome = player ? player->victory_state : -1;
+    if (!player || !player_exists(player) || recorded_outcome <= VicS_Undecided
+        || recorded_outcome > VicS_State3 || simulated_outcome != recorded_outcome)
+    {
+        ERRORLOG("Replay terminal outcome mismatch: turn=%lu user=%d simulated=%d recorded=%ld",
+            (unsigned long)get_gameturn(), (int)user, simulated_outcome, (long)recorded_outcome);
+        // Do not turn a recorded declaration into a fabricated simulation result.
+        quit_game = 1;
+        exit_keeper = 1;
+        return true;
+    }
+    SYNCMSG("Replay terminal outcome: turn=%lu player=%d simulated=%d recorded=%ld verified=1",
+        (unsigned long)get_gameturn(), (int)player->id_number, simulated_outcome, (long)recorded_outcome);
+    replay_terminal_player = player->id_number;
+    quit_game = 1;
+    return true;
+}
+
+void replay_complete_game(void)
+{
+    const PlayerNumber player_number = replay_terminal_player;
+    replay_terminal_player = -1;
+    if (player_number < 0)
+        return;
+    // The packet/update stack has unwound; no camera or packet reader can see
+    // partially cleared Game state. Keep load_enable set through cleanup.
+    if (!frontend_finish_replay_game(player_number)) {
+        ERRORLOG("Replay terminal cleanup failed for player %d", (int)player_number);
+        exit_keeper = 1;
+    }
+}
+
+void replay_report_startup(void)
+{
+    replay_base_turn = get_gameturn();
+    replay_terminal_player = -1;
+    SYNCMSG("Replay startup: base_turn=%lu snapshot=%d checksum=%d integrity=%llu",
+        (unsigned long)replay_base_turn, (int)replay.snapshot_loaded,
+        (int)replay.checksum_verify, (unsigned long long)compute_replay_integrity());
+}
+
 void close_packet_file(void)
 {
+    requested_recording[0] = '\0';
     set_replay_crashlog(0, 0);
     if ( replay.fopened )
     {
+        if (replay.load_enable) {
+            SYNCMSG("Replay verification: base_turn=%lu verified=%llu mismatches=%llu",
+                (unsigned long)replay_base_turn, (unsigned long long)replay_verified_turns,
+                (unsigned long long)replay_mismatched_turns);
+        }
         LbFileClose(replay.fp);
         replay.fopened = 0;
         replay.fp = NULL;
@@ -1367,6 +1446,45 @@ TbBool setup_auto_replay_save(void)
     return true;
 }
 
+TbBool request_replay_test_recording(void)
+{
+    const char *enabled = getenv("KFX_STATE_TEST");
+    const char *directory = getenv("KFX_STATE_TEST_DIR");
+    if (enabled == NULL || strcmp(enabled, "1") != 0 || directory == NULL || directory[0] == '\0'
+        || network_is_active() || get_gameturn() == 0 || replay.save_enable || replay.load_enable
+        || replay.fopened || requested_recording[0] != '\0')
+        return false;
+    char filename[sizeof(requested_recording)];
+    int length = snprintf(filename, sizeof(filename), "%s/midgame.fxpkt", directory);
+    if (length < 0 || (size_t)length >= sizeof(filename) || LbFileExists(filename))
+        return false;
+    memcpy(requested_recording, filename, (size_t)length + 1);
+    return true;
+}
+
+void replay_begin_requested_recording(void)
+{
+    if (requested_recording[0] == '\0' || flag_is_set(game.operation_flags, GOF_Paused))
+        return;
+    // Snapshot the exact pre-dispatch state whose checksum and packets follow it.
+    // An API request may arrive between frames, so it must not save immediately.
+    if (network_is_active() || get_gameturn() == 0 || replay.save_enable || replay.load_enable
+        || replay.fopened || LbFileExists(requested_recording)) {
+        ERRORLOG("Requested mid-game replay recording could not start");
+        requested_recording[0] = '\0';
+        return;
+    }
+    snprintf(replay.fname, sizeof(replay.fname), "%s", requested_recording);
+    requested_recording[0] = '\0';
+    replay.save_enable = true;
+    if (!open_new_packet_file_for_save()) {
+        replay.save_enable = false;
+        return;
+    }
+    SYNCMSG("Replay recording: base_turn=%lu integrity=%llu",
+        (unsigned long)get_gameturn(), (unsigned long long)compute_replay_integrity());
+}
+
 TbBool open_new_packet_file_for_save(void)
 {
     // Filling the header
@@ -1381,6 +1499,8 @@ TbBool open_new_packet_file_for_save(void)
     replay_long_turn_open = false;
     reset_packet_codec();
     replay.head.flags = PSHF_Compressed;
+    if (sizeof(void *) == 8)
+        set_flag(replay.head.flags, PSHF_64Bit);
     if (replay.checksum_verify)
         set_flag(replay.head.flags, PSHF_Checksum);
     if (game.game_kind == GKind_MultiGame)
@@ -1507,9 +1627,12 @@ void verify_replay_checksum(void)
         replay_checksum_pending = false;
         if (compute_replay_integrity() != replay_expected_checksum)
         {
+            replay_mismatched_turns++;
             ERRORLOG("PacketSave checksum - Out of sync (GameTurn %u)", get_gameturn());
             if (!is_onscreen_msg_visible())
                 show_onscreen_msg(turns_per_second, "Out of sync");
+        } else {
+            replay_verified_turns++;
         }
     }
     if (replay_map_mismatch && !is_onscreen_msg_visible())

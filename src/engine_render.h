@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -39,7 +40,7 @@ extern "C" {
 #define KEEPERSPRITE_ADD_OFFSET 16384
 #define KEEPERSPRITE_ADD_NUM 16383
 
-struct EngineCoord { // sizeof = 28
+struct EngineCoord {
   long view_width; // X screen position, probably not a width
   long view_height; // Y screen position, probably not a height
   unsigned short clip_flags; // Clipping and culling flags for frustum culling
@@ -48,6 +49,9 @@ struct EngineCoord { // sizeof = 28
   long x;
   long y;
   long z;
+  // Terrain lightmap position, before camera projection (rendering only).
+  short lightmap_x;
+  short lightmap_y;
 };
 
 struct M31 {
@@ -110,6 +114,32 @@ extern int creature_status_size;
 extern int line_box_size;
 
 extern struct MapVolumeBox map_volume_box;
+// Disposable reference preview; never a player roomspace or an input packet.
+struct EngineReferenceSelectorProof {
+    int active, slab_x, slab_y, width, height, valid_slabs, invalid_slabs, colour;
+    int drawing, displayed, minimap_drag, observer, gui_busy, gui_override;
+};
+TbBool set_engine_reference_selector(int slab_x, int slab_y, int width, int height);
+void clear_engine_reference_selector(void);
+TbBool engine_reference_selector_is_drawing_for_player(PlayerNumber plyr_idx);
+struct EngineReferenceSelectorProof get_engine_reference_selector_proof(void);
+struct EngineReferenceRoomProof {
+    int active, room_kind, busy, valid_slabs, invalid_slabs, colour, hidden_slabs;
+    int process_calls, busy_branches, basic_calls, fancy_calls, emitted_lines;
+};
+TbBool set_engine_reference_room_preview(int room_kind, int slab_x, int slab_y, int width, int height, int busy);
+struct EngineReferenceRoomProof get_engine_reference_room_proof(void);
+// Private world-render hover inputs. Real damage/visibility state is read only.
+struct EngineReferenceHoverProof {
+    uint64_t target_incarnation;
+    int active, target_slot, target_creation_turn, owner, model;
+    int hovered, blink_on, actual_hit, last_turn_damaged, render_flags;
+    int considered, white, red, normal;
+    unsigned char white_remap[256], red_remap[256];
+};
+TbBool set_engine_reference_hover(int owner, int model, int stl_x, int stl_y, int hovered, int blink_on);
+void clear_engine_reference_hover(void);
+struct EngineReferenceHoverProof get_engine_reference_hover_proof(void);
 extern long view_height_over_2;
 extern long view_width_over_2;
 extern long z_threshold_near;
@@ -153,6 +183,8 @@ extern unsigned char temp_cluedo_mode;
 /******************************************************************************/
 
 extern TbSpriteData keepersprite_add[KEEPERSPRITE_ADD_NUM];
+extern size_t keepersprite_add_bytes[KEEPERSPRITE_ADD_NUM];
+extern uint64_t keepersprite_add_stamps[KEEPERSPRITE_ADD_NUM];
 /*****************************************************************************/
 float interpolate(float previous, float current);
 float interpolate_synced(float previous, float current);
@@ -206,6 +238,23 @@ TbBool resolve_keepersprite_draw_data(unsigned short anim_sprite, short angle,
     const unsigned char **out_data, int *out_src_w, int *out_src_h,
     const struct KeeperSprite **out_kspr);
 
+// Game-thread source view: bytes are bounded by the successful standard load
+// or custom allocation, and remain borrowed. Copy/decode before source reset.
+// Negative IDs are accepted only when the pointer matches known resident data.
+TbBool get_keepersprite_source_extent(int32_t draw_idx,
+    const unsigned char *expected_data, size_t *out_bytes);
+// Process-monotonic successful source publication identity. Saturation refuses
+// owned identity but never changes original loading/drawing behavior.
+// Producer-thread only; no source bytes may be retained after their disposal.
+uint64_t next_keepersprite_publication_stamp(void);
+void clear_standard_keepersprite_source_identity(void);
+TbBool get_keepersprite_source_identity(int32_t draw_idx,
+    const unsigned char *expected_data, int32_t *out_resolved_idx,
+    size_t *out_bytes, uint64_t *out_stamp);
+TbBool resolve_keepersprite_draw_source(unsigned short anim_sprite, short angle,
+    unsigned char current_frame, int32_t *out_draw_idx,
+    const unsigned char **out_data, size_t *out_bytes, int *out_src_w, int *out_src_h,
+    const struct KeeperSprite **out_kspr);
 // Cursor/power-hand geometry resolve: the destination-rect twin of
 // process_keeper_sprite()'s own xflip/scaled-position math, minus the
 // water-cutoff logic (not applicable to a UI overlay sprite) and minus its
@@ -225,6 +274,7 @@ void update_engine_settings(struct PlayerInfo *player);
 void draw_view(struct Camera *cam, unsigned char a2);
 void draw_frontview_engine(struct Camera *cam);
 TbBool map_to_screen(struct Coord3d *pos, int32_t *screen_x, int32_t *screen_y);
+unsigned short get_thing_shade(struct Thing* thing);
 
 // Rasterize the bucket list built by the most recent draw_view()/
 // draw_frontview_engine() walk. Called (via SoftwareWorldViewRenderer) at

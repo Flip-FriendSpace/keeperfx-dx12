@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -22,6 +23,7 @@
 #include "bflib_basics.h"
 #include "bflib_netsession.h"
 #include "ver_defs.h"
+#include "state_codec.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -111,6 +113,7 @@ enum NetUserProgress {
 };
 
 struct GameVersionPacket {
+    uint32_t state_protocol;
     int32_t major;
     int32_t minor;
     int32_t release;
@@ -171,11 +174,12 @@ enum TbNetworkService {
 extern struct NetState netstate;
 extern enum NetConnectionRole net_join_role;
 
-static const struct GameVersionPacket net_current_version = { VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD };
+static const struct GameVersionPacket net_current_version = { KFX_STATE_PROTOCOL, VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD };
 
 static inline TbBool net_versions_match(const struct GameVersionPacket *version_a, const struct GameVersionPacket *version_b)
 {
-    return (version_a->major == version_b->major) &&
+    return (version_a->state_protocol == version_b->state_protocol) &&
+        (version_a->major == version_b->major) &&
         (version_a->minor == version_b->minor) &&
         (version_a->release == version_b->release) &&
         (version_a->build == version_b->build);

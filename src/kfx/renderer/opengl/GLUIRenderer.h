@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef RENDERER_OPENGL_GLUIRENDERER_H
 #define RENDERER_OPENGL_GLUIRENDERER_H
 
@@ -10,6 +11,7 @@
 #include <array>
 #include <unordered_map>
 #include <cstdint>
+#include "kfx/renderer/SceneAssetCapture.h"
 
 class GLSpriteAtlas;
 class GLTextRenderer;
@@ -50,7 +52,7 @@ public:
     void DrawFromIR(const UICommandBuffers& ui, const TextCommandBuffers& text,
                     GLTextRenderer* text_renderer);
 
-    void BuildQuadsFromIR(const UICommandBuffers& ui);
+    void BuildQuadsFromIR(const UICommandBuffers& ui, const WorldSceneOutlineSession& capture = {});
 
     /** Flush the WorldOverlay layer (depth-tested against world geometry --
      *  creature status). Call after BuildQuadsFromIR(), from
@@ -61,6 +63,9 @@ public:
      *  floating gold/damage text). Call from
      *  RendererOpenGL::FGDrawWorldOverlayFlatLayer(). */
     void DrawWorldOverlayFlatLayerRT();
+    void BeginSceneOverlayCapture(const WorldSceneOutlineSession&, kfx::render::SceneGLOverlayPhase,
+        const WorldSceneGLUploadMirror&, const WorldSceneGLUploadMirror&, unsigned int framebuffer) noexcept;
+    void EndSceneOverlayCapture() noexcept;
 
     /** Flush the Overlay layer (drawn dead-last, over GameUI -- zoom-box
      *  corner frames/thing sprites). Call from
@@ -116,6 +121,16 @@ private:
     std::vector<std::array<uint8_t, 256>> m_clut_remaps;
     uint8_t m_clut_palette_snap[256 * 4] = {};
     const unsigned char* m_frame_palette = nullptr;
+    WorldSceneOutlineSession m_capture_session;
+    WorldSceneOutlineSession m_capture_build_session;
+    kfx::render::SceneGLOverlayPhase m_capture_phase = kfx::render::SceneGLOverlayPhase::DepthWorld;
+    const WorldSceneGLUploadMirror* m_capture_palette = nullptr;
+    const WorldSceneGLUploadMirror* m_capture_fade = nullptr;
+    unsigned int m_capture_framebuffer = 0;
+    unsigned int m_capture_clut_texture = 0;
+    std::array<std::array<uint8_t, 1024>, k_clut_rows> m_capture_clut{};
+    std::array<bool, k_clut_rows> m_capture_clut_known{};
+    void RecordCLUTForCapture(unsigned int texture, int row = -1, const uint8_t* data = nullptr) noexcept;
     int m_screen_w = 0;
     int m_screen_h = 0;
 
@@ -186,6 +201,7 @@ private:
      *  vertex buffer, glDrawArrays). Shared by FlushQuadLayer() and
      *  DrawGameUIQuadsInterleaved()'s text-interleaved walk. */
     void FlushQuadRun(const std::vector<UIQuad>& run, PassType pass, int remap_row);
+    void CaptureQuadRun(const std::vector<UIQuad>& run, PassType pass, int remap_row, unsigned int texture) noexcept;
 
     /** Merge+batch+draw one GameUI-shaped quad vector interleaved with text
      *  by seq -- shared by DrawGameUILayerRT() (the real per-frame path) and

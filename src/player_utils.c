@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -37,6 +38,7 @@
 #include "frontmenu_ingame_evnt.h"
 #include "front_simple.h"
 #include "front_lvlstats.h"
+#include "replay.h"
 #include "gui_msgs.h"
 #include "gui_soundmsgs.h"
 #include "gui_frontmenu.h"
@@ -169,6 +171,9 @@ void set_player_as_won_level(struct PlayerInfo *player)
             Timer.Hours, Timer.Minutes, Timer.Seconds, Timer.MSeconds);
       }
   }
+  if (!my_player && replay.load_enable && game.game_kind != GKind_MultiGame
+      && player == replay_recording_player())
+      frontstats_initialise_for_player(player);
   player->victory_state = VicS_WonLevel;
   // Computing player score
   dungeon->lvstats.player_score = compute_player_final_score(player, dungeon->max_gameplay_score);
@@ -204,6 +209,9 @@ void set_player_as_lost_level(struct PlayerInfo *player)
         api_event("LOSE_GAME");
         frontstats_initialise();
     }
+    if (!is_my_player(player) && replay.load_enable && game.game_kind != GKind_MultiGame
+        && player == replay_recording_player())
+        frontstats_initialise_for_player(player);
     player->victory_state = VicS_LostLevel;
     struct Dungeon* dungeon = get_dungeon(player->id_number);
     // Computing player score

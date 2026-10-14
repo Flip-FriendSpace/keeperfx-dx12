@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "kfx/renderer/RendererSoftware.h"
 #include "bflib_video.h"       // PALETTE_COLORS, SDL, vsync_enabled
@@ -8,6 +9,9 @@
 #include "kfx/renderer/software/SwZoomBoxTiles.h"
 #include "kfx/renderer/RendererManager.h" // RendererBeginFrame/EndFrame, around FGExecuteCursor
 #include "kfx/renderer/RenderGraph.h"
+#include "kfx/renderer/WorldScene.h"
+#include "kfx/renderer/SceneReferenceImage.h"
+#include "kfx/renderer/SceneAssetCapture.h"
 #include "kfx/renderer/RenderTaskProducerRegistry.h"
 #include "kfx/renderer/RendererFrameCounter.h"
 #include "bflib_mouse.h"       // LbMouseOnBeginSwap/EndSwap (submits the cursor sprite around present)
@@ -44,11 +48,19 @@ void RendererSoftware::SetDisplayPalette(const unsigned char* rgb8)
 
 void RendererSoftware::ClearScreen(unsigned char colour)
 {
+    WorldSceneSoftwareTargetEnd();
     SDL_Surface* draw_surface = SwDisplaySurfaceGet();
     if (draw_surface == NULL)
         return;
     if (!SDL_FillSurfaceRect(draw_surface, NULL, colour))
         ERRORLOG("Error while clearing screen: %s", SDL_GetError());
+    else {
+        SDL_Rect clip;
+        if (draw_surface->format == SDL_PIXELFORMAT_INDEX8 && SDL_GetSurfaceClipRect(draw_surface, &clip)
+            && clip.x == 0 && clip.y == 0 && clip.w == draw_surface->w && clip.h == draw_surface->h)
+            WorldSceneSoftwareClear(static_cast<const unsigned char*>(draw_surface->pixels),
+                draw_surface->w, draw_surface->h, draw_surface->pitch, colour);
+    }
 }
 
 bool RendererSoftware::ensure_present_target()
@@ -231,6 +243,17 @@ bool RendererSoftware::ScheduleScreenshot(const char* path, int fmt)
     if (!ok)
         ERRORLOG("Screenshot save failed (%s): %s", path, SDL_GetError());
     return ok;
+}
+
+void RendererSoftware::FGCaptureScreenshot()
+{
+    const auto& scene = m_world_renderer.GetSceneSnapshot();
+    if (!scene || scene->reference_image.empty() || scene->sequence == m_reference_sequence) return;
+    SDL_Surface* surface = SwDisplaySurfaceGet();
+    if (!surface) return;
+    if (!SaveSceneReferenceImage(surface, *scene))
+        ERRORLOG("Reference image failed: %s", SDL_GetError());
+    else m_reference_sequence = scene->sequence;
 }
 
 // Landview zoom transition: expands the map outward from the zoom centre,

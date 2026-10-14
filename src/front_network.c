@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -629,10 +630,13 @@ void display_attempting_to_join_message(int remaining_s)
         snprintf(msg, sizeof(msg), "%s (%ds)", get_string(GUIStr_NetAttemptingToJoin), remaining_s);
     else
         snprintf(msg, sizeof(msg), "%s", get_string(GUIStr_NetAttemptingToJoin));
-    frontend_draw();
+    const short draw_result = frontend_draw();
     if (is_key_pressed(KC_ESCAPE, KMod_DONTCARE)) {
         clear_key_pressed(KC_ESCAPE);
         attempting_to_join_cancelled = true;
+    }
+    if (draw_result == 2) {
+        return;
     }
     if (RendererBeginFrame()) {
         draw_text_box(msg);

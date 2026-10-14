@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -140,10 +141,12 @@ void fronttorture_load(void)
     // Load RAW/PAL background
     char* fname = prepare_file_path(FGrp_LoData, "torture.raw");
     torture_background = ptr;
+    begin_texture_bank_mutation();
     long i = LbFileLoadAt(fname, ptr);
     ptr += i;
     fname = prepare_file_path(FGrp_LoData,"torture.pal");
     torture_palette = ptr;
+    begin_texture_bank_mutation();
     i = LbFileLoadAt(fname, ptr);
     // Load DAT/TAB sprites for doors
     for (int idx = 0; idx < TORTURE_DOORS_COUNT; ++idx) {

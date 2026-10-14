@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Bullfrog Engine Emulation Library - for use to remake classic games like
 // Syndicate Wars, Magic Carpet or Dungeon Keeper.
@@ -35,6 +36,8 @@ enum KfxWindowFlags {
     KFX_WF_OPENGL               = 0x10, // window must be OpenGL-capable at creation
     KFX_WF_KEEP_COMPOSITED      = 0x20, // desktop fullscreen must stay composited by the OS compositor
     KFX_WF_DESKTOP_FULLSCREEN_ONLY = 0x40, // exclusive fullscreen requests use desktop fullscreen, scaled by the renderer
+    KFX_WF_MINIMIZED             = 0x80, // observed window state; not a creation request
+    KFX_WF_RESIZABLE             = 0x100, // user may resize the window without changing the game surface
 };
 
 #ifdef __cplusplus

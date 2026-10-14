@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Configuration
 /******************************************************************************/
@@ -94,7 +95,11 @@ extern "C" {
 /* ---------------------------------------------------------------------------
  * Shadow type constants (shadow_type field)
  * ------------------------------------------------------------------------- */
-/** Disable creature shadows entirely. */
+/** These persisted shadow_type values are not consumed on this branch.
+ *  Actual shadow submission uses GameSettings::video_shadows (0..4).
+ *  Keep the declared values for configuration compatibility; they do not
+ *  currently select a distinct render path. */
+/** Intended value for disabling creature shadows. */
 #define RENDERER_SHADOW_OFF    0
 /** Projected sprite shadow from the nearest 1 light source per creature. */
 #define RENDERER_SHADOW_1      1
@@ -102,12 +107,8 @@ extern "C" {
 #define RENDERER_SHADOW_3      3
 /** Projected sprite shadow from up to 4 light sources per creature. Default. */
 #define RENDERER_SHADOW_4      4
-/** Pre-baked soft circle blob under each creature. Declared for parity;
- *  the instanced circle-shadow GL pass itself is a later fast-follow on
- *  this branch (lower priority -- visual variety, not a correctness bug)
- *  -- selecting it currently falls back to
- *  RENDERER_SHADOW_4's existing behaviour, same as develop's own documented
- *  software-renderer fallback. */
+/** Intended pre-baked soft circle blob. No circle-shadow path is implemented;
+ *  selecting this value leaves the video_shadows-controlled path unchanged. */
 #define RENDERER_SHADOW_CIRCLE 5
 
 /* ---------------------------------------------------------------------------
@@ -195,10 +196,9 @@ typedef struct RendererSettings {
     float shadow_colour_b;
     float shadow_colour_a;
 
-    /** Creature shadow rendering style. See the RENDERER_SHADOW_* constants
-     *  above. Default: RENDERER_SHADOW_4 (this branch's only implemented
-     *  shadow path so far -- CIRCLE falls back to it, see that constant's
-     *  own doc comment). */
+    /** Persisted shadow type; currently unconsumed. See RENDERER_SHADOW_*
+     *  above and GameSettings::video_shadows for the active count control.
+     *  Default: RENDERER_SHADOW_4. */
     int   shadow_type;
 
     /** Zoom-box render mode. Not consumed on this branch (no picture-in-

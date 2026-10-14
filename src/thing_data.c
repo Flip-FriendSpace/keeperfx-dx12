@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -17,6 +18,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/WorldSceneCapture.h"
 #include "thing_data.h"
 
 #include "globals.h"
@@ -119,6 +121,7 @@ static struct Thing *allocate_thing(enum ThingAllocationPool pool_type, const ch
     memset(thing, 0, sizeof(struct Thing));
     thing->alloc_flags |= TAlF_Exists;
     thing->index = thing_idx;
+    WorldSceneThingAllocated(thing_idx);
     thing->random_seed = thing->index * 9377 + 9439 + get_gameturn();
     TRACE_THING(thing);
 

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -2849,6 +2850,7 @@ long task_move_creature_to_room(struct Computer2 *comp, struct ComputerTask *cta
                 if (!creature_job_player_check_func_list[jobcfg->func_plyr_check_idx](thing, dungeon->owner, jobpref))
                 {
                     SYNCDBG(13, "Cannot assign %s for %s index %d owner %d; check callback failed", creature_job_code_name(jobpref), thing_model_name(thing), (int)thing->index, (int)thing->owner);
+                    pos = dungeon->essential_pos;
                     if (computer_dump_held_things_on_map(comp, thing, &pos, CrSt_Unused) > 0)
                     {
                         return CTaskRet_Unk2;

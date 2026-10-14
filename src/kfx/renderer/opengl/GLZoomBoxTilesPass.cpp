@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -164,7 +165,7 @@ void GLZoomBoxTilesPass::Resolve(int screen_w, int screen_h)
     glBindBuffer(GL_ARRAY_BUFFER, geom->vbo);
     // Orphan + refill: avoids the driver stalling this frame's batch on last
     // frame's still-in-flight draw of the same buffer.
-    glBufferData(GL_ARRAY_BUFFER, (long)(m_vertex_scratch.size() * sizeof(float)), nullptr, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_vertex_scratch.size() * sizeof(float)), nullptr, GL_STREAM_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, (long)(m_vertex_scratch.size() * sizeof(float)), m_vertex_scratch.data());
     glDrawArrays(GL_TRIANGLES, 0, (int)(m_vertex_scratch.size() / 5));
 

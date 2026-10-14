@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -185,6 +186,8 @@ TbError process_login_message(NetUserId source, char *read_pos, const char *end_
         read_pos += 1;
         netstate.users[netstate.my_id].version = net_current_version;
         const struct GameVersionPacket *server_version = (const struct GameVersionPacket *)read_pos;
+        if (!net_versions_match(server_version, &net_current_version))
+            return Lb_FAIL;
         netstate.users[SERVER_ID].version = *server_version;
         read_pos += sizeof(*server_version);
         if (network_user_is_spectator(netstate.my_id)) {
@@ -239,8 +242,7 @@ TbError process_login_message(NetUserId source, char *read_pos, const char *end_
         netstate.sp->drop_user(source, NetJoin_Version);
         return Lb_OK;
     }
-    const struct GameVersionPacket stable_version = {1, 4, 0, 5136};
-    if (!net_versions_match(&user->version, &net_current_version) && !net_versions_match(&user->version, &stable_version)) {
+    if (!net_versions_match(&user->version, &net_current_version)) {
         netstate.sp->drop_user(source, NetJoin_Version);
         return Lb_OK;
     }

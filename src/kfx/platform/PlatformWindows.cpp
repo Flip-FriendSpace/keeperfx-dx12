@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "kfx/platform/PlatformWindows.h"
 #include "kfx/platform/FileFind.h"
@@ -8,6 +9,7 @@
 #include <SDL3/SDL.h>
 #include <cstdlib>
 #include <cstdint>
+#include <inttypes.h>
 #include <cstring>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -503,8 +505,8 @@ LONG __stdcall Vex_handler(_EXCEPTION_POINTERS *ExceptionInfo)
         LbJustLog("Exception 0x%08lx thrown: %s from %s\n", exception_code,
             exception_name(exception_code), module);
     } else if (module_name_of(record->ExceptionAddress, module, sizeof(module), &offset)) {
-        LbJustLog("Exception 0x%08lx thrown: %s at %s+0x%lx\n", exception_code,
-            exception_name(exception_code), module, (unsigned long)offset);
+        LbJustLog("Exception 0x%08lx thrown: %s at %s+0x%" PRIxPTR "\n", exception_code,
+            exception_name(exception_code), module, offset);
     } else {
         LbJustLog("Exception 0x%08lx thrown: %s at %p\n", exception_code,
             exception_name(exception_code), record->ExceptionAddress);

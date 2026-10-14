@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef RENDERER_RENDERERMANAGER_H
 #define RENDERER_RENDERERMANAGER_H
 
@@ -15,6 +16,7 @@ typedef int RendererType;
 #  define RENDERER_AUTO     0
 #  define RENDERER_SOFTWARE 1
 #  define RENDERER_OPENGL   2
+#  define RENDERER_DX12     3
 
 typedef int OverlayCaptureKind;
 #  define OVERLAY_CAPTURE_PARCHMENT 0
@@ -32,6 +34,9 @@ extern "C" {
 // Lifecycle: initialise the requested backend (nonzero on success) / shut it down.
 int          RendererInit(RendererType type);
 void         RendererShutdown(void);
+// Game-thread fatal presentation failure; retained through renderer teardown.
+void         RendererReportFatalFailure(const char* reason);
+const char*  RendererFatalFailureReason(void);
 RendererType RendererGetActiveType(void);
 
 RendererType RendererResolveType(RendererType requested);
@@ -68,6 +73,8 @@ void RendererClearScreen(unsigned char colour);
 
 // Present the drawn frame to the window (blit draw surface + flip).
 void RendererPresentFrame(void);
+TbBool RendererWriteDiagnostics(const char* path);
+TbBool RendererSetDiagnosticReaderHold(TbBool active);
 
 TbBool RendererBeginFrame(void);
 void   RendererEndFrame(void);
@@ -248,6 +255,13 @@ void RendererSetGameViewport(int x, int y, int w, int h);
 void RendererUpdateSlabTexture(const unsigned char* data, int dim);
 
 void RendererSubmitPossessionLens(long viewport_x, long viewport_y, long viewport_w, long viewport_h);
+
+// Scoped synchronous indexed drawing for custom lenses on a GPU presenter.
+// A failed begin must not fall through to the standard GPU lens copy path.
+TbBool RendererBeginSoftwareLensFallback(void);
+TbBool RendererEndSoftwareLensFallback(int x, int y, int width, int height);
+TbBool RendererIsSoftwareLensFallbackActive(void);
+unsigned long long RendererSoftwareLensFallbackFrames(void);
 
 /** @param ghost_table the 256x256 map-fade ghost table used for this transition. */
 void RendererSubmitMapFadeStep(int tick_step, float display_step, float warp_scale, TbBool fading_in,

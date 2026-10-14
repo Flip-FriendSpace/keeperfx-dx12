@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -34,6 +35,16 @@ extern "C" {
 #define FRONTMAP_ZOOM_LENGTH 240
 /******************************************************************************/
 #pragma pack(1)
+
+/* Verified initialized views of the currently loaded land-window sprite.
+ * Invalidated by unload/reload or any reuse of the shared texture bank. */
+struct LandWindowSpriteSource {
+    const unsigned char *data, *line_offsets;
+    size_t data_bytes, line_bytes;
+    uint32_t width, height;
+    uint64_t publication_stamp;
+};
+TbBool get_land_window_sprite_source(const struct TbHugeSprite *sprite,struct LandWindowSpriteSource *output);
 
 struct TbSprite;
 

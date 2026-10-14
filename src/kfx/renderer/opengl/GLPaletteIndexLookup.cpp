@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -9,6 +10,7 @@
 #include "kfx/renderer/opengl/GLPaletteIndexLookup.h"
 #include "kfx/renderer/opengl/GLFunctions.h"
 #include "kfx/renderer/opengl/GLResourceMapper.h"
+#include "kfx/renderer/PaletteIndexTable.h"
 #include "bflib_video.h"   // LbPaletteFindColour
 #include <cstring>
 #include "post_inc.h"
@@ -16,11 +18,6 @@
 namespace {
 constexpr int k_dim = 512;
 constexpr int k_keys = k_dim * k_dim;
-
-inline uint32_t key6(unsigned r, unsigned g, unsigned b) { return (r << 12) | (g << 6) | b; }
-
-// Inverse of RendererPaletteChannel8(); exact for every 6-bit value.
-inline unsigned channel6(unsigned char c8) { return (unsigned)((c8 * 63 + 127) / 255); }
 }
 
 bool GLPaletteIndexLookup::Init(GLResourceMapper* mapper)
@@ -40,7 +37,9 @@ bool GLPaletteIndexLookup::Init(GLResourceMapper* mapper)
     desc.initial_pixels = m_table;
     desc.debug_name = "palette_index_lookup";
     m_tex_handle = m_mapper->RequestCreateTexture(desc);
-    return m_mapper->ResolveTexture(m_tex_handle) != nullptr;
+    const GLTexture* texture = m_mapper->ResolveTexture(m_tex_handle);
+    if (texture) m_capture_uploaded.Record(m_tex_handle, texture->id, k_dim, k_dim, m_table.data(), m_table.size());
+    return texture != nullptr;
 }
 
 void GLPaletteIndexLookup::Shutdown()
@@ -48,23 +47,14 @@ void GLPaletteIndexLookup::Shutdown()
     m_base.clear();
     m_table.clear();
     m_have_palette = false;
+    m_capture_uploaded = {};
 }
 
 void GLPaletteIndexLookup::RefreshBase(const unsigned char* engine_palette)
 {
     if (engine_palette == nullptr || m_base.empty())
         return;
-    // Same sample points as compute_rgb2idx_table().
-    uint8_t grid[16 * 16 * 16];
-    for (unsigned r = 0; r < 16; r++)
-        for (unsigned g = 0; g < 16; g++)
-            for (unsigned b = 0; b < 16; b++)
-                grid[(r << 8) | (g << 4) | b] = LbPaletteFindColour(engine_palette, 4 * r + 3, 4 * g + 3, 4 * b + 3);
-
-    for (unsigned r = 0; r < 64; r++)
-        for (unsigned g = 0; g < 64; g++)
-            for (unsigned b = 0; b < 64; b++)
-                m_base[key6(r, g, b)] = grid[((r >> 2) << 8) | ((g >> 2) << 4) | (b >> 2)];
+    kfx::render::BuildPaletteIndexBase(m_base, {engine_palette, 768}, LbPaletteFindColour);
 
     m_table = m_base;
     if (m_have_palette)
@@ -92,15 +82,7 @@ void GLPaletteIndexLookup::SetPalette(const unsigned char* rgba)
 
 void GLPaletteIndexLookup::apply_palette()
 {
-    // Highest index first, so the lowest index wins a shared colour.
-    for (int i = 255; i >= 0; i--)
-    {
-        const uint32_t key = key6(channel6(m_palette_rgba[i * 4 + 0]),
-                                  channel6(m_palette_rgba[i * 4 + 1]),
-                                  channel6(m_palette_rgba[i * 4 + 2]));
-        m_palette_keys[i] = key;
-        m_table[key] = (uint8_t)i;
-    }
+    kfx::render::ApplyPaletteIndexOverrides(m_table, m_palette_rgba, m_palette_keys);
 }
 
 void GLPaletteIndexLookup::upload()
@@ -111,6 +93,12 @@ void GLPaletteIndexLookup::upload()
     glBindTexture(GL_TEXTURE_2D, tex->id);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, k_dim, k_dim, GL_RED, GL_UNSIGNED_BYTE, m_table.data());
+    GLint row_length = 0, skip_rows = 0, skip_pixels = 0, unpack_buffer = 0;
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &row_length); glGetIntegerv(GL_UNPACK_SKIP_ROWS, &skip_rows);
+    glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &skip_pixels); glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack_buffer);
+    if (!row_length && !skip_rows && !skip_pixels && !unpack_buffer)
+        m_capture_uploaded.Record(m_tex_handle, tex->id, k_dim, k_dim, m_table.data(), m_table.size());
+    else m_capture_uploaded.bytes.clear();
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glBindTexture(GL_TEXTURE_2D, 0);
 }

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -11,6 +12,7 @@
 #include "kfx/renderer/GpuResourceHandle.h"
 #include <cstdint>
 #include <vector>
+#include "kfx/renderer/SceneAssetCapture.h"
 
 class GLResourceMapper;
 
@@ -35,6 +37,7 @@ public:
     void SetPalette(const unsigned char* rgba);
 
     GpuResourceHandle GetTexture() const { return m_tex_handle; }
+    const WorldSceneGLUploadMirror& UploadedForCapture() const noexcept { return m_capture_uploaded; }
 
 private:
     void apply_palette();
@@ -47,6 +50,7 @@ private:
     unsigned char m_palette_rgba[256 * 4] = {};
     uint32_t m_palette_keys[256] = {};
     bool m_have_palette = false;
+    WorldSceneGLUploadMirror m_capture_uploaded;
 };
 
 /******************************************************************************/

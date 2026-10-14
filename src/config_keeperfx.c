@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -63,7 +64,7 @@ struct InstallInfo install_info;
 char keeper_runtime_directory[152];
 short api_enabled = false;
 uint16_t api_port = 5599;
-uint32_t packetsave_max_kb = 32768;
+uint32_t packetsave_max_kb = 131072;
 TbBool replays_enabled = true;
 uint32_t max_replays[ReplTyp_Count] = {5, 5, 10};
 unsigned long features_enabled = 0;
@@ -193,6 +194,9 @@ const struct NamedCommand conf_commands[] = {
   const struct NamedCommand renderer_type_desc[] = {
   {"SOFTWARE",     RENDERER_SOFTWARE},
   {"OPENGL",       RENDERER_OPENGL},
+#if defined(KFX_ENABLE_DX12)
+  {"DX12",         RENDERER_DX12},
+#endif
   {NULL,           0},
   };
 

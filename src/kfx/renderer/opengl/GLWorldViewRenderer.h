@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -9,25 +10,32 @@
 #include "kfx/renderer/opengl/GLFunctions.h"
 #include "kfx/renderer/IWorldViewRenderer.h"
 #include "kfx/renderer/WorldVertex.h"
+#include "kfx/renderer/WorldDrawProducer.h"
+#include "kfx/renderer/WorldShadowSource.h"
 #include "kfx/renderer/ir/WorldCommands.h"
 #include "kfx/renderer/ir/IRCommandBuffer.h"
 #include "kfx/renderer/GpuResourceHandle.h"
 #include "kfx/renderer/PaletteTransform.h"
+#include "kfx/renderer/SceneOutlineTrace.h"
+#include "kfx/renderer/SceneGLWorldTrace.h"
+#include "kfx/renderer/SceneAssetCapture.h"
 
 class GLResourceMapper;
+struct WorldSceneOutlineCapture;
 
 #include <vector>
 #include <unordered_map>
 #include <array>
 
 struct PolyPoint;
+struct TerrainLightmapCoord;
 struct BucketKindTexturedQuad;
 struct BucketKindCreatureShadow;
 class ITileAtlas;
 
 /******************************************************************************/
 
-class GLWorldViewRenderer : public IWorldViewRenderer {
+class GLWorldViewRenderer : public IWorldViewRenderer, private kfx::render::WorldDrawSink {
 public:
     // Deferred draw command (built during DrawIsometricView/DrawFrontView,
     // executed by GPURenderNow).
@@ -74,13 +82,13 @@ public:
     };
 
     /** One creature-shadow quad captured at DrawIsometricView() time */
-    struct ShadowSubmission {
-        float x[4], y[4], u[4], v[4];
-        float z_ndc;
-        float darken;
+    struct ShadowSubmission : kfx::render::WorldShadowGeometry {
         int32_t draw_idx;
         const unsigned char* data;
+        size_t data_bytes = 0;
         int src_w, src_h;
+        kfx::render::SceneObjectId capture_caster;
+        uint32_t capture_entry = kfx::render::SceneOutlineNoDraw;
     };
 
     GLWorldViewRenderer() = default;
@@ -102,6 +110,18 @@ public:
     void SetPaletteIndexTexture(GpuResourceHandle tex) { m_palette_index_tex_handle = tex; }
     /** GPU resource handle for the 256x1 RGBA palette. */
     void SetPaletteTexture(GpuResourceHandle tex) { m_palette_tex_handle = tex; }
+    // Diagnostic provenance of bytes actually submitted to the palette texture.
+    void RecordAppliedPaletteForCapture(const uint8_t* rgba, GpuResourceHandle handle = 0, unsigned int texture = 0) noexcept;
+    void RecordAppliedFadeForCapture(const uint8_t* indices, GpuResourceHandle handle = 0, unsigned int texture = 0) noexcept;
+    void SetIndexMirrorForCapture(const WorldSceneGLUploadMirror* mirror) noexcept { m_capture_index = mirror; }
+    const WorldSceneGLUploadMirror& PaletteMirrorForCapture() const noexcept { return m_capture_palette_upload; }
+    const WorldSceneGLUploadMirror& FadeMirrorForCapture() const noexcept { return m_capture_fade_upload; }
+    const WorldSceneOutlineSession& CompositionSession() const noexcept { return m_rt_outline_capture; }
+    void BeginCompositionForCapture(const float* clear_rgba) noexcept;
+    void FinishCompositionForCapture() noexcept;
+    unsigned int CompositionTargetForCapture() const noexcept;
+    void RecordWorldTargetForCapture(int width, int height, kfx::render::SceneGLWorldTargetKind kind,
+        const float* clear_rgba) noexcept;
 
     /** Re-uploads the fade/lighting LUT from pixmap.fade_tables and re-pushes
      *  the shade uniforms from g_renderer_settings. Both are snapshotted too
@@ -143,9 +163,13 @@ public:
     // ── IR (Intermediate Representation) path ─────────────────────────────────
 
     /** Set the IR write target for this frame. Tile vertex data is
-     *  written into @p cmds by append_triangle(); ordering is recorded
+     *  written into @p cmds by the world draw sink; ordering is recorded
      *  separately in m_draw_cmds. Call with nullptr to close the write window. */
     void SetWorldCommandBuffers(WorldCommandBuffers* cmds) override { m_world_write_cmds = cmds; }
+    void SetSceneSnapshot(std::shared_ptr<const kfx::render::WorldScene> scene) override
+    {
+        if (m_world_write_cmds) m_world_write_cmds->scene = std::move(scene);
+    }
 
     /** Replay the captured tile geometry on the render thread. */
     void ExecuteFromIR(const WorldCommandBuffers& cmds) override { GPURenderNow(cmds); }
@@ -195,19 +219,13 @@ private:
     bool compile_world_shaders();
     void push_shade_uniforms();
 
-    bool append_triangle(int tile_id,
-                         const struct PolyPoint* p0,
-                         const struct PolyPoint* p1,
-                         const struct PolyPoint* p2,
-                         int32_t cam_z0 = 0, int32_t cam_z1 = 0, int32_t cam_z2 = 0,
-                         int32_t wx0 = 0, int32_t wy0 = 0, int32_t wz0 = 0,
-                         int32_t wx1 = 0, int32_t wy1 = 0, int32_t wz1 = 0,
-                         int32_t wx2 = 0, int32_t wy2 = 0, int32_t wz2 = 0);
-
-    // Append a front-view textured quad (2 triangles = 6 vertices) from a BucketKindTexturedQuad.
-    // Converts the axis-aligned screen quad to WorldVertex format using the tile atlas.
-    bool append_frontview_quad(const struct BucketKindTexturedQuad* txquad);
-
+    void BeginBucket(int bucket) override;
+    void ObserveEntry(int bucket, const BasicQ& entry) override;
+    void Triangle(const kfx::render::WorldDrawTriangle& vertices) override;
+    void Sprite(kfx::render::WorldSpriteDispatch mode, BucketKindJontySprite& sprite, Camera* camera) override;
+    void Shadow(const BucketKindCreatureShadow& shadow) override;
+    void Overlay(kfx::render::WorldOverlayDispatch kind, kfx::render::WorldOverlayDepth depth,
+        float z_ndc, BasicQ& entry) override;
     // Record the current tile batch as a deferred draw command; advances the
     // batch start pointer. No GL calls are issued -- everything is replayed
     // in GPURenderNow().
@@ -239,16 +257,20 @@ private:
      *  @p sprite_id (stable across sprite-heap reload, unlike a raw data
      *  pointer -- see the .cpp file header). Returns -1 when the atlas is
      *  absent/full or sprite_id is unknown (< 0). */
-    int resolve_atlas_layer(int32_t sprite_id, const unsigned char* data, int src_w, int src_h,
+    int resolve_atlas_layer(int32_t sprite_id, const unsigned char* data, size_t data_bytes, int src_w, int src_h,
                             bool* darkens = nullptr);
     void push_keeper_sprite_instance(const KsprInstance& inst, bool darken);
 
     /** Look up (or lazily build) the CLUT row for a remap table. Returns the
      *  row's V texcoord; identity row 0 when the CLUT is full. */
-    float resolve_clut_v(const unsigned char* remap);
+    float resolve_clut_v(const unsigned char* remap, kfx::render::SceneOutlineColourResolution& resolution);
 
     void append_keeper_sprite_instance(const IRWorldKeeperSpriteCmd& cmd);
     void flush_keeper_sprite_instances();
+    uint32_t capture_outline_sprite(const IRWorldKeeperSpriteCmd& cmd,
+        kfx::render::SceneOutlineExecutionPath path, bool darkens, const float* rgba,
+        float clut_v, kfx::render::SceneOutlineColourResolution resolution, const unsigned char* effective_remap);
+    void capture_outline_command(kfx::render::SceneOutlineCommandKind kind, uint32_t sprite, uint32_t group);
 
     int render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& cmd);
     void DrawKeeperSpriteGL(const IRWorldKeeperSpriteCmd& cmd);
@@ -262,8 +284,7 @@ private:
     void free_shadow_resources();  // called from free_gl_resources()
 
     void append_shadow_quad(const struct BucketKindCreatureShadow* sh,
-                            int32_t draw_idx, const unsigned char* data,
-                            int src_w, int src_h);
+                            const kfx::render::WorldShadowSourceView& source);
 
     void draw_shadows_gpu();
 
@@ -298,6 +319,8 @@ private:
     GLint  m_loc_fog_density   = -1;  // u_fog_density
     GLint  m_loc_lightmap      = -1;  // usampler2D u_lightmap (unit 2)
     GLint  m_loc_tile_filter   = -1;  // u_tile_filter (0=nearest, 1=palette-correct bilinear)
+    std::array<float, 9> m_applied_shade_settings{};
+    bool m_shade_settings_applied = false;
     GLint  m_loc_missing_tile  = -1;  // u_missing_tile -- diagnostic checkerboard when atlas absent
     int    m_tile_filter_applied = -1; // last GL filter mode applied; -1 = force re-apply on next flush
     // Lightmap texture (unit 2): mirrors game.lish.subtile_lightness[] as GL_R16UI
@@ -428,6 +451,28 @@ private:
     int    m_kspr_clut_used     = 1;   // next free row (0 = identity, always allocated)
     std::vector<std::array<uint8_t, 256>> m_kspr_clut_remaps;
     uint8_t m_kspr_clut_palette_snap[768] = {};
+    // Mirrors survive atlas/cache clears, which do not clear the GL texture.
+    std::array<std::array<uint8_t, 1024>, k_clut_rows> m_capture_clut_rows{};
+    std::array<bool, k_clut_rows> m_capture_clut_known{};
+    std::array<uint8_t, 1024> m_capture_applied_palette{};
+    bool m_capture_applied_palette_known = false;
+    std::array<uint8_t, 16384> m_capture_applied_fade{};
+    bool m_capture_applied_fade_known = false;
+    WorldSceneGLUploadMirror m_capture_palette_upload, m_capture_fade_upload;
+    WorldSceneGLUploadMirror m_capture_mist_upload, m_capture_remap_upload, m_capture_overlay_upload;
+    const WorldSceneGLUploadMirror* m_capture_index = nullptr;
+    kfx::render::SceneGLLensTrace m_capture_lens;
+    void record_lens_operation(kfx::render::SceneGLLensOperation operation) noexcept;
+    kfx::render::SceneGLWorldTrace m_capture_world_target;
+    bool m_capture_world_target_known = false;
+    struct CaptureSpriteCoverage {
+        uint16_t width = 0, height = 0;
+        std::vector<uint8_t> bits;
+    };
+    // At most 2048 * 8192 bytes: one bit per initialized full-layer texel.
+    // Width/height retain the logical artwork dimensions for cache proof.
+    std::array<CaptureSpriteCoverage, 2048> m_capture_sprite_coverage;
+    void record_sprite_coverage_for_capture(int layer, int width, int height, const uint8_t* rg) noexcept;
 
     GpuResourceHandle m_kspr_inst_shader_handle = kInvalidGpuResource;
     GpuResourceHandle m_kspr_inst_quad_geom_handle = kInvalidGpuResource;
@@ -457,6 +502,15 @@ private:
     std::vector<IRWorldKeeperSpriteCmd> m_kspr_ir;
     std::vector<IRWorldKeeperSpriteCmd> m_rt_kspr_ir;
     std::vector<int> m_kspr_sorted_idx;
+
+    // Diagnostic tags follow the same producer/render-thread handoff as IR.
+    // No source pointers or live producer capture state cross that boundary.
+    std::vector<uint32_t> m_outline_sprite_tags, m_outline_tile_tags;
+    std::vector<uint32_t> m_rt_outline_sprite_tags, m_rt_outline_tile_tags;
+    std::shared_ptr<WorldSceneOutlineCapture> m_rt_outline_capture;
+    uint32_t m_rt_outline_draw = kfx::render::SceneOutlineNoDraw;
+    uint32_t m_rt_outline_group = 0;
+    std::vector<uint32_t> m_outline_main_refs, m_outline_refs;
 
     bool m_capturing_cursor = false;  // GT
     std::vector<IRWorldKeeperSpriteCmd> m_cursor_kspr_ir;

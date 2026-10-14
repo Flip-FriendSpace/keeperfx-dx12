@@ -1,3 +1,4 @@
+# KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 # BuildTargets.cmake - source collection, executables, per-target flags + linking.
 
 file(GLOB_RECURSE KEEPERFX_SOURCES_C   CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.c")
@@ -6,6 +7,12 @@ file(GLOB_RECURSE KEEPERFX_SOURCES_CXX CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/sr
 # Functional-test harness is off by default (FTEST_DEBUG defaults to 0).
 list(FILTER KEEPERFX_SOURCES_C   EXCLUDE REGEX "/src/ftests/")
 list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/src/ftests/")
+
+# The pinned DX12 runtime is linked separately; ordinary builds omit it.
+list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/src/kfx/renderer/d3d12/")
+if(NOT KFX_ENABLE_DX12)
+    list(FILTER KEEPERFX_SOURCES_CXX EXCLUDE REGEX "/RendererDX12\\.cpp$")
+endif()
 
 # Desktop platform filtering (matches the hand Makefiles).
 if(WIN32)
@@ -35,6 +42,10 @@ target_compile_definitions(keeperfx       PUBLIC BFDEBUG_LEVEL=0)
 target_compile_definitions(keeperfx_hvlog PUBLIC BFDEBUG_LEVEL=10)
 
 set(KFX_TARGETS keeperfx keeperfx_hvlog)
+
+if(KFX_ENABLE_DX12)
+    include(DX12)
+endif()
 
 if(WIN32)
     foreach(_t IN LISTS KFX_TARGETS)

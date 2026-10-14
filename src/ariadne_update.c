@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -17,6 +18,7 @@
 #include "pre_inc.h"
 #include "ariadne.h"
 #include "ariadne_update.h"
+#include "state_navigation.h"
 #include "ariadne_tringls.h"
 #include "ariadne_findcache.h"
 #include "ariadne_points.h"
@@ -1683,37 +1685,103 @@ void rebuild_navigation(void)
     game.map_changed_for_navigation = 1;
 }
 
-size_t transfer_navigation_state(void *buffer, enum NavigationStateOperation operation)
+void capture_navigation_snapshot(struct NavigationSnapshot *snapshot)
 {
-    struct NavigationStateField {
-        void *data;
-        size_t size;
-    };
-    const struct NavigationStateField fields[] = {
-        {ari_Points, sizeof(struct Point) * POINTS_COUNT},
-        {&count_Points, sizeof(count_Points)},
-        {&ix_Points, sizeof(ix_Points)},
-        {&free_Points, sizeof(free_Points)},
-        {Triangles, sizeof(Triangles)},
-        {&count_Triangles, sizeof(count_Triangles)},
-        {&ix_Triangles, sizeof(ix_Triangles)},
-        {&free_Triangles, sizeof(free_Triangles)},
-        {Regions, sizeof(Regions)},
-        {find_cache, sizeof(find_cache)},
-    };
-    size_t offset = 0;
-    for (size_t i = 0; i < sizeof(fields) / sizeof(fields[0]); i++) {
-        if (buffer != NULL) {
-            char *position = (char *)buffer + offset;
-            if (operation == NavigationState_Restore) {
-                memcpy(fields[i].data, position, fields[i].size);
-            } else {
-                memcpy(position, fields[i].data, fields[i].size);
-            }
-        }
-        offset += fields[i].size;
+    memcpy(&snapshot->points, &ari_Points, sizeof(snapshot->points));
+    memcpy(&snapshot->point_count, &count_Points, sizeof(snapshot->point_count));
+    memcpy(&snapshot->point_index, &ix_Points, sizeof(snapshot->point_index));
+    memcpy(&snapshot->point_free, &free_Points, sizeof(snapshot->point_free));
+    memcpy(&snapshot->triangles, &Triangles, sizeof(snapshot->triangles));
+    memcpy(&snapshot->triangle_count, &count_Triangles, sizeof(snapshot->triangle_count));
+    memcpy(&snapshot->triangle_index, &ix_Triangles, sizeof(snapshot->triangle_index));
+    memcpy(&snapshot->triangle_free, &free_Triangles, sizeof(snapshot->triangle_free));
+    memcpy(&snapshot->regions, &Regions, sizeof(snapshot->regions));
+    memcpy(&snapshot->cache, &find_cache, sizeof(snapshot->cache));
+}
+
+void apply_navigation_snapshot(const struct NavigationSnapshot *snapshot)
+{
+    memcpy(&ari_Points, &snapshot->points, sizeof(snapshot->points));
+    memcpy(&count_Points, &snapshot->point_count, sizeof(snapshot->point_count));
+    memcpy(&ix_Points, &snapshot->point_index, sizeof(snapshot->point_index));
+    memcpy(&free_Points, &snapshot->point_free, sizeof(snapshot->point_free));
+    memcpy(&Triangles, &snapshot->triangles, sizeof(snapshot->triangles));
+    memcpy(&count_Triangles, &snapshot->triangle_count, sizeof(snapshot->triangle_count));
+    memcpy(&ix_Triangles, &snapshot->triangle_index, sizeof(snapshot->triangle_index));
+    memcpy(&free_Triangles, &snapshot->triangle_free, sizeof(snapshot->triangle_free));
+    memcpy(&Regions, &snapshot->regions, sizeof(snapshot->regions));
+    memcpy(&find_cache, &snapshot->cache, sizeof(snapshot->cache));
+}
+
+TbBool validate_navigation_snapshot(const struct NavigationSnapshot *snapshot)
+{
+    if (snapshot == NULL
+        || snapshot->point_count < 0 || snapshot->point_count > snapshot->point_index
+        || snapshot->point_index < 0 || snapshot->point_index > POINTS_COUNT
+        || snapshot->triangle_count < 0 || snapshot->triangle_count > snapshot->triangle_index
+        || snapshot->triangle_index < 0 || snapshot->triangle_index > TRIANLGLES_COUNT)
+        return false;
+    int free_count = 0;
+    for (int point = snapshot->point_free; point != -1; point = snapshot->points[point].x) {
+        if (point < 0 || point >= snapshot->point_index || ++free_count > snapshot->point_index
+            || snapshot->points[point].y != INT16_MIN)
+            return false;
     }
-    return offset;
+    if (free_count != snapshot->point_index - snapshot->point_count)
+        return false;
+    int live_count = 0;
+    for (int point = 0; point < snapshot->point_index; ++point)
+        live_count += snapshot->points[point].y != INT16_MIN;
+    if (live_count != snapshot->point_count)
+        return false;
+    free_count = 0;
+    for (int triangle = snapshot->triangle_free; triangle != -1; triangle = snapshot->triangles[triangle].tags[0]) {
+        if (triangle < 0 || triangle >= snapshot->triangle_index || ++free_count > snapshot->triangle_index
+            || snapshot->triangles[triangle].tree_alt != NAV_COL_UNSET)
+            return false;
+    }
+    if (free_count != snapshot->triangle_index - snapshot->triangle_count)
+        return false;
+    live_count = 0;
+    for (int triangle = 0; triangle < snapshot->triangle_index; ++triangle) {
+        const struct Triangle *tri = &snapshot->triangles[triangle];
+        if (tri->tree_alt == NAV_COL_UNSET)
+            continue; // Other fields in freed records are deliberately stale.
+        ++live_count;
+        if ((tri->region_and_edgelen >> EDGELEN_BITS) >= REGIONS_COUNT)
+            return false;
+        for (int corner = 0; corner < 3; ++corner) {
+            const int point = tri->points[corner];
+            const int neighbour = tri->tags[corner];
+            if (point < 0 || point >= snapshot->point_index || snapshot->points[point].y == INT16_MIN
+                || neighbour < -1 || neighbour >= snapshot->triangle_index
+                || (neighbour >= 0 && snapshot->triangles[neighbour].tree_alt == NAV_COL_UNSET))
+                return false;
+        }
+    }
+    if (live_count != snapshot->triangle_count)
+        return false;
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            const int triangle = snapshot->cache[y][x];
+            // The lookup repairs freed cached entries, and -1 denotes a miss.
+            if (triangle < -1 || triangle >= snapshot->triangle_index)
+                return false;
+        }
+    }
+    return true;
+}
+
+void install_replay_navigation_snapshot(const struct NavigationSnapshot *snapshot)
+{
+    // These are scratch/initialization flags, not the saved navigation graph.
+    // Do not rebuild triangulation or mark the creatures' saved routes dirty.
+    navitree_reset();
+    ix_Border = 0;
+    tri_initialised = 1;
+    nav_map_initialised = 1;
+    set_nav_rule_default();
+    apply_navigation_snapshot(snapshot);
 }
 
 int32_t init_navigation(void)

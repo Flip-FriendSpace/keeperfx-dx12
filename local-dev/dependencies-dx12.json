@@ -1,0 +1,26 @@
+[
+  {
+    "name": "agility-1.619.6",
+    "file": "agility-1.619.6.zip",
+    "url": "https://api.nuget.org/v3-flatcontainer/microsoft.direct3d.d3d12/1.619.6/microsoft.direct3d.d3d12.1.619.6.nupkg",
+    "sha256": "08F0489281401AA430FC37322D6C3FC98A8025175AACD714C10D562F4963F1E9"
+  },
+  {
+    "name": "dxc-v1.9.2609",
+    "file": "dxc-v1.9.2609.tar.gz",
+    "url": "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2609/linux_dxc_2026_09_28.x86_x64.tar.gz",
+    "sha256": "96FAADC7F5C282D2FFDA49804BEB4C3EE38127BC252B723234E3C5CDF7AA39A1"
+  },
+  {
+    "name": "headers-v1.619.5",
+    "file": "headers-v1.619.5.tar.gz",
+    "url": "https://codeload.github.com/microsoft/DirectX-Headers/tar.gz/refs/tags/v1.619.5",
+    "sha256": "24A0B7D8079A2DBBC90753C0D8BC812040D052ACCE2302E69A97C5D873B313B8"
+  },
+  {
+    "name": "allocator-v3.2.0",
+    "file": "allocator-v3.2.0.tar.gz",
+    "url": "https://codeload.github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator/tar.gz/refs/tags/v3.2.0",
+    "sha256": "71D740ECB2D6CDF93B273AE571EB80097A530443993B0A5CB2BDB3CACC1548DB"
+  }
+]

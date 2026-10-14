@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -83,6 +84,7 @@ LevelNumber mouse_over_lvnum;
 LevelNumber playing_speech_lvnum;
 struct TbHugeSprite map_window;
 long map_window_len = 0;
+static uint64_t map_window_publication_stamp = 0;
 
 TbClockMSec play_desc_speech_time;
 unsigned long played_bad_descriptive_speech;
@@ -926,11 +928,14 @@ void unload_map_and_window(void)
     clear_dungeons();
     memcpy(frontend_palette, frontend_backup_palette, PALETTE_SIZE);
     map_window_len = 0;
+    map_window_publication_stamp = 0;
 }
 
 TbBool load_map_and_window(LevelNumber lvnum)
 {
     SYNCDBG(8,"Starting");
+    map_window_publication_stamp = 0;
+    map_window_len = 0;
     // Select proper land view image for the level
     char* land_view = NULL;
     char* land_window = NULL;
@@ -985,8 +990,15 @@ TbBool load_map_and_window(LevelNumber lvnum)
     memcpy(frontend_backup_palette, &frontend_palette, PALETTE_SIZE);
     // Now prepare window sprite file name and load the file
     fname = prepare_file_fmtpath(FGrp_LandView,"%s.dat",land_window);
+    const long window_bytes = LbFileLengthRnc(fname);
+    if (window_bytes <= (long)(WINDOW_Y_SIZE*sizeof(int32_t)) || (size_t)window_bytes > sizeof(block_mem)) {
+        ERRORLOG("Invalid Land Map Window size for \"%s.dat\"",land_window);
+        unload_map_and_window();
+        return false;
+    }
+    begin_texture_bank_mutation();
     map_window_len = LbFileLoadAt(fname, ptr);
-    if (map_window_len < (int32_t)(WINDOW_Y_SIZE*sizeof(int32_t)))
+    if (map_window_len != window_bytes)
     {
         ERRORLOG("Unable to load Land Map Window \"%s.dat\"",land_window);
         unload_map_and_window();
@@ -1010,8 +1022,24 @@ TbBool load_map_and_window(LevelNumber lvnum)
         return false;
     }
     
+    map_window_publication_stamp = texture_bank_mutation_serial;
     init_netfont_palette_remap(land_view);  
     SYNCDBG(9,"Finished");
+    return true;
+}
+
+TbBool get_land_window_sprite_source(const struct TbHugeSprite *sprite,struct LandWindowSpriteSource *output)
+{
+    if (!output) return false;
+    memset(output,0,sizeof(*output));
+    if (sprite != &map_window || map_window_len <= 0 || map_window_publication_stamp == 0
+        || map_window_publication_stamp == UINT64_MAX || map_window_publication_stamp != texture_bank_mutation_serial
+        || map_window.Lines != (int32_t *)block_mem || map_window.Data != block_mem + WINDOW_Y_SIZE*sizeof(int32_t)
+        || map_window.SWidth != WINDOW_X_SIZE || map_window.SHeight != WINDOW_Y_SIZE
+        || (size_t)map_window_len > sizeof(block_mem)-WINDOW_Y_SIZE*sizeof(int32_t)) return false;
+    output->data=map_window.Data;output->line_offsets=block_mem;
+    output->data_bytes=(size_t)map_window_len;output->line_bytes=WINDOW_Y_SIZE*sizeof(int32_t);
+    output->width=WINDOW_X_SIZE;output->height=WINDOW_Y_SIZE;output->publication_stamp=map_window_publication_stamp;
     return true;
 }
 

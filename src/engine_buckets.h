@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -44,12 +45,19 @@ struct BasicQ { // sizeof = 5
   QKind kind;
 };
 
+struct TerrainLightmapCoord {
+    short x;
+    short y;
+};
+
 struct BucketKindPolygonStandard {
     struct BasicQ b;
     unsigned short block;
     struct PolyPoint vertex_first;
     struct PolyPoint vertex_second;
     struct PolyPoint vertex_third;
+    // Negative coordinates retain legacy shading, e.g. emissive and FP surfaces.
+    struct TerrainLightmapCoord lightmap[3];
 };
 
 struct BucketKindPolygonNearFP {
@@ -75,7 +83,7 @@ struct BucketKindJontySprite {
 
 struct BucketKindCreatureShadow {
     struct BasicQ b;
-    unsigned short color_value;
+    unsigned short caster_slot; // Transient producer identity; reuses the unused colour field.
     struct PolyPoint vertex_first;
     struct PolyPoint vertex_second;
     struct PolyPoint vertex_third;

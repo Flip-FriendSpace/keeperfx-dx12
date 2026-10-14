@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -92,6 +93,9 @@ public:
     // -- Render thread --------------------------------------------------------
 
     bool IsActiveRT() const { return !m_rt_cmds.empty() || m_rt_overlay_cmd.active || m_rt_zoom_cmd.active; }
+    bool IsActiveGT() const { return !m_cmds.empty() || m_overlay_cmd.active || m_zoom_cmd.active; }
+    // Drop a failed, not-yet-flipped submission without touching RT resources.
+    void DiscardPending() { m_cmds.clear(); m_overlay_cmd = {}; m_zoom_cmd = {}; }
 
     /** Upload this frame's pixels (if any) and draw whatever background is
      *  active this frame: the zoom transition OR the base opaque image
@@ -100,7 +104,7 @@ public:
      *  RendererSoftware::PresentImage()'s letterboxing of an OPAQUE present,
      *  since nothing else draws on an FMV/splash/landview frame.
      *  Does not draw the transparent overlay -- see ResolveOverlay(). */
-    void Resolve(int screen_w, int screen_h);
+    void Resolve(int screen_w, int screen_h, bool clear_background = true);
 
     /** Draws the transparent overlay (e.g. the landview window frame) over
      *  whatever is already on screen. Called separately from Resolve() and

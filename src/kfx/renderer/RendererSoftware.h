@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef RENDERER_RENDERERSOFTWARE_H
 #define RENDERER_RENDERERSOFTWARE_H
 
@@ -43,6 +44,7 @@ public:
     IWorldViewRenderer*  GetWorldViewRenderer() override { return &m_world_renderer; }
 
     void FGExecuteCursor() override { m_cursorLayer.Draw(); }
+    void FGCaptureScreenshot() override;
     // Software rasterizes the world synchronously inside
     // WorldViewRenderer_DrawIsometricView()/_DrawFrontView() in keeper_screen_redraw
     void FGResolveWorldCapture() override { m_world_renderer.ResolveDeferredWorld(); }
@@ -56,6 +58,7 @@ private:
     int           m_tex_w    = 0;
     int           m_tex_h    = 0;
     int           m_vsync    = -1; // SDL_SetRenderVSync value; -1 = unset
+    uint64_t      m_reference_sequence = 0;
 
     SoftwareUIRenderer        m_ui_renderer;
     SoftwareTextRenderer      m_text_renderer;

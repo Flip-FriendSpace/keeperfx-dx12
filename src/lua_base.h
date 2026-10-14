@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -39,6 +40,7 @@ TbBool execute_lua_code_from_script(const char* code);
 const char* lua_get_serialised_data(size_t *len);
 TbBool lua_set_serialised_data(const char *data, size_t len);
 void cleanup_serialized_data();
+TbBool lua_state_self_test(void);
 
 void lua_set_random_seed(unsigned int seed);
 

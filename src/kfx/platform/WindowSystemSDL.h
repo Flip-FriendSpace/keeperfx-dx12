@@ -1,7 +1,9 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef WINDOW_SYSTEM_SDL_H
 #define WINDOW_SYSTEM_SDL_H
 
 #include "kfx/platform/IWindowSystem.h"
+#include "kfx/platform/WindowMouseMapping.h"
 
 struct SDL_Window;  // forward declaration; full type in WindowSystemSDL.cpp
 
@@ -22,9 +24,12 @@ public:
     void RecenterCursor() override;
     bool GetCursorPosition(int* out_x, int* out_y) const override;
     void GetCursorScale(float* out_sx, float* out_sy) const override;
+    WindowMouseMapping GetMouseMapping() const;
+    bool WindowToGameCoordinates(float x, float y, int* out_x, int* out_y) const;
     bool IsCursorInWindow() const override;
 
     bool HasWindow() const override;
+    void* GetNativeWindowHandle() const override;
     SDL_Window* GetSDLWindow() const;
     unsigned int GetWindowFlags() const override;
     void GetWindowSize(int* out_w, int* out_h) const override;

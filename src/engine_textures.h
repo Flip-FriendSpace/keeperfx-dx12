@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -54,6 +55,13 @@ extern long block_count_per_row;
 // Flag indicating that textures for the current level are loaded in block mem and ready to use.
 extern TbBool level_textures_ready;
 extern volatile unsigned int level_textures_generation;
+// Producer-thread bank identity, independent of the legacy successful-load counter.
+// 0 is not yet identified; UINT64_MAX is permanently exhausted/unusable.
+// Never reset this serial during level/frontend transitions.
+extern uint64_t texture_bank_mutation_serial;
+// Advance before the first write of every mutation attempt, including failed loads.
+// False disables owned publication, not the original mutation/gameplay operation.
+TbBool begin_texture_bank_mutation(void);
 /******************************************************************************/
 void setup_texture_block_mem(void);
 short init_animating_texture_maps(void);

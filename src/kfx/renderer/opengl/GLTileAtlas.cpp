@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -61,6 +62,9 @@ bool GLTileAtlas::Init()
         return false;
     }
 
+    m_capture_known.fill(false);
+    try { m_capture_uploaded.resize(size_t(k_atlas_w) * k_atlas_h * TEXTURE_VARIATIONS_COUNT); }
+    catch (...) { m_capture_uploaded.clear(); }
     for (int v = 0; v < TEXTURE_VARIATIONS_COUNT; v++)
         BuildVariation(v);
 
@@ -74,6 +78,7 @@ bool GLTileAtlas::Init()
 
 void GLTileAtlas::Free()
 {
+    m_capture_uploaded.clear(); m_capture_known.fill(false);
     if (m_r8_scratch)
     {
         free(m_r8_scratch);
@@ -101,6 +106,15 @@ void GLTileAtlas::UpdateAnimatedTiles()
 GpuResourceHandle GLTileAtlas::GetAtlasTextureArray() const
 {
     return m_initialized ? m_texture_handle : kInvalidGpuResource;
+}
+bool GLTileAtlas::CopyUploadedTileForCapture(unsigned layer, unsigned tile, std::array<uint8_t, 1024>& pixels) const noexcept
+{
+    if (layer >= m_capture_known.size() || !m_capture_known[layer]
+        || tile >= unsigned(k_atlas_cols * (k_atlas_h / k_tile_dim))) return false;
+    const size_t start = size_t(layer) * k_atlas_w * k_atlas_h
+        + size_t(tile / k_atlas_cols) * k_tile_dim * k_atlas_w + (tile % k_atlas_cols) * k_tile_dim;
+    for (unsigned y = 0; y < 32; ++y) memcpy(pixels.data() + y * 32, m_capture_uploaded.data() + start + y * k_atlas_w, 32);
+    return true;
 }
 
 /******************************************************************************/
@@ -186,6 +200,11 @@ void GLTileAtlas::UploadFull(int variation)
                     k_atlas_w, k_atlas_h, 1,
                     GL_RED, GL_UNSIGNED_BYTE,
                     m_r8_scratch);
+    if (!m_capture_uploaded.empty()) {
+        memcpy(m_capture_uploaded.data() + size_t(variation) * k_atlas_w * k_atlas_h,
+            m_r8_scratch, size_t(k_atlas_w) * k_atlas_h);
+        m_capture_known[variation] = true;
+    }
 }
 
 void GLTileAtlas::UploadAnimatedStrip(int variation, int y_offset, int h_pixels)
@@ -200,4 +219,7 @@ void GLTileAtlas::UploadAnimatedStrip(int variation, int y_offset, int h_pixels)
                     k_atlas_w, h_pixels, 1,
                     GL_RED, GL_UNSIGNED_BYTE,
                     m_r8_scratch);
+    if (!m_capture_uploaded.empty() && m_capture_known[variation])
+        memcpy(m_capture_uploaded.data() + (size_t(variation) * k_atlas_h + y_offset) * k_atlas_w,
+            m_r8_scratch, size_t(h_pixels) * k_atlas_w);
 }

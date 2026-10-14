@@ -1,0 +1,77 @@
+[
+  {
+    "name": "sdl3",
+    "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-devel-3.4.12-mingw.tar.gz",
+    "sha256": "EA8071241B934E1FEEC0337F7D78807A5004DE9A500DBA1942AAF615A988D7A2"
+  },
+  {
+    "name": "sdl3_mixer",
+    "url": "https://github.com/libsdl-org/SDL_mixer/releases/download/release-3.2.4/SDL3_mixer-devel-3.2.4-mingw.tar.gz",
+    "sha256": "2FF5F59BE4683E0AFB4339C4FA73C6228651E52D37B040ECF80DA08EDB3CECD6"
+  },
+  {
+    "name": "sdl3_image",
+    "url": "https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.4/SDL3_image-devel-3.4.4-mingw.tar.gz",
+    "sha256": "F9E3B3E0B74F7C1FFD8BCBDEDA40EB2FC0D56D0AFC874A804BEB2B8DF471B6A4"
+  },
+  {
+    "name": "enet6",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260212/enet6-mingw32.tar.gz",
+    "sha256": "ED00CFFCD5EC04ADFA8AE9B6418FE247EF0CAB014890A57442B1394CEEC1AFB9"
+  },
+  {
+    "name": "zlib",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/initial/zlib-mingw32.tar.gz",
+    "sha256": "351402FB34CAF6D6E0ADC826BE41F639BD8B9BF6CA4BE4F8B70402D830A6740E"
+  },
+  {
+    "name": "spng",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/initial/spng-mingw32.tar.gz",
+    "sha256": "4AC587DFF3E41BB6D912F1FFAE2EA0BA983E1F73F979D5BF620125F4D55AF1AF"
+  },
+  {
+    "name": "astronomy",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/astronomy_fix/astronomy-mingw32.tar.gz",
+    "sha256": "95FD431863C439BD2BB8B23137CF347A6DC872D366EA56A4C4F6794E82D745F7"
+  },
+  {
+    "name": "centijson",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/initial/centijson-mingw32.tar.gz",
+    "sha256": "6E0A0033B5101334D455F8E3A53852DA7B22F564590F7EFDA09A0180C26B35AB"
+  },
+  {
+    "name": "ffmpeg",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/initial/ffmpeg-mingw32.tar.gz",
+    "sha256": "A55AE7C6EEE0EB2FB234DD8DDBC7BDB9922DCBAF5DC8FF78E4769263FF3A2A26"
+  },
+  {
+    "name": "luajit",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20250418/luajit-mingw32.tar.gz",
+    "sha256": "CC2F4C82022C3B7B166CD47D78A3562B3C49D3AD0CF0C79E0163E31FF3773CBD"
+  },
+  {
+    "name": "miniupnpc",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260102/miniupnpc-mingw32.tar.gz",
+    "sha256": "EA9667A2A4A30BB1F64383CEBF3165B7389A06B4A422DE6F0BFD2566046163F9"
+  },
+  {
+    "name": "libnatpmp",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260102/libnatpmp-mingw32.tar.gz",
+    "sha256": "49B813A14EA6FC1E75E0B3571BADFC486B3C95EA82CC7E45FBB62F3541489BF5"
+  },
+  {
+    "name": "libcurl",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/20260310/libcurl-mingw32.tar.gz",
+    "sha256": "78C7093AE884E562C0BC4216D97F32FAA1A3FE7A8E6AE8E22D7C970CF7CFB186"
+  },
+  {
+    "name": "openal",
+    "url": "https://github.com/dkfans/kfx-deps/releases/download/2024-11-14/openal-mingw32.tar.gz",
+    "sha256": "2DF6C425BE95839713AB07BC3027EB26B18B1D770EE8F31D7C8B1B399C07D1A4"
+  },
+  {
+    "name": "png2ico",
+    "url": "https://github.com/dkfans/png2ico/releases/download/2024-10-28/png2ico-lin-2024-10-28.tar.gz",
+    "sha256": "BEF4075F7AB9543AC60A393DA2B34F874A46E3713526B4B4E0BDD57349940403"
+  }
+]

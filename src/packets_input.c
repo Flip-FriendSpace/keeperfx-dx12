@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -290,6 +291,12 @@ TbBool process_dungeon_control_packet_dungeon_control(NetUserId user)
     TbBool at_limit = false;
     TbBool apply_roomspace_tag = pckt->action == PckA_ApplyRoomspaceDigTag;
     TbBool thing_target_action = apply_roomspace_tag || (pckt->action == PckA_UsePwrHandPick) || (pckt->action == PckA_UsePwrOnThing);
+    // DOWN and UP can both arrive before the next input tick. Such a click has
+    // no Held packet, so paint mode must apply it once on release. Capture this
+    // before the click flag is consumed below; never repeat a held paint step.
+    const unsigned short completed_click_flags = PCtr_MapCoordsValid | PCtr_LBtnClick | PCtr_LBtnRelease;
+    const TbBool completed_short_click =
+        (pckt->control_flags & (completed_click_flags | PCtr_LBtnHeld)) == completed_click_flags;
     unsigned char box_colour;
     if ((pckt->control_flags & PCtr_LBtnAnyAction) == 0)
         ustate->secondary_cursor_state = CSt_DefaultArrow;
@@ -468,7 +475,7 @@ TbBool process_dungeon_control_packet_dungeon_control(NetUserId user)
                         // TODO SPELLS it's not a good idea to use this directly; change to magic_use_available_power_on_*()
                         use_power_hand(plyr_idx, stl_x, stl_y, 0);
                     }
-                    else if (player->render_roomspace.drag_mode)
+                    else if (player->render_roomspace.drag_mode || completed_short_click)
                     {
                         if (at_limit)
                         {

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -40,6 +41,7 @@ long block_dimension = 32;
 long block_count_per_row = 8;
 TbBool level_textures_ready = 0;
 volatile unsigned int level_textures_generation = 0;
+uint64_t texture_bank_mutation_serial = 0;
 
 static int32_t anim_counter;
 static int32_t anim_start_frame;
@@ -48,6 +50,15 @@ static int32_t anim_start_frame;
 }
 #endif
 /******************************************************************************/
+TbBool begin_texture_bank_mutation(void)
+{
+    // Called on the game/producer thread before any writer touches block_mem.
+    // Exhaustion disables owned source identity permanently; gameplay continues.
+    if (texture_bank_mutation_serial != UINT64_MAX)
+        texture_bank_mutation_serial++;
+    return texture_bank_mutation_serial != UINT64_MAX;
+}
+
 void setup_texture_block_mem(void)
 {
     unsigned char** dst = block_ptrs;
@@ -227,6 +238,7 @@ static TbBool load_letter_one_file(unsigned long tmapidx, char letter, void *dst
 TbBool load_texture_map_file(unsigned long tmapidx, LevelNumber lvnum, short fgroup)
 {
     SYNCDBG(7,"Starting");
+    begin_texture_bank_mutation();
     memset(block_mem, 130, sizeof(block_mem));
     if (!load_letter_one_file(tmapidx,'a', block_mem,lvnum,fgroup))
     {

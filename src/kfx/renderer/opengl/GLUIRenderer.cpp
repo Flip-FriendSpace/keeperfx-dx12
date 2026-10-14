@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "pre_inc.h"
 #include "kfx/renderer/opengl/GLUIRenderer.h"
 #include "kfx/renderer/opengl/GLSpriteAtlas.h"
@@ -17,6 +18,7 @@
 #include <cstddef>
 #include <cstring>
 #include <unordered_set>
+#include <stdexcept>
 #include "post_inc.h"
 
 namespace {
@@ -118,6 +120,7 @@ bool GLUIRenderer::Init()
         clut_tex_desc.initial_pixels = std::move(initial);
         clut_tex_desc.debug_name = "ui_clut";
         m_clut_tex_handle = m_resource_mapper->RequestCreateTexture(clut_tex_desc);
+        m_capture_clut_texture = 0; m_capture_clut_known.fill(false);
     }
 
     GpuGeometryBufferDesc geom_desc;
@@ -235,6 +238,7 @@ void GLUIRenderer::ensure_clut_valid()
     if (!m_resource_mapper || !m_frame_palette) return;
     const GLTexture* clut_tex = m_resource_mapper->ResolveTexture(m_clut_tex_handle);
     if (!clut_tex) return;
+    RecordCLUTForCapture(clut_tex->id);
     if (std::memcmp(m_frame_palette, m_clut_palette_snap, sizeof(m_clut_palette_snap)) == 0)
         return;
 
@@ -245,6 +249,7 @@ void GLUIRenderer::ensure_clut_valid()
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, clut_tex->id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, row);
+    RecordCLUTForCapture(clut_tex->id, 0, row);
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
 
@@ -300,6 +305,7 @@ int GLUIRenderer::resolve_clut_row(const unsigned char* cmap)
         256, 1,
         GL_RGBA, GL_UNSIGNED_BYTE,
         row);
+    RecordCLUTForCapture(clut_tex->id, row_idx, row);
 
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
@@ -554,6 +560,11 @@ bool GLUIRenderer::UploadMinimap(int slot, int size)
 
 void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQuad> (&out)[kLayerCount])
 {
+    const auto fail_resource = [&](IRUILayer layer, const char* reason) {
+        const auto& session = m_capture_session ? m_capture_session
+            : (layer == IRUILayer::WorldOverlay || layer == IRUILayer::WorldOverlayFlat ? m_capture_build_session : m_capture_session);
+        WorldSceneFailOutlineCapture(session, reason);
+    };
     struct Ref { uint32_t seq; uint8_t kind; uint32_t idx; };
     enum { K_Sprite = 0, K_OneColour, K_Scaled, K_ScaledOneColour, K_ScaledRemap, K_Box, K_Slab, K_Minimap };
 
@@ -609,7 +620,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
         case K_Sprite: {
             const IRUISpriteCmd& c = ui.sprites.Data()[ref.idx];
             SpriteUV uv;
-            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) break;
+            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) { fail_resource(c.layer, "World overlay sprite atlas allocation missing"); break; }
             float u0 = uv.u0, v0 = uv.v0, u1 = uv.u1, v1 = uv.v1;
             apply_flip_flags(c.draw_flags, u0, v0, u1, v1);
             UIQuad q;
@@ -624,7 +635,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
         case K_OneColour: {
             const IRUISpriteOneColourCmd& c = ui.sprites_one_colour.Data()[ref.idx];
             SpriteUV uv;
-            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) break;
+            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) { fail_resource(c.layer, "World overlay sprite atlas allocation missing"); break; }
             float u0 = uv.u0, v0 = uv.v0, u1 = uv.u1, v1 = uv.v1;
             apply_flip_flags(c.draw_flags, u0, v0, u1, v1);
             UIQuad q;
@@ -640,7 +651,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
         case K_Scaled: {
             const IRUISpriteScaledCmd& c = ui.sprites_scaled.Data()[ref.idx];
             SpriteUV uv;
-            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) break;
+            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) { fail_resource(c.layer, "World overlay sprite atlas allocation missing"); break; }
             float u0 = uv.u0, v0 = uv.v0, u1 = uv.u1, v1 = uv.v1;
             apply_flip_flags(c.draw_flags, u0, v0, u1, v1);
             UIQuad q;
@@ -655,7 +666,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
         case K_ScaledOneColour: {
             const IRUISpriteScaledOneColourCmd& c = ui.sprites_scaled_one_colour.Data()[ref.idx];
             SpriteUV uv;
-            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) break;
+            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) { fail_resource(c.layer, "World overlay sprite atlas allocation missing"); break; }
             float u0 = uv.u0, v0 = uv.v0, u1 = uv.u1, v1 = uv.v1;
             apply_flip_flags(c.draw_flags, u0, v0, u1, v1);
             UIQuad q;
@@ -671,7 +682,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
         case K_ScaledRemap: {
             const IRUISpriteScaledRemapCmd& c = ui.sprites_scaled_remap.Data()[ref.idx];
             SpriteUV uv;
-            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) break;
+            if (!m_atlas || !m_atlas->GetUV(c.sprite, uv)) { fail_resource(c.layer, "World overlay sprite atlas allocation missing"); break; }
             float u0 = uv.u0, v0 = uv.v0, u1 = uv.u1, v1 = uv.v1;
             apply_flip_flags(c.draw_flags, u0, v0, u1, v1);
             // cmap points into pixmap.fade_tables (64 rows x 256 cols);
@@ -742,6 +753,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
         }
         case K_Minimap: {
             const IRUIMinimapCmd& c = ui.minimaps.Data()[ref.idx];
+            fail_resource(c.layer, "Minimap inside captured world composition is unsupported");
             if (!UploadMinimap(c.slot, c.size)) break;
             UIQuad q;
             q.x0 = (float)c.x; q.y0 = (float)c.y;
@@ -753,6 +765,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
         }
         case K_Slab: {
             const IRUISlabBackgroundCmd& c = ui.slab_backgrounds.Data()[ref.idx];
+            fail_resource(c.layer, "Slab background inside captured world composition is unsupported");
             int dim = m_slab_dim;
             if (dim <= 0)
             {
@@ -787,7 +800,9 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
 void GLUIRenderer::FlushQuadRun(const std::vector<UIQuad>& run, PassType pass, int remap_row)
 {
     if (run.empty()) return;
-    if (!m_resource_mapper) return;
+    if (!m_resource_mapper) { WorldSceneFailOutlineCapture(m_capture_session, "Overlay resource mapper missing"); return; }
+    if (pass == PASS_SLAB || pass == PASS_MINIMAP)
+        WorldSceneFailOutlineCapture(m_capture_session, "Unsupported executed world overlay resource mode");
 
     unsigned int shader = 0;
     unsigned int tex0 = 0;
@@ -822,7 +837,7 @@ void GLUIRenderer::FlushQuadRun(const std::vector<UIQuad>& run, PassType pass, i
         break;
     }
     }
-    if (!shader) return;
+    if (!shader) { WorldSceneFailOutlineCapture(m_capture_session, "Overlay shader missing"); return; }
 
     std::vector<float> verts;
     verts.reserve(run.size() * 6 * 9);
@@ -873,16 +888,120 @@ void GLUIRenderer::FlushQuadRun(const std::vector<UIQuad>& run, PassType pass, i
         glUniform1f(glGetUniformLocation(shader, "u_clut_v"), clut_v);
     }
     const GLGeometryBuffer* batch_geom = m_resource_mapper->ResolveGeometryBuffer(m_batch_geom_handle);
-    if (!batch_geom) return;
+    if (!batch_geom) { WorldSceneFailOutlineCapture(m_capture_session, "Overlay geometry missing"); return; }
     glBindVertexArray(batch_geom->vao);
     glBindBuffer(GL_ARRAY_BUFFER, batch_geom->vbo);
     // Orphan + refill: avoids the driver stalling this frame's batch on last
     // frame's still-in-flight draw of the same buffer.
-    glBufferData(GL_ARRAY_BUFFER, (long)(verts.size() * sizeof(float)), nullptr, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)), nullptr, GL_STREAM_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, (long)(verts.size() * sizeof(float)), verts.data());
     glDrawArrays(GL_TRIANGLES, 0, (int)(run.size() * 6));
+    CaptureQuadRun(run, pass, remap_row, tex0);
     glBindVertexArray(0);
     glUseProgram(0);
+}
+
+void GLUIRenderer::RecordCLUTForCapture(unsigned int texture, int row, const uint8_t* data) noexcept
+{
+    GLint length = 0, rows = 0, pixels = 0, buffer = 0;
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &length); glGetIntegerv(GL_UNPACK_SKIP_ROWS, &rows);
+    glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &pixels); glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &buffer);
+    const bool tight = !length && !rows && !pixels && !buffer;
+    if (m_capture_clut_texture != texture) {
+        // Every incarnation is created with an explicit zero-filled upload.
+        m_capture_clut = {}; m_capture_clut_known.fill(tight); m_capture_clut_texture = texture;
+    }
+    if (row < 0 || row >= k_clut_rows || !data) return;
+    m_capture_clut_known[row] = tight;
+    if (m_capture_clut_known[row]) std::copy_n(data, 1024, m_capture_clut[row].begin());
+}
+void GLUIRenderer::BeginSceneOverlayCapture(const WorldSceneOutlineSession& session, kfx::render::SceneGLOverlayPhase phase,
+    const WorldSceneGLUploadMirror& palette, const WorldSceneGLUploadMirror& fade, unsigned int framebuffer) noexcept
+{
+    if (m_capture_session) WorldSceneFailOutlineCapture(m_capture_session, "Nested overlay capture phase");
+    m_capture_session = session; m_capture_phase = phase; m_capture_palette = &palette; m_capture_fade = &fade;
+    m_capture_framebuffer = framebuffer;
+}
+void GLUIRenderer::EndSceneOverlayCapture() noexcept
+{
+    WorldSceneCompleteOverlayPhase(m_capture_session, m_capture_phase);
+    m_capture_session.reset(); m_capture_palette = nullptr; m_capture_fade = nullptr;
+}
+void GLUIRenderer::CaptureQuadRun(const std::vector<UIQuad>& run, PassType pass, int remap_row, unsigned int texture) noexcept
+{
+    if (!m_capture_session) return;
+    using namespace kfx::render;
+    try {
+        const auto require = [](bool good, const char* why) { if (!good) throw std::runtime_error(why); };
+        GLint viewport[4]{}, scissor[4]{}, func = 0, src_rgb = 0, dst_rgb = 0, src_a = 0, dst_a = 0, eq_rgb = 0, eq_a = 0;
+        GLint samples = 0, framebuffer = 0; GLboolean depth_mask = GL_TRUE, mask[4]{};
+        glGetIntegerv(GL_VIEWPORT, viewport); glGetIntegerv(GL_SCISSOR_BOX, scissor);
+        glGetIntegerv(GL_DEPTH_FUNC, &func); glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
+        glGetBooleanv(GL_COLOR_WRITEMASK, mask); glGetIntegerv(GL_SAMPLES, &samples);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+        glGetIntegerv(GL_BLEND_SRC_RGB, &src_rgb); glGetIntegerv(GL_BLEND_DST_RGB, &dst_rgb);
+        glGetIntegerv(GL_BLEND_SRC_ALPHA, &src_a); glGetIntegerv(GL_BLEND_DST_ALPHA, &dst_a);
+        glGetIntegerv(GL_BLEND_EQUATION_RGB, &eq_rgb); glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &eq_a);
+        const bool depth = glIsEnabled(GL_DEPTH_TEST) != 0;
+        require(unsigned(framebuffer) == m_capture_framebuffer
+            && viewport[0] == 0 && viewport[1] == 0 && viewport[2] == m_screen_w && viewport[3] == m_screen_h
+            && !samples && glIsEnabled(GL_BLEND) && src_rgb == GL_SRC_ALPHA && src_a == GL_SRC_ALPHA
+            && dst_rgb == GL_ONE_MINUS_SRC_ALPHA && dst_a == GL_ONE_MINUS_SRC_ALPHA && eq_rgb == GL_FUNC_ADD && eq_a == GL_FUNC_ADD
+            && (!depth || (func == GL_LEQUAL && !depth_mask)) && !glIsEnabled(GL_FRAMEBUFFER_SRGB)
+            && !glIsEnabled(GL_CULL_FACE) && !glIsEnabled(GL_RASTERIZER_DISCARD)
+            && !glIsEnabled(GL_STENCIL_TEST) && !glIsEnabled(GL_COLOR_LOGIC_OP) && !glIsEnabled(GL_POLYGON_OFFSET_FILL)
+            && mask[0] && mask[1] && mask[2] && mask[3], "Unsupported executed overlay GL state");
+        SceneGLOverlayMode mode;
+        switch (pass) {
+        case PASS_SPRITE: mode = SceneGLOverlayMode::Sprite; break;
+        case PASS_COLORED: mode = SceneGLOverlayMode::Colored; break;
+        case PASS_SOLID: mode = SceneGLOverlayMode::Solid; break;
+        case PASS_REMAP: mode = SceneGLOverlayMode::Fade; break;
+        case PASS_CLUT: mode = SceneGLOverlayMode::Clut; break;
+        default: throw std::runtime_error("Unsupported executed overlay mode");
+        }
+        const SceneGLOverlaySource* source = nullptr;
+        if (pass != PASS_SOLID) {
+            source = m_atlas ? m_atlas->UploadedSourceForCapture(texture) : nullptr;
+            require(source != nullptr, "Executed overlay atlas upload missing");
+        }
+        std::array<uint8_t, 1024> row{}; const std::array<uint8_t, 1024>* row_ptr = nullptr;
+        if (pass == PASS_CLUT) {
+            const GLTexture* tex = m_resource_mapper->ResolveTexture(m_clut_tex_handle);
+            require(tex && tex->width == 256 && tex->height == k_clut_rows && remap_row >= 0 && remap_row < k_clut_rows,
+                "Executed UI CLUT row unavailable");
+            RecordCLUTForCapture(tex->id);
+            require(m_capture_clut_known[remap_row], "Executed UI CLUT upload unknown");
+            row = m_capture_clut[remap_row]; row_ptr = &row;
+        } else if (pass == PASS_SPRITE || pass == PASS_REMAP) {
+            const GLTexture* tex = m_resource_mapper->ResolveTexture(m_palette_tex_handle);
+            require(tex && m_capture_palette && m_capture_palette->Matches(m_palette_tex_handle, tex->id, 256, 1)
+                && m_capture_palette->bytes.size() == 1024, "Executed overlay palette upload missing");
+            std::copy_n(m_capture_palette->bytes.begin(), 1024, row.begin()); row_ptr = &row;
+        }
+        const uint8_t* fade = nullptr;
+        if (pass == PASS_REMAP) {
+            const GLTexture* tex = m_resource_mapper->ResolveTexture(m_fade_table_tex_handle);
+            require(tex && remap_row >= 0 && remap_row < 64 && m_capture_fade
+                && m_capture_fade->Matches(m_fade_table_tex_handle, tex->id, 256, 64)
+                && m_capture_fade->bytes.size() == 16384, "Executed overlay fade upload missing");
+            fade = m_capture_fade->bytes.data();
+        }
+        for (const auto& input : run) {
+            SceneGLOverlayQuad q; q.phase = m_capture_phase; q.mode = mode; q.depth_test = depth;
+            q.x0 = input.x0; q.y0 = input.y0; q.x1 = input.x1; q.y1 = input.y1;
+            q.z_ndc = input.ndc_z; q.colour = {input.r, input.g, input.b, input.a};
+            if (pass != PASS_SOLID) { q.u0 = input.u0; q.v0 = input.v0; q.u1 = input.u1; q.v1 = input.v1; }
+            if (pass == PASS_REMAP) q.fade_row = uint8_t(remap_row);
+            q.scissor_enabled = glIsEnabled(GL_SCISSOR_TEST) != 0;
+            if (q.scissor_enabled) {
+                q.scissor_x = scissor[0]; q.scissor_y = m_screen_h - scissor[1] - scissor[3];
+                q.scissor_w = scissor[2]; q.scissor_h = scissor[3];
+            }
+            WorldSceneAppendOverlayQuad(m_capture_session, q, source, row_ptr, fade);
+        }
+    } catch (const std::exception& e) { WorldSceneFailOutlineCapture(m_capture_session, e.what()); }
+    catch (...) { WorldSceneFailOutlineCapture(m_capture_session, "Executed overlay capture failed"); }
 }
 
 void GLUIRenderer::FlushQuadLayer(std::vector<UIQuad>& quads, bool depth_test)
@@ -917,10 +1036,12 @@ void GLUIRenderer::FlushQuadLayer(std::vector<UIQuad>& quads, bool depth_test)
     quads.clear();
 }
 
-void GLUIRenderer::BuildQuadsFromIR(const UICommandBuffers& ui)
+void GLUIRenderer::BuildQuadsFromIR(const UICommandBuffers& ui, const WorldSceneOutlineSession& capture)
 {
     for (auto& v : m_quads) v.clear();
+    m_capture_build_session = capture;
     AppendQuadsFromIR(ui, m_quads);
+    m_capture_build_session.reset();
     m_game_vp_x   = ui.game_vp.x;
     m_game_vp_y   = ui.game_vp.y;
     m_game_vp_w   = ui.game_vp.w;

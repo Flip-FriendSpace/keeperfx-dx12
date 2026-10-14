@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef IWINDOWSYSTEM_H
 #define IWINDOWSYSTEM_H
 
@@ -64,6 +65,8 @@ public:
     // ----- Window management -----
 
     virtual bool HasWindow() const { return false; }
+    /** Platform window handle for native renderers; nullptr when unavailable. */
+    virtual void* GetNativeWindowHandle() const { return nullptr; }
     virtual unsigned int GetWindowFlags() const { return 0; }
     virtual void GetWindowSize(int* out_w, int* out_h) const
     {

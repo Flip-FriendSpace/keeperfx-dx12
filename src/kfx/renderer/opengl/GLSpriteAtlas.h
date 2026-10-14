@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef RENDERER_OPENGL_GLSPRITEATLAS_H
 #define RENDERER_OPENGL_GLSPRITEATLAS_H
 
@@ -8,6 +9,7 @@
 #include <mutex>
 #include "kfx/renderer/SpriteHandle.h"
 #include "kfx/renderer/GpuResourceHandle.h"
+#include "kfx/renderer/SceneGLOverlayTrace.h"
 
 struct TbSprite;
 class GLResourceMapper;
@@ -51,11 +53,15 @@ public:
     GpuResourceHandle GetTexture() const { return m_texture_handle; }
 
     void FlushPendingGL();
+    const kfx::render::SceneGLOverlaySource* UploadedSourceForCapture(unsigned int texture) const noexcept;
 
 private:
     std::vector<uint8_t> m_pixels;
     GLResourceMapper* m_resource_mapper = nullptr;
     GpuResourceHandle m_texture_handle = kInvalidGpuResource;
+    kfx::render::SceneGLOverlaySource m_capture_uploaded;
+    GpuResourceHandle m_capture_handle = kInvalidGpuResource;
+    unsigned int m_capture_texture = 0;
 
     int m_cursor_x = 1; // reserve (0,0) as a safe fallback UV
     int m_shelf_y  = 0;

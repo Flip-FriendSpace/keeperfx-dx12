@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -246,6 +247,7 @@ void LensManager::Draw(unsigned char* srcbuf, unsigned char* dstbuf,
     if (!m_active_custom_lens.empty()) {
         LensEffect* custom_effect = GetCustomLens(m_active_custom_lens.c_str());
         if (custom_effect != nullptr && custom_effect->IsEnabled()) {
+            ++m_custom_draw_attempts;
             if (custom_effect->Draw(&ctx)) {
                 return;  // Custom lens rendered successfully
             }
@@ -486,7 +488,7 @@ TbBool LensManager::AllocateBuffers()
     m_spare_screen_memory = (unsigned char*)calloc(buffer_size, sizeof(unsigned char));
     
     if (m_lens_memory == nullptr || m_spare_screen_memory == nullptr) {
-        ERRORLOG("Failed to allocate lens buffers (%lu bytes)", buffer_size * sizeof(uint32_t));
+        ERRORLOG("Failed to allocate lens buffers (%" PRIu64 " bytes)", static_cast<uint64_t>(buffer_size) * sizeof(uint32_t));
         FreeBuffers();
         return false;
     }
@@ -567,6 +569,11 @@ TbBool LensManager_IsReady(void* mgr)
 {
     if (mgr == nullptr) return false;
     return static_cast<LensManager*>(mgr)->IsReady();
+}
+
+TbBool LensManager_RequiresIndexedSource(void* mgr)
+{
+    return mgr != nullptr && static_cast<LensManager*>(mgr)->RequiresIndexedSource();
 }
 
 void LensManager_Draw(void* mgr, unsigned char* srcbuf, unsigned char* dstbuf,

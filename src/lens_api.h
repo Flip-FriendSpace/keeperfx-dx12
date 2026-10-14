@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Free implementation of Bullfrog's Dungeon Keeper strategy game.
 /******************************************************************************/
@@ -59,6 +60,7 @@ TbBool LensManager_SetLens(void* mgr, long lens_idx);
 long LensManager_GetActiveLens(void* mgr);
 const char* LensManager_GetActiveCustomLensName(void* mgr);
 TbBool LensManager_IsReady(void* mgr);
+TbBool LensManager_RequiresIndexedSource(void* mgr);
 void LensManager_Draw(void* mgr, unsigned char* srcbuf, unsigned char* dstbuf,
                       long srcpitch, long dstpitch, long width, long height, long viewport_x);
 void LensManager_CopyBuffer(unsigned char* dstbuf, long dstpitch,

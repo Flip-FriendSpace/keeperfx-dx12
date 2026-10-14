@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -6,13 +7,19 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/WorldSceneCapture.h"
+#include "kfx/renderer/SceneAssetCapture.h"
 #include "kfx/renderer/opengl/GLWorldViewRenderer.h"
+#include "kfx/renderer/opengl/GLTileAtlas.h"
 #include "kfx/renderer/SpriteScale.h"
+#include "kfx/renderer/KeeperSpriteDecode.h"
+#include "kfx/renderer/LightmapSnapshot.h"
 
 #include "kfx/renderer/ITileAtlas.h"
 #include "kfx/renderer/opengl/GLShaders.h"
 #include "kfx/renderer/opengl/GLResourceMapper.h"
 #include "kfx/renderer/RendererThread.h"   // ASSERT_GAME_THREAD/ASSERT_RENDER_THREAD
+#include "kfx/renderer/WorldRenderState.h"
 #include "kfx/renderer/RendererSettings.h" // g_renderer_settings
 #include "kfx/renderer/RendererManager.h"  // RendererGetCurrentSpriteOwner/WantsOutline
 #include "kfx/profiling/KfxProfiling.h"
@@ -36,9 +43,30 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include <exception>
+#include <stdexcept>
 #include "post_inc.h"
 
 /******************************************************************************/
+
+namespace {
+bool capture_tight_unpack(unsigned row_bytes)
+{
+    GLint alignment = 0, length = 0, rows = 0, pixels = 0, buffer = 0, swap = 0;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment); glGetIntegerv(GL_UNPACK_ROW_LENGTH, &length);
+    glGetIntegerv(GL_UNPACK_SKIP_ROWS, &rows); glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &pixels);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &buffer); glGetIntegerv(GL_UNPACK_SWAP_BYTES, &swap);
+    return alignment > 0 && row_bytes % unsigned(alignment) == 0 && !length && !rows && !pixels && !buffer && !swap;
+}
+bool capture_clear_state()
+{
+    GLboolean colour[4]{}, depth = GL_FALSE; GLdouble depth_clear = 0;
+    glGetBooleanv(GL_COLOR_WRITEMASK, colour); glGetBooleanv(GL_DEPTH_WRITEMASK, &depth);
+    glGetDoublev(GL_DEPTH_CLEAR_VALUE, &depth_clear);
+    return !glIsEnabled(GL_SCISSOR_TEST) && !glIsEnabled(GL_FRAMEBUFFER_SRGB)
+        && colour[0] && colour[1] && colour[2] && colour[3] && depth && depth_clear == 1;
+}
+}
 
 GLuint GLWorldViewRenderer::ResolvePaletteTexId() const
 {
@@ -60,7 +88,7 @@ GLuint GLWorldViewRenderer::ResolveShaderId(GpuResourceHandle handle) const
 
 
 /** Max dimension of a keeper-sprite decode buffer (stride for GL_UNPACK_ROW_LENGTH). */
-static constexpr int k_kspr_decode_dim = 256;
+static constexpr int k_kspr_decode_dim = kfx::render::WorldShadowDecodeDimension;
 
 /** Scratch buffer used to hold decoded RG pixels (palette index, coverage)
  *  before upload. Stride is always k_kspr_decode_dim pixels so glTexSubImage*()
@@ -81,50 +109,21 @@ static bool decoded_sprite_darkens(int w, int h)
     return false;
 }
 
-/** Decode keeper-sprite RLE into a stride-k_kspr_decode_dim RG buffer.
- *  Format matches TbSprite.Data: negative cmd = transparent skip, positive
- *  cmd = run of palette-index bytes, 0 = end of row. Every pixel in a run is
- *  opaque, index 0 included, so coverage is stored separately from the index. */
-static void decode_keeper_rle(uint8_t* dst, const uint8_t* data, int w, int h)
+/** Decode only a verified source extent. Failure never exposes partial pixels. */
+static bool decode_keeper_rle(uint8_t* dst, const uint8_t* data, size_t data_bytes, int w, int h)
 {
-    if (!data || w <= 0 || h <= 0) return;
-
-    for (int y = 0; y < h; ++y)
-        memset(dst + y * k_kspr_decode_dim * 2, 0, k_kspr_decode_dim * 2);
-
-    const signed char* sp     = reinterpret_cast<const signed char*>(data);
-    const signed char* sp_end = sp + (ptrdiff_t)w * h * 3 + h;  // generous worst-case bound
-    for (int y = 0; y < h; ++y) {
-        uint8_t* row = dst + y * k_kspr_decode_dim * 2;
-        int x = 0;
-        while (true) {
-            if (sp >= sp_end) {
-                WARNLOG("decode_keeper_rle: ran past expected data end at row %d", y);
-                return;
-            }
-            signed char cmd = *sp++;
-            if (cmd == 0) break;
-            if (cmd < 0) {
-                x += (int)(-cmd);
-            } else {
-                int count = (int)cmd;
-                for (int i = 0; i < count; ++i) {
-                    if (sp >= sp_end) {
-                        WARNLOG("decode_keeper_rle: pixel data past expected end");
-                        return;
-                    }
-                    if (x < w) {
-                        row[x * 2]     = (uint8_t)(*sp);
-                        row[x * 2 + 1] = 255;
-                    }
-                    ++sp;
-                    ++x;
-                }
-            }
-        }
+    const auto result = kfx::render::DecodeKeeperSpriteRG(
+        {{dst, sizeof(s_kspr_decode_buf)}, k_kspr_decode_dim, k_kspr_decode_dim,
+            k_kspr_decode_dim * 2}, {data, data_bytes}, (uint32_t)w, (uint32_t)h);
+    if (!result) {
+        static unsigned warnings = 0;
+        if (warnings++ < 20)
+            WARNLOG("Keeper sprite decode rejected: status %u at byte %" PRIu64,
+                (unsigned)result.status, (uint64_t)result.bytes_consumed);
+        return false;
     }
+    return true;
 }
-
 /******************************************************************************/
 
 GLWorldViewRenderer::~GLWorldViewRenderer()
@@ -205,6 +204,7 @@ bool GLWorldViewRenderer::init_gl_resources()
     glUniform1i(m_loc_lightmap,      2);  // GL_TEXTURE2
     glUniform1f(m_loc_missing_tile,  0.0f);
     glUseProgram(0);
+    m_shade_settings_applied = false;
     push_shade_uniforms();
 
     // Lightmap texture — mirrors game.lish.subtile_lightness[] each frame.
@@ -258,16 +258,21 @@ void GLWorldViewRenderer::push_shade_uniforms()
     const GLuint world_shader_id = ResolveShaderId(m_shader_handle);
     if (world_shader_id == 0)
         return;
+    const auto values = kfx::render::WorldShadeSettings(g_renderer_settings);
+    if (m_shade_settings_applied && values == m_applied_shade_settings)
+        return;
+    m_applied_shade_settings = values;
+    m_shade_settings_applied = true;
     glUseProgram(world_shader_id);
-    glUniform1f(m_loc_fullbright,    g_renderer_settings.shade_fullbright);
-    glUniform1f(m_loc_ambient,       g_renderer_settings.shade_ambient);
-    glUniform1f(m_loc_shade_scale,   g_renderer_settings.shade_scale);
-    glUniform1f(m_loc_shade_gamma,   g_renderer_settings.shade_gamma);
-    glUniform1i(m_loc_lighting_mode, g_renderer_settings.lighting_mode);
-    glUniform1i(m_loc_darkness_mode, g_renderer_settings.darkness_mode);
-    glUniform1f(m_loc_fog_speed,     g_renderer_settings.fog_speed);
-    glUniform1f(m_loc_fog_density,   g_renderer_settings.fog_density);
-    glUniform1i(m_loc_tile_filter,   g_renderer_settings.tile_filter);
+    glUniform1f(m_loc_fullbright,    values[0]);
+    glUniform1f(m_loc_ambient,       values[1]);
+    glUniform1f(m_loc_shade_scale,   values[2]);
+    glUniform1f(m_loc_shade_gamma,   values[3]);
+    glUniform1i(m_loc_lighting_mode, static_cast<int>(values[4]));
+    glUniform1i(m_loc_darkness_mode, static_cast<int>(values[5]));
+    glUniform1f(m_loc_fog_speed,     values[6]);
+    glUniform1f(m_loc_fog_density,   values[7]);
+    glUniform1i(m_loc_tile_filter,   static_cast<int>(values[8]));
     m_tile_filter_applied = -1;  // force reapply on next flush
     glUseProgram(0);
 }
@@ -281,6 +286,7 @@ void GLWorldViewRenderer::RefreshFadeTableAndSettings()
         {
             glBindTexture(GL_TEXTURE_2D, tex->id);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 64, GL_RED, GL_UNSIGNED_BYTE, pixmap.fade_tables);
+            RecordAppliedFadeForCapture(pixmap.fade_tables);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
@@ -298,6 +304,11 @@ void GLWorldViewRenderer::free_gl_resources()
 
 void GLWorldViewRenderer::free_keeper_sprite_resources()
 {
+    m_capture_clut_known.fill(false);
+    m_capture_applied_palette_known = false;
+    m_capture_applied_fade_known = false;
+    m_capture_world_target_known = false;
+    for (auto& source : m_capture_sprite_coverage) source = {};
     m_kspr_atlas_used = 0;
     m_kspr_atlas_map.clear();
     m_kspr_clut_remaps.clear();
@@ -656,6 +667,10 @@ void GLWorldViewRenderer::upload_lens_textures_if_dirty()
             {
                 glBindTexture(GL_TEXTURE_2D, tex->id);
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 256, GL_RED, GL_UNSIGNED_BYTE, m_rt_lens_cmd.mist_pixels.data());
+                if (capture_tight_unpack(256))
+                    m_capture_mist_upload.Record(m_lens_mist_tex_handle, tex->id, 256, 256,
+                        m_rt_lens_cmd.mist_pixels.data(), m_rt_lens_cmd.mist_pixels.size());
+                else m_capture_mist_upload.bytes.clear();
                 glBindTexture(GL_TEXTURE_2D, 0);
                 m_lens_mist_uploaded_version = m_rt_lens_cmd.mist_version;
             }
@@ -675,6 +690,10 @@ void GLWorldViewRenderer::upload_lens_textures_if_dirty()
                 glBindTexture(GL_TEXTURE_2D, tex->id);
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_rt_lens_cmd.remap_w, m_rt_lens_cmd.remap_h,
                                 GL_RG_INTEGER, GL_UNSIGNED_SHORT, m_rt_lens_cmd.remap_pixels.data());
+                if (capture_tight_unpack(unsigned(m_rt_lens_cmd.remap_w) * 4))
+                    m_capture_remap_upload.Record(m_lens_remap_tex_handle, tex->id, tex->width, tex->height,
+                        m_rt_lens_cmd.remap_pixels.data(), m_rt_lens_cmd.remap_pixels.size() * sizeof(int16_t));
+                else m_capture_remap_upload.bytes.clear();
                 glBindTexture(GL_TEXTURE_2D, 0);
                 m_lens_remap_uploaded_version = m_rt_lens_cmd.remap_version;
             }
@@ -695,6 +714,10 @@ void GLWorldViewRenderer::upload_lens_textures_if_dirty()
                 glBindTexture(GL_TEXTURE_2D, tex->id);
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_rt_lens_cmd.overlay_w, m_rt_lens_cmd.overlay_h,
                                 GL_RED, GL_UNSIGNED_BYTE, m_rt_lens_cmd.overlay_pixels.data());
+                if (capture_tight_unpack(unsigned(m_rt_lens_cmd.overlay_w)))
+                    m_capture_overlay_upload.Record(m_lens_overlay_tex_handle, tex->id, tex->width, tex->height,
+                        m_rt_lens_cmd.overlay_pixels.data(), m_rt_lens_cmd.overlay_pixels.size());
+                else m_capture_overlay_upload.bytes.clear();
                 glBindTexture(GL_TEXTURE_2D, 0);
                 m_lens_overlay_uploaded_version = m_rt_lens_cmd.overlay_version;
             }
@@ -732,8 +755,13 @@ bool GLWorldViewRenderer::BeginLensCapture(const float* clear_rgba)
         return false;
 
     glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
+    if (m_rt_outline_capture && (!capture_clear_state() || rt->width != m_full_screen_w || rt->height != m_full_screen_h))
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "Lens source clear state or native extent is not proved");
     glClearColor(clear_rgba[0], clear_rgba[1], clear_rgba[2], clear_rgba[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    RecordWorldTargetForCapture(m_full_screen_w, m_full_screen_h,
+        kfx::render::SceneGLWorldTargetKind::LensSource, clear_rgba);
+    if (m_rt_outline_capture) m_capture_lens.capture_began = true;
     return true;
 }
 
@@ -796,6 +824,7 @@ void GLWorldViewRenderer::ResolveLensComposite()
             glUniform2f(m_lens_mist_loc_sec, m_rt_lens_cmd.mist_sec_x, m_rt_lens_cmd.mist_sec_y);
             glUniform1f(m_lens_mist_loc_lightness, (float)m_rt_lens_cmd.mist_lightness);
             glDrawArrays(GL_TRIANGLES, 0, 6);
+            record_lens_operation(kfx::render::SceneGLLensOperation::Mist);
         }
         break;
     }
@@ -814,6 +843,7 @@ void GLWorldViewRenderer::ResolveLensComposite()
             glUniform1f(m_lens_remap_loc_src_x, vp_x);
             glUniform2f(m_lens_remap_loc_view_size, vp_w, vp_h);
             glDrawArrays(GL_TRIANGLES, 0, 6);
+            record_lens_operation(kfx::render::SceneGLLensOperation::Remap);
         }
         break;
     }
@@ -836,6 +866,7 @@ void GLWorldViewRenderer::ResolveLensComposite()
             glUniform2f(m_lens_overlay_loc_view_size, vp_w, vp_h);
             glUniform1i(m_lens_overlay_loc_alpha, (GLint)(m_rt_lens_cmd.overlay_alpha * 256.0f + 0.5f));
             glDrawArrays(GL_TRIANGLES, 0, 6);
+            record_lens_operation(kfx::render::SceneGLLensOperation::Overlay);
         }
         break;
     }
@@ -855,6 +886,7 @@ void GLWorldViewRenderer::ResolveLensComposite()
             glUniform1f(m_lens_copy_loc_src_x, vp_x);
             glUniform2f(m_lens_copy_loc_view_size, vp_w, vp_h);
             glDrawArrays(GL_TRIANGLES, 0, 6);
+            record_lens_operation(kfx::render::SceneGLLensOperation::Copy);
         }
     }
 
@@ -868,35 +900,16 @@ void GLWorldViewRenderer::ResolveLensComposite()
 }
 
 void GLWorldViewRenderer::append_shadow_quad(const struct BucketKindCreatureShadow* sh,
-                                             int32_t draw_idx, const unsigned char* data,
-                                             int src_w, int src_h)
+                                             const kfx::render::WorldShadowSourceView& source)
 {
-    if (m_shadow_shader_handle == kInvalidGpuResource)
-        return;  // shadow GL resources unavailable this run -- no fallback needed, just skip
-
     ShadowSubmission cmd;
-    const struct PolyPoint* pts[4] = { &sh->vertex_first, &sh->vertex_second, &sh->vertex_third, &sh->vertex_fourth };
-    for (int i = 0; i < 4; i++)
-    {
-        cmd.x[i] = (float)pts[i]->X;
-        cmd.y[i] = (float)pts[i]->Y;
-        // U/V are TO_FIXED() content-pixel offsets (0..src_w-1 / 0..src_h-1);
-        // normalize straight to atlas-layer UV [0,1] against the full
-        // k_kspr_decode_dim (256) the atlas always allocates a layer at,
-        // matching how the atlas is sampled everywhere else in this class.
-        cmd.u[i] = (float)pts[i]->U / 65536.0f / (float)k_kspr_decode_dim;
-        cmd.v[i] = (float)pts[i]->V / 65536.0f / (float)k_kspr_decode_dim;
-    }
-    cmd.z_ndc   = 2.0f * (float)sh->bucket_idx / (float)(BUCKETS_COUNT - 1) - 1.0f;
-    // dist_sq is clamped to [16,31] by create_shadows() -- approximate linear falloff (closer = darker). 
-    // Todo make configurable?
-    const float dist_sq = (float)sh->vertex_first.S;
-    const float t = std::min(std::max((dist_sq - 16.0f) / 15.0f, 0.0f), 1.0f);
-    cmd.darken  = 0.55f - 0.35f * t;
-    cmd.draw_idx = draw_idx;
-    cmd.data     = data;
-    cmd.src_w    = src_w;
-    cmd.src_h    = src_h;
+    static_cast<kfx::render::WorldShadowGeometry&>(cmd) = source.geometry;
+    cmd.data_bytes = source.bytes.size();
+    cmd.capture_entry = WorldSceneGLShadowTag(sh->caster_slot, cmd.capture_caster);
+    cmd.draw_idx = source.draw_idx;
+    cmd.data     = source.bytes.data();
+    cmd.src_w    = source.src_w;
+    cmd.src_h    = source.src_h;
     m_shadow_cmds.push_back(cmd);
 }
 
@@ -906,8 +919,10 @@ void GLWorldViewRenderer::draw_shadows_gpu()
         return;
     const GLProgram* const shadow_prog = m_resource_mapper->ResolveProgram(m_shadow_shader_handle);
     const GLGeometryBuffer* const shadow_geom = m_resource_mapper->ResolveGeometryBuffer(m_shadow_geom_handle);
-    if (!shadow_prog || !shadow_geom)
+    if (!shadow_prog || !shadow_geom) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "Complete GL shadow program or geometry unavailable");
         return;
+    }
 
     std::vector<ShadowGLVertex>& s_verts = s_shadow_verts;
     s_verts.clear();
@@ -915,10 +930,46 @@ void GLWorldViewRenderer::draw_shadows_gpu()
 
     for (const auto& cmd : m_rt_shadow_cmds)
     {
-        const int layer = resolve_atlas_layer(cmd.draw_idx, cmd.data, cmd.src_w, cmd.src_h);
-        if (layer < 0)
+        const int layer = resolve_atlas_layer(cmd.draw_idx, cmd.data, cmd.data_bytes, cmd.src_w, cmd.src_h);
+        if (layer < 0) {
+            WorldSceneFailOutlineCapture(m_rt_outline_capture, "Complete GL shadow atlas resolution dropped a quad");
             continue;  // atlas full/unsupported -- shadow silently dropped, matches
                        // the sprite pass's own "no CPU fallback for this beat" scope
+        }
+        if (m_rt_outline_capture) {
+            if (cmd.capture_entry == kfx::render::SceneOutlineNoDraw || size_t(layer) >= m_capture_sprite_coverage.size()
+                || m_capture_sprite_coverage[layer].width != cmd.src_w || m_capture_sprite_coverage[layer].height != cmd.src_h
+                || m_capture_sprite_coverage[layer].bits.size() != size_t(k_kspr_decode_dim) * k_kspr_decode_dim / 8)
+                WorldSceneFailOutlineCapture(m_rt_outline_capture, "Complete GL shadow caster or actual source upload proof unavailable");
+            else try {
+                const auto& uploaded = m_capture_sprite_coverage[layer];
+                kfx::render::SceneGLShadowSource source;
+                // The atlas upload initializes the entire layer. Shadow frame
+                // bounds can exceed the decoded artwork's logical dimensions.
+                source.width = k_kspr_decode_dim; source.height = k_kspr_decode_dim;
+                source.coverage.resize(size_t(source.width) * source.height);
+                for (size_t i = 0; i < source.coverage.size(); ++i)
+                    source.coverage[i] = (uploaded.bits[i / 8] & (1u << (i % 8))) ? 255 : 0;
+                kfx::render::SceneGLShadow shadow;
+                shadow.entry = cmd.capture_entry; shadow.caster = cmd.capture_caster;
+                shadow.z_ndc = cmd.z_ndc; shadow.darken = cmd.darken;
+                for (unsigned i = 0; i < 4; ++i) {
+                    shadow.vertices[i] = {cmd.x[i], cmd.y[i], cmd.u[i], cmd.v[i]};
+                    if (!std::isfinite(cmd.x[i]) || !std::isfinite(cmd.y[i])
+                        || std::abs(cmd.x[i]) > 16777216 || std::abs(cmd.y[i]) > 16777216
+                        || !std::isfinite(cmd.u[i]) || !std::isfinite(cmd.v[i])
+                        || cmd.u[i] < 0 || cmd.v[i] < 0
+                        || cmd.u[i] > float(source.width - 1) / 256
+                        || cmd.v[i] > float(source.height - 1) / 256)
+                        ERRORLOG("GL shadow capture bounds: entry=%u caster=%u draw=%d layer=%d source=%ux%u initialized=%ux256 vertex=%u xy=(%.9g,%.9g) uv=(%.9g,%.9g) texel=(%.9g,%.9g)",
+                            cmd.capture_entry, unsigned(cmd.capture_caster.slot), cmd.draw_idx, layer,
+                            unsigned(uploaded.width), unsigned(uploaded.height), unsigned(source.width), i,
+                            double(cmd.x[i]), double(cmd.y[i]), double(cmd.u[i]), double(cmd.v[i]),
+                            double(cmd.u[i]) * 256, double(cmd.v[i]) * 256);
+                }
+                WorldSceneAppendGLShadow(m_rt_outline_capture, shadow, source);
+            } catch (...) { WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL shadow source allocation failed"); }
+        }
 
         const int tri[6] = { 0, 1, 2, 0, 2, 3 };
         for (int t : tri)
@@ -946,6 +997,7 @@ void GLWorldViewRenderer::draw_shadows_gpu()
     glUniform2f(m_shadow_loc_viewport, (float)m_draw_screen_w, (float)m_draw_screen_h);
 
     const GLTexture* sprite_array_tex = m_resource_mapper->ResolveTexture(m_kspr_sprite_array_handle);
+    if (!sprite_array_tex) WorldSceneFailOutlineCapture(m_rt_outline_capture, "Complete GL shadow texture unavailable");
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, sprite_array_tex ? sprite_array_tex->id : 0);
@@ -1152,7 +1204,9 @@ bool GLWorldViewRenderer::init_keeper_sprite_shader()
         desc.initial_pixels = std::move(zero_clut);
         desc.debug_name = "kspr_clut";
         m_kspr_clut_tex_handle = m_resource_mapper->RequestCreateTexture(desc);
-        m_resource_mapper->ResolveTexture(m_kspr_clut_tex_handle); // force realization now
+        const auto* capture_clut = m_resource_mapper->ResolveTexture(m_kspr_clut_tex_handle); // force realization now
+        m_capture_clut_known.fill(capture_clut != nullptr);
+        for (auto& row : m_capture_clut_rows) row.fill(0);
         m_kspr_clut_used = 1;
     }
 
@@ -1429,102 +1483,62 @@ void GLWorldViewRenderer::BeginWorldPass(int w, int h, int vp_x, int vp_y)
 
 /******************************************************************************/
 
-bool GLWorldViewRenderer::append_triangle(int tile_id,
-                                           const struct PolyPoint* p0,
-                                           const struct PolyPoint* p1,
-                                           const struct PolyPoint* p2,
-                                           int32_t cam_z0, int32_t cam_z1, int32_t cam_z2,
-                                           int32_t wx0, int32_t wy0, int32_t wz0,
-                                           int32_t wx1, int32_t wy1, int32_t wz1,
-                                           int32_t wx2, int32_t wy2, int32_t wz2)
+void GLWorldViewRenderer::Triangle(const kfx::render::WorldDrawTriangle& vertices)
 {
-    const int variation  = tile_id / TEXTURE_BLOCKS_COUNT;
-    const int tile_local = tile_id % TEXTURE_BLOCKS_COUNT;
-
-    if (!m_world_write_cmds)
-        return false;
-    std::vector<WorldVertex>& verts_vec = m_world_write_cmds->tile_verts;
-    verts_vec.resize((size_t)(m_vert_count + 3));
-
-    // Derive NDC depth from the painter's-algorithm bucket index:
-    //   high bi (far away) -> z near +1.0; low bi (close) -> z near -1.0.
-    const float z_ndc = 2.0f * (float)m_current_bucket / (float)(BUCKETS_COUNT - 1) - 1.0f;
-    const float layer = (float)variation;
-
-    WorldVertex* const verts = verts_vec.data();
-    const struct PolyPoint* pts[3] = { p0, p1, p2 };
-    const int32_t cam_z[3]   = { cam_z0, cam_z1, cam_z2 };
-    const int32_t world_x[3] = { wx0, wx1, wx2 };
-    const int32_t world_y[3] = { wy0, wy1, wy2 };
-    const int32_t world_z[3] = { wz0, wz1, wz2 };
-    for (int i = 0; i < 3; i++)
-    {
-        WorldVertex* wv = &verts[m_vert_count + i];
-        // X/Y are integer screen pixels (not 16:16 fixed-point).
-        wv->x = (float)(pts[i]->X) / (float)m_screen_w * 2.0f - 1.0f;
-        wv->y = 1.0f - (float)(pts[i]->Y) / (float)m_screen_h * 2.0f;
-        wv->z = z_ndc;
-        // U/V are 16:16 texel coordinates. They can run past the tile (scrolled
-        // liquid); the shader wraps them within the tile like the software rasteriser.
-        wv->u = (float)pts[i]->U / 65536.0f;
-        wv->v = (float)pts[i]->V / 65536.0f;
-        // S = shade_intensity<<8; (S>>16) gives shade level 0..62.
-        wv->shade = (float)(pts[i]->S >> 16) / 32.0f;
-        wv->stl_x = 0.0f;
-        wv->stl_y = 0.0f;
-        wv->camera_z = (cam_z[i] > 0) ? (float)cam_z[i] : 1.0f;
-        wv->atlas_layer = layer;
-        wv->wx = (float)world_x[i];
-        wv->wy = (float)world_y[i];
-        wv->wz = (float)world_z[i];
-        wv->tile = (float)tile_local;
+    if (!m_world_write_cmds) return;
+    auto& target = m_world_write_cmds->tile_verts;
+    target.resize((size_t)(m_vert_count + 3));
+    std::copy(vertices.begin(), vertices.end(), target.begin() + m_vert_count);
+    const uint32_t outline_entry = WorldSceneOutlineEntryTag();
+    if (outline_entry != kfx::render::SceneOutlineNoDraw) {
+        try {
+            if (size_t(m_vert_count / 3) >= 262144)
+                WorldSceneOutlineFailProducer("GL outline terrain tag budget exceeded");
+            else {
+                m_outline_tile_tags.resize(size_t(m_vert_count / 3) + 1, kfx::render::SceneOutlineNoDraw);
+                m_outline_tile_tags[size_t(m_vert_count / 3)] = outline_entry;
+            }
+        } catch (const std::exception&) {
+            WorldSceneOutlineFailProducer("Cannot allocate GL outline terrain tags");
+        }
     }
     m_vert_count += 3;
-    return true;
 }
 
-bool GLWorldViewRenderer::append_frontview_quad(const struct BucketKindTexturedQuad* txquad)
+void GLWorldViewRenderer::BeginBucket(int bucket)
 {
-    // Mirror draw_texturedquad_block() (engine_render.c) exactly, including
-    // its /pixel_size scaling (the reference this was ported from has no
-    // such division -- this branch's own draw_texturedquad_block() does,
-    // so match it, not the reference).
-    struct PolyPoint a, d, b, c;
-    a.X = (txquad->texture_x >> 8) / pixel_size;
-    a.Y = (txquad->texture_y >> 8) / pixel_size;
-    a.U = orient_to_mapU1[txquad->orient] + txquad->texture_scroll.x.val;
-    a.V = orient_to_mapV1[txquad->orient] + txquad->texture_scroll.y.val;
-    a.S = txquad->shade_intensity0;
+    m_current_bucket = bucket;
+}
 
-    d.X = ((txquad->zoom_x + txquad->texture_x) >> 8) / pixel_size;
-    d.Y = (txquad->texture_y >> 8) / pixel_size;
-    d.U = orient_to_mapU2[txquad->orient] + txquad->texture_scroll.x.val;
-    d.V = orient_to_mapV2[txquad->orient] + txquad->texture_scroll.y.val;
-    d.S = txquad->shade_intensity1;
+void GLWorldViewRenderer::ObserveEntry(int bucket, const BasicQ& entry)
+{
+    WorldSceneTraceBucket(bucket, entry.kind);
+}
 
-    b.X = ((txquad->zoom_x + txquad->texture_x) >> 8) / pixel_size;
-    b.Y = ((txquad->zoom_y + txquad->texture_y) >> 8) / pixel_size;
-    b.U = orient_to_mapU3[txquad->orient] + txquad->texture_scroll.x.val;
-    b.V = orient_to_mapV3[txquad->orient] + txquad->texture_scroll.y.val;
-    b.S = txquad->shade_intensity2;
+void GLWorldViewRenderer::Sprite(kfx::render::WorldSpriteDispatch mode,
+    BucketKindJontySprite& sprite, Camera* camera)
+{
+    kfx::render::DispatchWorldSprite(mode, sprite, camera);
+}
 
-    c.X = (txquad->texture_x >> 8) / pixel_size;
-    c.Y = ((txquad->zoom_y + txquad->texture_y) >> 8) / pixel_size;
-    c.U = orient_to_mapU4[txquad->orient] + txquad->texture_scroll.x.val;
-    c.V = orient_to_mapV4[txquad->orient] + txquad->texture_scroll.y.val;
-    c.S = txquad->shade_intensity3;
+void GLWorldViewRenderer::Shadow(const BucketKindCreatureShadow& shadow)
+{
+    kfx::render::WorldShadowSourceView source;
+    const auto status = kfx::render::ResolveWorldShadowSource(shadow, source);
+    if (status == kfx::render::WorldShadowSourceStatus::ResolutionFailed)
+        WorldSceneOutlineFailProducer("Complete GL shadow source resolution failed");
+    else if (m_shadow_shader_handle == kInvalidGpuResource)
+        WorldSceneOutlineFailProducer("Complete GL world shadow shader unavailable");
+    else if (status == kfx::render::WorldShadowSourceStatus::ExtentUnavailable)
+        WorldSceneOutlineFailProducer("Complete GL shadow source extent unavailable");
+    else
+        append_shadow_quad(&shadow, source);
+}
 
-    int tile_id;
-    switch (txquad->marked_mode)
-    {
-        case 0:  tile_id = TEXTURE_LAND_MARKED_LAND; break;
-        case 1:  tile_id = TEXTURE_LAND_MARKED_GOLD; break;
-        default: tile_id = (int)txquad->texture_idx; break;
-    }
-
-    bool ok = append_triangle(tile_id, &a, &d, &b);
-    ok     &= append_triangle(tile_id, &a, &b, &c);
-    return ok;
+void GLWorldViewRenderer::Overlay(kfx::render::WorldOverlayDispatch kind,
+    kfx::render::WorldOverlayDepth depth, float z_ndc, BasicQ& entry)
+{
+    kfx::render::DispatchWorldOverlay(kind, depth, z_ndc, entry);
 }
 
 /******************************************************************************/
@@ -1591,15 +1605,17 @@ void GLWorldViewRenderer::execute_preload_atlas()
         const uint8_t* data = *keepsprite[i];
         if (m_kspr_atlas_map.count(i)) continue;
 
-        memset(s_kspr_decode_buf, 0, sizeof(s_kspr_decode_buf));
-        decode_keeper_rle(s_kspr_decode_buf, data, ks.SWidth, ks.SHeight);
+        size_t data_bytes = 0;
+        if (!get_keepersprite_source_extent(i, data, &data_bytes)
+            || !decode_keeper_rle(s_kspr_decode_buf, data, data_bytes, ks.SWidth, ks.SHeight)) continue;
         int layer = m_kspr_atlas_used++;
         glPixelStorei(GL_UNPACK_ROW_LENGTH, k_kspr_decode_dim);
         glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer,
-                        ks.SWidth, k_kspr_decode_dim, 1,
+                        k_kspr_decode_dim, k_kspr_decode_dim, 1,
                         GL_RG, GL_UNSIGNED_BYTE, s_kspr_decode_buf);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         m_kspr_atlas_map[i] = {layer, ks.SWidth, decoded_sprite_darkens(ks.SWidth, ks.SHeight)};
+        record_sprite_coverage_for_capture(layer, ks.SWidth, ks.SHeight, s_kspr_decode_buf);
         preloaded++;
     }
 
@@ -1614,15 +1630,17 @@ void GLWorldViewRenderer::execute_preload_atlas()
         const int32_t sprite_id = KEEPERSPRITE_ADD_OFFSET + i;
         if (m_kspr_atlas_map.count(sprite_id)) continue;
 
-        memset(s_kspr_decode_buf, 0, sizeof(s_kspr_decode_buf));
-        decode_keeper_rle(s_kspr_decode_buf, data, ks.SWidth, ks.SHeight);
+        size_t data_bytes = 0;
+        if (!get_keepersprite_source_extent(sprite_id, data, &data_bytes)
+            || !decode_keeper_rle(s_kspr_decode_buf, data, data_bytes, ks.SWidth, ks.SHeight)) continue;
         int layer = m_kspr_atlas_used++;
         glPixelStorei(GL_UNPACK_ROW_LENGTH, k_kspr_decode_dim);
         glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer,
-                        ks.SWidth, k_kspr_decode_dim, 1,
+                        k_kspr_decode_dim, k_kspr_decode_dim, 1,
                         GL_RG, GL_UNSIGNED_BYTE, s_kspr_decode_buf);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         m_kspr_atlas_map[sprite_id] = {layer, ks.SWidth, decoded_sprite_darkens(ks.SWidth, ks.SHeight)};
+        record_sprite_coverage_for_capture(layer, ks.SWidth, ks.SHeight, s_kspr_decode_buf);
         preloaded++;
     }
 
@@ -1653,6 +1671,8 @@ void GLWorldViewRenderer::ensure_clut_valid()
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, clut_tex->id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, row);
+    std::copy_n(row, m_capture_clut_rows[0].size(), m_capture_clut_rows[0].begin());
+    m_capture_clut_known[0] = true;
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);  // restore active unit
 
@@ -1688,6 +1708,13 @@ void GLWorldViewRenderer::SubmitKeeperSprite(
     if (ax.dst_len <= 0 || ay.dst_len <= 0) return;
 
     IRWorldKeeperSpriteCmd cmd;
+    if (!get_keepersprite_source_extent(sprite_id, data, &cmd.data_bytes)) {
+        static unsigned warnings = 0;
+        if (warnings++ < 20)
+            WARNLOG("SubmitKeeperSprite: source extent unavailable for sprite %d", (int)sprite_id);
+        WorldSceneOutlineFailProducer("GL keeper sprite source extent unavailable");
+        return;
+    }
     cmd.dst_x         = ax.dst_start;
     cmd.dst_y         = ay.dst_start;
     cmd.dst_w         = ax.dst_len;
@@ -1711,11 +1738,25 @@ void GLWorldViewRenderer::SubmitKeeperSprite(
     cmd.sort_key      = m_current_sprite_sort_key;
     if (m_capturing_cursor)
         m_cursor_kspr_ir.push_back(cmd);
-    else
+    else {
         m_kspr_ir.push_back(cmd);
+        const uint32_t outline_draw = WorldSceneOutlineSpriteTag();
+        if (outline_draw != kfx::render::SceneOutlineNoDraw) {
+            try {
+                if (m_kspr_ir.size() > 327680)
+                    WorldSceneOutlineFailProducer("GL outline sprite tag budget exceeded");
+                else {
+                    m_outline_sprite_tags.resize(m_kspr_ir.size(), kfx::render::SceneOutlineNoDraw);
+                    m_outline_sprite_tags.back() = outline_draw;
+                }
+            } catch (const std::exception&) {
+                WorldSceneOutlineFailProducer("Cannot allocate GL outline sprite tags");
+            }
+        }
+    }
 }
 
-int GLWorldViewRenderer::resolve_atlas_layer(int32_t sprite_id, const unsigned char* data, int src_w, int src_h,
+int GLWorldViewRenderer::resolve_atlas_layer(int32_t sprite_id, const unsigned char* data, size_t data_bytes, int src_w, int src_h,
                                              bool* darkens)
 {
     if (darkens) *darkens = false;
@@ -1736,10 +1777,10 @@ int GLWorldViewRenderer::resolve_atlas_layer(int32_t sprite_id, const unsigned c
     if (m_kspr_atlas_used >= k_kspr_atlas_layers)
         return -1;
 
-    // Clear the full scratch buffer before decoding so rows beyond src_h
-    // (uploaded at full k_kspr_decode_dim height) are transparent (coverage 0).
-    memset(s_kspr_decode_buf, 0, sizeof(s_kspr_decode_buf));
-    decode_keeper_rle(s_kspr_decode_buf, data, src_w, src_h);
+    // Initialize and upload the whole layer. FrameWidth/FrameHeight shadow
+    // geometry can sample beyond SWidth/SHeight; both right and bottom padding
+    // must be transparent instead of reading undefined or previously used data.
+    if (!decode_keeper_rle(s_kspr_decode_buf, data, data_bytes, src_w, src_h)) return -1;
     const int atlas_layer = m_kspr_atlas_used++;
     if (m_kspr_atlas_used > m_kspr_atlas_peak)
         m_kspr_atlas_peak = m_kspr_atlas_used;
@@ -1748,18 +1789,21 @@ int GLWorldViewRenderer::resolve_atlas_layer(int32_t sprite_id, const unsigned c
     glPixelStorei(GL_UNPACK_ROW_LENGTH, k_kspr_decode_dim);
     glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
                     0, 0, atlas_layer,
-                    src_w, k_kspr_decode_dim, 1,
+                    k_kspr_decode_dim, k_kspr_decode_dim, 1,
                     GL_RG, GL_UNSIGNED_BYTE, s_kspr_decode_buf);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     const bool sprite_darkens = decoded_sprite_darkens(src_w, src_h);
     m_kspr_atlas_map[sprite_id] = {atlas_layer, src_w, sprite_darkens};
+    record_sprite_coverage_for_capture(atlas_layer, src_w, src_h, s_kspr_decode_buf);
     if (darkens) *darkens = sprite_darkens;
     m_kspr_atlas_misses++;
     return atlas_layer;
 }
 
-float GLWorldViewRenderer::resolve_clut_v(const unsigned char* remap)
+float GLWorldViewRenderer::resolve_clut_v(const unsigned char* remap,
+    kfx::render::SceneOutlineColourResolution& resolution)
 {
+    resolution = kfx::render::SceneOutlineColourResolution::ClutIdentity;
     // Row 0 = identity (non-remapped sprites).
     float clut_v = 0.5f / (float)k_clut_rows;
     if (!m_resource_mapper) return clut_v;
@@ -1769,10 +1813,16 @@ float GLWorldViewRenderer::resolve_clut_v(const unsigned char* remap)
     for (size_t i = 0; i < m_kspr_clut_remaps.size(); ++i)
     {
         if (memcmp(m_kspr_clut_remaps[i].data(), remap, 256) == 0)
+        {
+            resolution = kfx::render::SceneOutlineColourResolution::ClutRemap;
             return (float(i + 1) + 0.5f) / (float)k_clut_rows;
+        }
     }
     if (m_kspr_clut_used >= k_clut_rows)
+    {
+        resolution = kfx::render::SceneOutlineColourResolution::ClutCapacityIdentity;
         return clut_v;  // CLUT full: identity fallback (wrong colour, no crash)
+    }
 
     const int row_idx = m_kspr_clut_used++;
     uint8_t row_data[256 * 4];
@@ -1787,11 +1837,14 @@ float GLWorldViewRenderer::resolve_clut_v(const unsigned char* remap)
     glBindTexture(GL_TEXTURE_2D, clut_tex->id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, row_idx, 256, 1,
                     GL_RGBA, GL_UNSIGNED_BYTE, row_data);
+    std::copy_n(row_data, m_capture_clut_rows[row_idx].size(), m_capture_clut_rows[row_idx].begin());
+    m_capture_clut_known[row_idx] = true;
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
     std::array<uint8_t, 256> remap_copy;
     memcpy(remap_copy.data(), remap, remap_copy.size());
     m_kspr_clut_remaps.push_back(remap_copy);
+    resolution = kfx::render::SceneOutlineColourResolution::ClutRemap;
     return (float(row_idx) + 0.5f) / (float)k_clut_rows;
 }
 
@@ -1823,6 +1876,198 @@ void GLWorldViewRenderer::EndCursorCapture()
     m_capturing_cursor = false;
 }
 
+void GLWorldViewRenderer::RecordAppliedPaletteForCapture(const uint8_t* rgba, GpuResourceHandle handle, unsigned int texture) noexcept
+{
+    std::copy_n(rgba, m_capture_applied_palette.size(), m_capture_applied_palette.begin());
+    m_capture_applied_palette_known = true;
+    if (!handle) { handle = m_palette_tex_handle; texture = ResolvePaletteTexId(); }
+    if (texture && capture_tight_unpack(1024)) m_capture_palette_upload.Record(handle, texture, 256, 1, rgba, 1024);
+    else m_capture_palette_upload.bytes.clear();
+}
+void GLWorldViewRenderer::RecordAppliedFadeForCapture(const uint8_t* indices, GpuResourceHandle handle, unsigned int texture) noexcept
+{
+    memcpy(m_capture_applied_fade.data(), indices, m_capture_applied_fade.size());
+    m_capture_applied_fade_known = true;
+    if (!handle) { handle = m_fade_tex_handle; texture = ResolveFadeTexId(); }
+    if (texture && capture_tight_unpack(256)) m_capture_fade_upload.Record(handle, texture, 256, 64, indices, 16384);
+    else m_capture_fade_upload.bytes.clear();
+}
+void GLWorldViewRenderer::RecordWorldTargetForCapture(int width, int height,
+    kfx::render::SceneGLWorldTargetKind kind, const float* clear_rgba) noexcept
+{
+    m_capture_world_target = {};
+    m_capture_world_target.native_width = width; m_capture_world_target.native_height = height;
+    m_capture_world_target.target_kind = kind;
+    std::copy(clear_rgba, clear_rgba + 4, m_capture_world_target.clear_rgba.begin());
+    m_capture_world_target_known = width > 0 && height > 0;
+}
+void GLWorldViewRenderer::BeginCompositionForCapture(const float* clear_rgba) noexcept
+{
+    if (!m_rt_outline_capture) return;
+    m_capture_lens = {};
+    m_capture_lens.requested_active = m_rt_lens_cmd.active;
+    m_capture_lens.requested_type = m_rt_lens_cmd.active ? uint8_t(m_rt_lens_cmd.type) : 0;
+    m_capture_lens.operation = m_rt_lens_cmd.active ? kfx::render::SceneGLLensOperation::NotDrawn
+        : kfx::render::SceneGLLensOperation::None;
+    GLint framebuffer = 0, samples = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer); glGetIntegerv(GL_SAMPLES, &samples);
+    if (!m_resource_mapper || unsigned(framebuffer) != m_resource_mapper->GetScreenFramebuffer()
+        || samples || !capture_clear_state())
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "Screen clear target/state is not proved");
+    std::array<float, 4> clear{}; std::copy_n(clear_rgba, 4, clear.begin());
+    WorldSceneBeginCompositionCapture(m_rt_outline_capture, m_full_screen_w, m_full_screen_h, clear);
+}
+void GLWorldViewRenderer::FinishCompositionForCapture() noexcept
+{
+    if (!m_rt_outline_capture) return;
+    WorldSceneRecordLensCapture(m_rt_outline_capture, std::move(m_capture_lens));
+    WorldSceneFinishCompositionCapture(m_rt_outline_capture);
+    m_rt_outline_capture.reset(); m_capture_lens = {};
+}
+unsigned int GLWorldViewRenderer::CompositionTargetForCapture() const noexcept
+{
+    if (!m_rt_outline_capture || !m_resource_mapper) return 0;
+    if (!m_capture_lens.capture_began) return m_resource_mapper->GetScreenFramebuffer();
+    const GLRenderTarget* rt = m_resource_mapper->ResolveRenderTarget(m_lens_scene_rt_handle);
+    return rt ? rt->fbo : 0;
+}
+void GLWorldViewRenderer::record_lens_operation(kfx::render::SceneGLLensOperation operation) noexcept
+{
+    if (!m_rt_outline_capture) return;
+    using namespace kfx::render;
+    try {
+        const auto require = [](bool good, const char* reason) { if (!good) throw std::runtime_error(reason); };
+        require(m_capture_lens.operation == SceneGLLensOperation::NotDrawn && m_capture_lens.capture_began,
+            "Lens draw outside its owned capture bracket");
+        GLint viewport[4]{}, framebuffer = 0, scissor[4]{}, samples = 0;
+        GLboolean mask[4]{}, depth_mask = GL_TRUE;
+        glGetIntegerv(GL_VIEWPORT, viewport); glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+        glGetIntegerv(GL_SCISSOR_BOX, scissor); glGetIntegerv(GL_SAMPLES, &samples);
+        glGetBooleanv(GL_COLOR_WRITEMASK, mask); glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
+        const int gl_y = m_full_screen_h - m_rt_lens_cmd.viewport_y - m_rt_lens_cmd.viewport_h;
+        require(unsigned(framebuffer) == m_resource_mapper->GetScreenFramebuffer() && !samples
+            && !glIsEnabled(GL_BLEND) && !glIsEnabled(GL_DEPTH_TEST) && !depth_mask
+            && !glIsEnabled(GL_FRAMEBUFFER_SRGB) && !glIsEnabled(GL_CULL_FACE) && !glIsEnabled(GL_RASTERIZER_DISCARD)
+            && !glIsEnabled(GL_STENCIL_TEST) && !glIsEnabled(GL_COLOR_LOGIC_OP) && !glIsEnabled(GL_POLYGON_OFFSET_FILL)
+            && mask[0] && mask[1] && mask[2] && mask[3]
+            && viewport[0] == m_rt_lens_cmd.viewport_x && viewport[1] == gl_y
+            && viewport[2] == m_rt_lens_cmd.viewport_w && viewport[3] == m_rt_lens_cmd.viewport_h,
+            "Unsupported effective GL lens draw state");
+        require(!glIsEnabled(GL_SCISSOR_TEST) || (scissor[0] <= viewport[0] && scissor[1] <= viewport[1]
+            && int64_t(scissor[0]) + scissor[2] >= int64_t(viewport[0]) + viewport[2]
+            && int64_t(scissor[1]) + scissor[3] >= int64_t(viewport[1]) + viewport[3]),
+            "Lens scissor clips the declared destination");
+        const GLRenderTarget* rt = m_resource_mapper->ResolveRenderTarget(m_lens_scene_rt_handle);
+        require(rt && rt->width == m_full_screen_w && rt->height == m_full_screen_h,
+            "Lens source native extent changed");
+        SceneGLLensPass pass;
+        pass.kind = SceneGLLensPassKind(unsigned(operation) - 1);
+        pass.source_width = pass.target_width = m_full_screen_w;
+        pass.source_height = pass.target_height = m_full_screen_h;
+        pass.source_x = pass.destination_x = m_rt_lens_cmd.viewport_x;
+        pass.destination_y = m_rt_lens_cmd.viewport_y;
+        pass.viewport_width = m_rt_lens_cmd.viewport_w; pass.viewport_height = m_rt_lens_cmd.viewport_h;
+        const auto consume = [&](const WorldSceneGLUploadMirror& mirror, GpuResourceHandle handle, unsigned slot) -> const std::vector<uint8_t>& {
+            const GLTexture* tex = m_resource_mapper->ResolveTexture(handle);
+            require(tex && mirror.Matches(handle, tex->id, tex->width, tex->height), "Lens effective upload provenance unavailable");
+            m_capture_lens.resources[slot] = mirror.stamp; return mirror.bytes;
+        };
+        if (operation == SceneGLLensOperation::Mist || operation == SceneGLLensOperation::Overlay) {
+            pass.palette_rgba = consume(m_capture_palette_upload, m_palette_tex_handle, 0);
+            require(m_capture_index, "Lens RGB6 upload mirror unavailable");
+            pass.rgb6_lookup = consume(*m_capture_index, m_palette_index_tex_handle, 2);
+        }
+        if (operation == SceneGLLensOperation::Mist) {
+            pass.fade = consume(m_capture_fade_upload, m_fade_tex_handle, 1);
+            pass.density = consume(m_capture_mist_upload, m_lens_mist_tex_handle, 3);
+            pass.mist_offsets = {m_rt_lens_cmd.mist_pos_x, m_rt_lens_cmd.mist_pos_y,
+                m_rt_lens_cmd.mist_sec_x, m_rt_lens_cmd.mist_sec_y};
+            pass.mist_lightness = m_rt_lens_cmd.mist_lightness;
+        } else if (operation == SceneGLLensOperation::Remap) {
+            const auto& bytes = consume(m_capture_remap_upload, m_lens_remap_tex_handle, 4);
+            pass.remap_width = m_capture_remap_upload.width; pass.remap_height = m_capture_remap_upload.height;
+            require(bytes.size() == uint64_t(pass.remap_width) * pass.remap_height * 4, "Lens remap uploaded extent mismatch");
+            pass.remap.resize(bytes.size() / 4); memcpy(pass.remap.data(), bytes.data(), bytes.size());
+        } else if (operation == SceneGLLensOperation::Overlay) {
+            pass.overlay = consume(m_capture_overlay_upload, m_lens_overlay_tex_handle, 5);
+            pass.overlay_width = m_capture_overlay_upload.width; pass.overlay_height = m_capture_overlay_upload.height;
+            pass.overlay_alpha = uint16_t(GLint(m_rt_lens_cmd.overlay_alpha * 256.0f + 0.5f));
+        }
+        ValidateSceneGLLensPass(pass);
+        m_capture_lens.pass = std::move(pass); m_capture_lens.operation = operation;
+        m_capture_lens.fallback_copy = operation == SceneGLLensOperation::Copy && m_capture_lens.requested_type != 0;
+    } catch (const std::exception& e) { WorldSceneFailOutlineCapture(m_rt_outline_capture, e.what()); }
+    catch (...) { WorldSceneFailOutlineCapture(m_rt_outline_capture, "Lens executed draw capture failed"); }
+}
+void GLWorldViewRenderer::record_sprite_coverage_for_capture(int layer, int width, int height, const uint8_t* rg) noexcept
+{
+    if (layer < 0 || size_t(layer) >= m_capture_sprite_coverage.size()) return;
+    auto& source = m_capture_sprite_coverage[layer];
+    source = {};
+    if (width <= 0 || width > 256 || height <= 0 || height > 256) return;
+    try {
+        source.bits.resize(size_t(k_kspr_decode_dim) * k_kspr_decode_dim / 8, 0);
+        for (int y = 0; y < k_kspr_decode_dim; ++y) for (int x = 0; x < k_kspr_decode_dim; ++x) {
+            const size_t pixel = size_t(y) * k_kspr_decode_dim + x;
+            if (rg[(size_t(y) * 256 + x) * 2 + 1]) source.bits[pixel / 8] |= uint8_t(1u << (pixel % 8));
+        }
+        source.width = uint16_t(width); source.height = uint16_t(height);
+    } catch (...) { source = {}; }
+}
+
+uint32_t GLWorldViewRenderer::capture_outline_sprite(const IRWorldKeeperSpriteCmd& cmd,
+    kfx::render::SceneOutlineExecutionPath path, bool darkens, const float* rgba,
+    float clut_v, kfx::render::SceneOutlineColourResolution resolution, const unsigned char* effective_remap)
+{
+    if (!m_rt_outline_capture || m_rt_outline_draw == kfx::render::SceneOutlineNoDraw)
+        return kfx::render::SceneOutlineNoDraw;
+    kfx::render::SceneOutlineSprite sprite;
+    sprite.draw = m_rt_outline_draw;
+    sprite.dst_x = cmd.dst_x; sprite.dst_y = cmd.dst_y;
+    sprite.dst_w = cmd.dst_w; sprite.dst_h = cmd.dst_h;
+    sprite.phase_x = cmd.phase_x; sprite.phase_y = cmd.phase_y;
+    sprite.step_x = cmd.step_x; sprite.step_y = cmd.step_y;
+    sprite.z_ndc = cmd.z_ndc; sprite.outline_z_ndc = cmd.z_ndc + 0.002f;
+    sprite.source_alpha = draw_flags_source_weight(cmd.draw_flags);
+    sprite.sort_key = cmd.sort_key; sprite.flags = cmd.draw_flags;
+    sprite.owner = cmd.owner; sprite.wants_outline = cmd.wants_outline != 0;
+    sprite.additive = (cmd.draw_flags & Lb_SPRITE_ALPHA_ADDITIVE) != 0;
+    sprite.darkens = darkens; sprite.path = path;
+    if (rgba) std::copy_n(rgba, sprite.owner_rgba.size(), sprite.owner_rgba.begin());
+    if (sprite.additive)
+        return WorldSceneAppendOutlineSprite(m_rt_outline_capture, sprite,
+            kfx::render::SceneOutlineColourResolution::Glow, nullptr);
+    if (path == kfx::render::SceneOutlineExecutionPath::TextureFallback) {
+        if (!m_capture_applied_palette_known) {
+            WorldSceneFailOutlineCapture(m_rt_outline_capture, "Applied GL palette upload provenance unavailable");
+            return kfx::render::SceneOutlineNoDraw;
+        }
+        std::array<uint8_t, 1024> row;
+        for (size_t i = 0; i < 256; ++i) {
+            const size_t source = effective_remap ? effective_remap[i] : i;
+            std::copy_n(m_capture_applied_palette.begin() + source * 4, 4, row.begin() + i * 4);
+        }
+        return WorldSceneAppendOutlineSprite(m_rt_outline_capture, sprite, effective_remap
+            ? kfx::render::SceneOutlineColourResolution::TextureRemap
+            : kfx::render::SceneOutlineColourResolution::TextureIdentity, &row);
+    }
+    // Row centres are exact binary fractions (128 rows); this identifies the
+    // actual resolver result without resolving again or mutating the cache.
+    const unsigned row = unsigned(clut_v * float(k_clut_rows));
+    if (row >= m_capture_clut_rows.size() || !m_capture_clut_known[row]) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL CLUT upload provenance unavailable");
+        return kfx::render::SceneOutlineNoDraw;
+    }
+    return WorldSceneAppendOutlineSprite(m_rt_outline_capture, sprite, resolution, &m_capture_clut_rows[row]);
+}
+
+void GLWorldViewRenderer::capture_outline_command(kfx::render::SceneOutlineCommandKind kind,
+    uint32_t sprite, uint32_t group)
+{
+    if (m_rt_outline_capture && sprite != kfx::render::SceneOutlineNoDraw)
+        WorldSceneAppendOutlineCommand(m_rt_outline_capture, {kind, sprite, group});
+}
+
 void GLWorldViewRenderer::append_keeper_sprite_instance(const IRWorldKeeperSpriteCmd& cmd)
 {
     if (cmd.src_w <= 0 || cmd.src_h <= 0 ||
@@ -1836,7 +2081,7 @@ void GLWorldViewRenderer::append_keeper_sprite_instance(const IRWorldKeeperSprit
     const bool use_remap = remap && (cmd.draw_flags & Lb_SPRITE_REMAP) && !additive;
 
     bool darkens = false;
-    const int layer = resolve_atlas_layer(cmd.sprite_id, cmd.data, cmd.src_w, cmd.src_h, &darkens);
+    const int layer = resolve_atlas_layer(cmd.sprite_id, cmd.data, cmd.data_bytes, cmd.src_w, cmd.src_h, &darkens);
     if (layer < 0)
     {
         // Atlas full: flush what we have so painter's order holds, then draw
@@ -1847,8 +2092,9 @@ void GLWorldViewRenderer::append_keeper_sprite_instance(const IRWorldKeeperSprit
     }
 
     float clut_v = 0.5f / (float)k_clut_rows;
+    auto colour_resolution = kfx::render::SceneOutlineColourResolution::ClutIdentity;
     if (use_remap)
-        clut_v = resolve_clut_v(remap);
+        clut_v = resolve_clut_v(remap, colour_resolution);
 
     const float alpha = draw_flags_source_weight(cmd.draw_flags);
 
@@ -1876,6 +2122,8 @@ void GLWorldViewRenderer::append_keeper_sprite_instance(const IRWorldKeeperSprit
         push_keeper_sprite_instance(inst, true);
     }
 
+    float captured_rgba[4] = {};
+    bool captured_outline = false;
     // Depth-fail outline pass
     if (g_renderer_settings.creature_outline_mode != RENDERER_OUTLINE_NONE && !additive && cmd.wants_outline
         && (m_kspr_inst_outline_shader_handle != kInvalidGpuResource || m_kspr_inst_edge_shader_handle != kInvalidGpuResource))
@@ -1908,6 +2156,25 @@ void GLWorldViewRenderer::append_keeper_sprite_instance(const IRWorldKeeperSprit
         o.color[2] = oc_b;
         o.color[3] = g_renderer_settings.creature_outline_alpha;
         m_kspr_outline_instances.push_back(o);
+        memcpy(captured_rgba, o.color, sizeof(captured_rgba));
+        captured_outline = true;
+    }
+    if (m_rt_outline_capture)
+    {
+        const uint32_t ref = capture_outline_sprite(cmd,
+            kfx::render::SceneOutlineExecutionPath::Instanced, additive && darkens, captured_rgba,
+            clut_v, colour_resolution, use_remap ? remap : nullptr);
+        try {
+            if (m_outline_main_refs.size() + 2 > 196608 || m_outline_refs.size() >= 65536)
+                WorldSceneFailOutlineCapture(m_rt_outline_capture, "outline instance reference budget exceeded");
+            else {
+                m_outline_main_refs.push_back(ref);
+                if (additive && darkens) m_outline_main_refs.push_back(ref);
+                if (captured_outline) m_outline_refs.push_back(ref);
+            }
+        } catch (const std::exception&) {
+            WorldSceneFailOutlineCapture(m_rt_outline_capture, "outline instance reference allocation failed");
+        }
     }
 }
 
@@ -1923,7 +2190,11 @@ void GLWorldViewRenderer::flush_keeper_sprite_instances()
 {
     if (m_kspr_instances.empty() && m_kspr_outline_instances.empty())
         return;
-    if (!m_resource_mapper) return;
+    if (!m_resource_mapper) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "outline instance mapper missing");
+        return;
+    }
+    const uint32_t capture_group = m_rt_outline_group++;
 
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
@@ -1935,6 +2206,8 @@ void GLWorldViewRenderer::flush_keeper_sprite_instances()
     {
         const GLTexture* clut_tex = m_resource_mapper->ResolveTexture(m_kspr_clut_tex_handle);
         const GLTexture* sprite_array = m_resource_mapper->ResolveTexture(m_kspr_sprite_array_handle);
+        if (!clut_tex || !sprite_array)
+            WorldSceneFailOutlineCapture(m_rt_outline_capture, "outline instance textures missing");
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, clut_tex ? clut_tex->id : 0);
         glActiveTexture(GL_TEXTURE0);
@@ -1959,9 +2232,16 @@ void GLWorldViewRenderer::flush_keeper_sprite_instances()
             glBufferData(GL_ARRAY_BUFFER,
                          (GLsizeiptr)(m_kspr_outline_instances.size() * sizeof(KsprOutlineInstance)),
                          m_kspr_outline_instances.data(), GL_STREAM_DRAW);
+            if (m_rt_outline_capture) {
+                if (m_outline_refs.size() != m_kspr_outline_instances.size())
+                    WorldSceneFailOutlineCapture(m_rt_outline_capture, "outline instance references incomplete");
+                for (uint32_t ref : m_outline_refs)
+                    capture_outline_command(kfx::render::SceneOutlineCommandKind::Outline, ref, capture_group);
+            }
             glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4,
                                   (GLsizei)m_kspr_outline_instances.size());
         }
+        else WorldSceneFailOutlineCapture(m_rt_outline_capture, "outline instance shader or geometry missing");
     }
 
     if (!m_kspr_instances.empty())
@@ -1984,11 +2264,19 @@ void GLWorldViewRenderer::flush_keeper_sprite_instances()
                 glBlendEquation(run.darken ? GL_FUNC_REVERSE_SUBTRACT : GL_FUNC_ADD);
                 glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(run.count * sizeof(KsprInstance)),
                              m_kspr_instances.data() + first, GL_STREAM_DRAW);
+                if (m_rt_outline_capture) {
+                    if (m_outline_main_refs.size() != m_kspr_instances.size())
+                        WorldSceneFailOutlineCapture(m_rt_outline_capture, "sprite instance references incomplete");
+                    else for (size_t j = first; j < first + run.count; ++j)
+                        capture_outline_command(run.darken ? kfx::render::SceneOutlineCommandKind::GlowDarken
+                            : kfx::render::SceneOutlineCommandKind::Sprite, m_outline_main_refs[j], capture_group);
+                }
                 glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, (GLsizei)run.count);
                 first += run.count;
             }
             glBlendEquation(GL_FUNC_ADD);
         }
+        else WorldSceneFailOutlineCapture(m_rt_outline_capture, "sprite instance shader or geometry missing");
     }
 
     glDepthFunc(GL_LEQUAL);
@@ -2000,6 +2288,8 @@ void GLWorldViewRenderer::flush_keeper_sprite_instances()
     m_kspr_instances.clear();
     m_kspr_instance_runs.clear();
     m_kspr_outline_instances.clear();
+    m_outline_main_refs.clear();
+    m_outline_refs.clear();
 }
 
 int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& cmd)
@@ -2015,7 +2305,10 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
     const int sprite_wants_outline = (int)cmd.wants_outline;
     const int32_t sprite_id = cmd.sprite_id;
     // No mapper, no run.
-    if (!m_resource_mapper) return 1;
+    if (!m_resource_mapper) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "fallback sprite mapper missing");
+        return 1;
+    }
     const GLProgram* kspr_prog = m_resource_mapper->ResolveProgram(m_kspr_shader_handle);
     const GLTexture* kspr_sprite_tex = m_resource_mapper->ResolveTexture(m_kspr_sprite_tex_handle);
     const GLGeometryBuffer* kspr_geom = m_resource_mapper->ResolveGeometryBuffer(m_kspr_geom_handle);
@@ -2023,6 +2316,7 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
         static int s_miss = 0;
         if (s_miss++ < 5)
             ERRORLOG("render_keepersprite_gpu: GL resources not ready -- sprite dropped");
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "fallback sprite resources missing");
         return 1;
     }
     const GLProgram* kspr_glow_prog = m_resource_mapper->ResolveProgram(m_kspr_glow_shader_handle);
@@ -2046,11 +2340,18 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
 
     const bool additive = (draw_flags & Lb_SPRITE_ALPHA_ADDITIVE) != 0;
     const bool use_remap = remap && (draw_flags & Lb_SPRITE_REMAP) && !additive;
-    int atlas_layer = resolve_atlas_layer(sprite_id, data, src_w, src_h);
+    int atlas_layer = resolve_atlas_layer(sprite_id, data, cmd.data_bytes, src_w, src_h);
+    // Validate/decode before touching draw state, including the outline path.
+    // Both fallback draws below reuse this full initialized image.
+    if (atlas_layer < 0 && !decode_keeper_rle(s_kspr_decode_buf, data, cmd.data_bytes, src_w, src_h)) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "Malformed GL keeper sprite source");
+        return 1;
+    }
 
     float clut_v = 0.5f / (float)k_clut_rows;
+    auto colour_resolution = kfx::render::SceneOutlineColourResolution::ClutIdentity;
     if (atlas_layer >= 0 && use_remap && kspr_clut_tex)
-        clut_v = resolve_clut_v(remap);
+        clut_v = resolve_clut_v(remap, colour_resolution);
 
     const float vx0 = (float)cmd.dst_x, vy0 = (float)cmd.dst_y;
     const float vw  = (float)cmd.dst_w, vh  = (float)cmd.dst_h;
@@ -2073,18 +2374,38 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
 
     const float alpha = draw_flags_source_weight(draw_flags);
 
-    // Draws the black pixels of the glow quad just drawn, subtracted.
-    auto draw_glow_darken_pass = [](GLint loc_darken) {
-        glUniform1i(loc_darken, 1);
-        glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBlendEquation(GL_FUNC_ADD);
-    };
-
     // Additive glow
     const bool use_glow_atlas    = additive && atlas_layer >= 0 && kspr_atlas_glow_prog;
     const bool use_glow_fallback = additive && atlas_layer <  0 && kspr_glow_prog;
     const GLenum blend_dfactor = additive ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA;
+    const uint32_t capture_group = m_rt_outline_group++;
+    uint32_t capture_ref = kfx::render::SceneOutlineNoDraw;
+    bool capture_started = false;
+    float captured_rgba[4] = {};
+    auto capture_pass = [&](kfx::render::SceneOutlineCommandKind kind) {
+        if (!m_rt_outline_capture) return;
+        if (!capture_started) {
+            capture_ref = capture_outline_sprite(cmd, atlas_layer >= 0
+                ? kfx::render::SceneOutlineExecutionPath::AtlasFallback
+                : kfx::render::SceneOutlineExecutionPath::TextureFallback,
+                use_glow_atlas || use_glow_fallback, captured_rgba,
+                clut_v, colour_resolution, use_remap ? remap : nullptr);
+            capture_started = true;
+        }
+        capture_outline_command(kind, capture_ref, capture_group);
+    };
+    if (additive && !use_glow_atlas && !use_glow_fallback)
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "fallback glow shader missing");
+    if (atlas_layer >= 0 && (!kspr_sprite_array || (!additive && (!kspr_atlas_prog || !kspr_clut_tex))))
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "fallback atlas resources missing");
+    // Draws the black pixels of the glow quad just drawn, subtracted.
+    auto draw_glow_darken_pass = [&](GLint loc_darken) {
+        glUniform1i(loc_darken, 1);
+        glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+        capture_pass(kfx::render::SceneOutlineCommandKind::GlowDarken);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBlendEquation(GL_FUNC_ADD);
+    };
 
     glBindVertexArray(kspr_geom->vao);
     glEnable(GL_DEPTH_TEST);
@@ -2143,8 +2464,12 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
                 glUniform4f(loc_col,  oc_r, oc_g, oc_b, oc_a);
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D_ARRAY, kspr_sprite_array->id);
+                captured_rgba[0] = oc_r; captured_rgba[1] = oc_g;
+                captured_rgba[2] = oc_b; captured_rgba[3] = oc_a;
+                capture_pass(kfx::render::SceneOutlineCommandKind::Outline);
                 glDrawArrays(GL_TRIANGLES, 0, 6);
             }
+            else WorldSceneFailOutlineCapture(m_rt_outline_capture, "fallback atlas outline resources missing");
         }
         else
         {
@@ -2156,7 +2481,6 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
             GLint  loc_col = use_edge ? m_kspr_edge_loc_color      : m_kspr_outline_loc_color;
             if (prog)
             {
-                decode_keeper_rle(s_kspr_decode_buf, data, src_w, src_h);
                 if (use_remap)
                 {
                     for (int oy = 0; oy < src_h; ++oy) {
@@ -2176,8 +2500,12 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
                 glUniform2f(loc_vp, (float)m_draw_screen_w, (float)m_draw_screen_h);
                 glUniform1f(loc_z,    outline_z);
                 glUniform4f(loc_col,  oc_r, oc_g, oc_b, oc_a);
+                captured_rgba[0] = oc_r; captured_rgba[1] = oc_g;
+                captured_rgba[2] = oc_b; captured_rgba[3] = oc_a;
+                capture_pass(kfx::render::SceneOutlineCommandKind::Outline);
                 glDrawArrays(GL_TRIANGLES, 0, 6);
             }
+            else WorldSceneFailOutlineCapture(m_rt_outline_capture, "fallback outline shader missing");
         }
 
         glDepthFunc(GL_LEQUAL); // restore for normal draw below
@@ -2209,6 +2537,7 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
             glBindTexture(GL_TEXTURE_2D_ARRAY, kspr_sprite_array ? kspr_sprite_array->id : 0);
             glBlendFunc(GL_SRC_ALPHA, blend_dfactor);
         }
+        capture_pass(kfx::render::SceneOutlineCommandKind::Sprite);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         if (use_glow_atlas)
             draw_glow_darken_pass(m_kspr_atlas_glow_loc_darken);
@@ -2228,7 +2557,6 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
                                    && (kspr_outline_prog || kspr_edge_prog);
     if (!outline_uploaded)
     {
-        decode_keeper_rle(s_kspr_decode_buf, data, src_w, src_h);
         if (use_remap)
         {
             for (int y = 0; y < src_h; ++y) {
@@ -2264,12 +2592,16 @@ int GLWorldViewRenderer::render_keepersprite_gpu(const IRWorldKeeperSpriteCmd& c
         glUniform1f(m_kspr_loc_alpha,    alpha);
         glUniform1f(m_kspr_loc_z_ndc,    z_ndc);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, ResolvePaletteTexId());
+        const GLuint applied_palette = ResolvePaletteTexId();
+        if (!applied_palette)
+            WorldSceneFailOutlineCapture(m_rt_outline_capture, "Fallback palette texture unavailable");
+        glBindTexture(GL_TEXTURE_2D, applied_palette);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, kspr_sprite_tex->id);
         glBlendFunc(GL_SRC_ALPHA, blend_dfactor);
     }
 
+    capture_pass(kfx::render::SceneOutlineCommandKind::Sprite);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     if (use_glow_fallback)
         draw_glow_darken_pass(m_kspr_glow_loc_darken);
@@ -2337,6 +2669,16 @@ void GLWorldViewRenderer::gpu_flush()
 void GLWorldViewRenderer::FlipBuffers()
 {
     ASSERT_GAME_THREAD();
+    if (m_rt_outline_capture)
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "outline session replaced before execution");
+    m_rt_outline_capture.reset();
+    if (m_world_write_cmds && m_world_write_cmds->scene)
+        m_rt_outline_capture = WorldSceneTakeOutlineCapture(m_world_write_cmds->scene->epoch,
+            m_world_write_cmds->scene->sequence);
+    m_rt_outline_sprite_tags = std::move(m_outline_sprite_tags);
+    m_rt_outline_tile_tags = std::move(m_outline_tile_tags);
+    m_outline_sprite_tags.clear();
+    m_outline_tile_tags.clear();
     m_rt_draw_cmds      = std::move(m_draw_cmds);
     m_rt_kspr_ir        = std::move(m_kspr_ir);
     m_rt_cursor_kspr_ir = std::move(m_cursor_kspr_ir);
@@ -2358,7 +2700,9 @@ void GLWorldViewRenderer::FlipBuffers()
     }
 
     // Snapshot the lightmap so the render thread never reads the live game array.
-    memcpy(m_rt_lightmap, game.lish.subtile_lightness, sizeof(m_rt_lightmap));
+    snapshot_lightmap(m_rt_lightmap, k_lightmap_w, k_lightmap_h,
+        game.lish.subtile_lightness, std::max(1, (int)game.map_subtiles_x + 1),
+        std::max(1, (int)game.map_subtiles_y + 1));
 
     m_vert_count     = 0;
     m_cmd_vert_start = 0;
@@ -2370,21 +2714,63 @@ void GLWorldViewRenderer::FlipBuffers()
 void GLWorldViewRenderer::GPURenderNow(const WorldCommandBuffers& cmds)
 {
     ASSERT_RENDER_THREAD();
+    if (cmds.scene) WorldSceneValidateConsumed(*cmds.scene);
+    m_rt_outline_draw = kfx::render::SceneOutlineNoDraw;
+    m_rt_outline_group = 0;
+    m_outline_main_refs.clear();
+    m_outline_refs.clear();
+    if (m_rt_outline_capture) {
+        GLint depth_bits = 0, framebuffer = 0;
+        GLdouble depth_range[2] = {}, depth_clear = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+        glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER,
+            framebuffer ? GL_DEPTH_ATTACHMENT : GL_DEPTH,
+            GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &depth_bits);
+        glGetDoublev(GL_DEPTH_RANGE, depth_range);
+        glGetDoublev(GL_DEPTH_CLEAR_VALUE, &depth_clear);
+        if (depth_bits != 24 || depth_range[0] != 0 || depth_range[1] != 1 || depth_clear != 1)
+            WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL outline capture requires canonical D24 depth state");
+        std::array<float, 9> transform{};
+        std::array<uint8_t, 768> palette{};
+        memcpy(transform.data(), &m_rt_palette_xform.m[0][0], sizeof(transform));
+        memcpy(palette.data(), m_rt_palette, sizeof(palette));
+        WorldSceneBeginOutlineCapture(m_rt_outline_capture,
+            (uint8_t)g_renderer_settings.creature_outline_mode,
+            g_renderer_settings.creature_outline_alpha, transform, palette);
+    }
+    auto finish_capture = [&]() {
+        m_capture_world_target_known = false;
+        WorldSceneFinishOutlineCapture(m_rt_outline_capture);
+        m_rt_outline_draw = kfx::render::SceneOutlineNoDraw;
+        m_rt_outline_sprite_tags.clear();
+        m_rt_outline_tile_tags.clear();
+        m_outline_main_refs.clear();
+        m_outline_refs.clear();
+    };
 
     m_world_pass_active = false;
 
     if (!m_initialized)
     {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL world renderer not initialized");
+        finish_capture();
         m_rt_draw_cmds.clear();
         m_cmd_vert_start = 0;
         return;
     }
 
-    if (m_rt_draw_cmds.empty())
+    if (m_rt_draw_cmds.empty()) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL world command stream empty");
+        finish_capture();
         return;
+    }
 
+    // Settings can change while the simulation is paused. Refresh on the GL
+    // thread before drawing; unchanged settings issue no additional GL calls.
+    push_shade_uniforms();
     const int vp_y_gl = m_full_screen_h - m_rt_vp_y - m_rt_screen_h;
     gpu_execute_passes(m_rt_vp_x, vp_y_gl, m_rt_screen_w, m_rt_screen_h, cmds.tile_verts);
+    finish_capture();
 }
 
 void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w, int screen_h,
@@ -2401,11 +2787,17 @@ void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w
 
     ensure_clut_valid();  // identity row 0 must exist before any sprite draws
 
-    if (!m_resource_mapper) return;
+    if (!m_resource_mapper) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL world resource mapper missing");
+        return;
+    }
     const GLGeometryBuffer* const world_geom = m_resource_mapper->ResolveGeometryBuffer(m_geom_handle);
     const GLuint world_shader_id = ResolveShaderId(m_shader_handle);
     const GLTexture* const lightmap_tex = m_resource_mapper->ResolveTexture(m_lightmap_tex_handle);
-    if (!world_geom || !world_shader_id || !lightmap_tex) return;
+    if (!world_geom || !world_shader_id || !lightmap_tex) {
+        WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL world resources missing");
+        return;
+    }
 
     glBindBuffer(GL_ARRAY_BUFFER, world_geom->vbo);
     // Re-specify the storage each frame so it always fits the frame's vertices.
@@ -2422,6 +2814,7 @@ void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w
     glDepthMask(GL_TRUE);
 
     bool atlas_bound       = false;  // tile atlas array bound to GL_TEXTURE0
+    bool capture_missing_tile = false;
 
     // Upload lightmap shadow copy (snapshotted from game.lish.subtile_lightness[]
     // during FlipBuffers() on the game thread — no live game struct access here).
@@ -2432,6 +2825,21 @@ void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w
                     GL_RED_INTEGER, GL_UNSIGNED_SHORT,
                     m_rt_lightmap);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);  // restore default
+
+    if (m_rt_outline_capture) {
+        if (!m_capture_world_target_known || !m_capture_applied_palette_known || !m_capture_applied_fade_known || !m_shade_settings_applied
+            || !ResolvePaletteTexId() || !ResolveFadeTexId())
+            WorldSceneFailOutlineCapture(m_rt_outline_capture, "Complete GL world clear, palette or fade upload proof unavailable");
+        else try {
+            auto state = m_capture_world_target;
+            state.viewport_x = m_rt_vp_x; state.viewport_y = m_rt_vp_y;
+            state.viewport_width = screen_w; state.viewport_height = screen_h;
+            state.palette_rgba = m_capture_applied_palette; state.fade = m_capture_applied_fade;
+            state.shade_settings = m_applied_shade_settings;
+            state.lightmap.assign(m_rt_lightmap, m_rt_lightmap + k_lightmap_w * k_lightmap_h);
+            WorldSceneBeginGLWorldCapture(m_rt_outline_capture, std::move(state));
+        } catch (...) { WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL world state allocation failed"); }
+    }
 
     // Bind fade table to unit 3 unconditionally — the sampler must always
     // reference a valid texture even when darkness_mode != PALETTE.
@@ -2465,6 +2873,7 @@ void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w
                 glBindTexture(GL_TEXTURE_2D, 0);
                 glBindTexture(GL_TEXTURE_2D_ARRAY, atlas_tex);
                 glUniform1f(m_loc_missing_tile, (atlas_tex == 0) ? 1.0f : 0.0f);
+                capture_missing_tile = atlas_tex == 0;
                 atlas_bound = true;
                 if (m_tile_filter_applied != g_renderer_settings.tile_filter)
                 {
@@ -2476,6 +2885,41 @@ void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w
                 }
             }
             glDepthFunc(GL_ALWAYS);
+            if (m_rt_outline_capture) {
+                if (cmd.vert_start < 0 || cmd.vert_count < 0 || cmd.vert_start % 3 || cmd.vert_count % 3
+                    || uint64_t(cmd.vert_start) + uint64_t(cmd.vert_count) > tile_verts.size())
+                    WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL occluder range invalid");
+                else for (int i = cmd.vert_start; i < cmd.vert_start + cmd.vert_count; i += 3) {
+                    const size_t tag = size_t(i / 3);
+                    if (tag >= m_rt_outline_tile_tags.size()
+                        || m_rt_outline_tile_tags[tag] == kfx::render::SceneOutlineNoDraw) {
+                        WorldSceneFailOutlineCapture(m_rt_outline_capture, "GL occluder entry missing");
+                        continue;
+                    }
+                    kfx::render::SceneOutlineOccluder triangle;
+                    kfx::render::SceneGLTerrainTriangle material;
+                    triangle.entry = m_rt_outline_tile_tags[tag];
+                    for (int j = 0; j < 3; ++j) {
+                        const auto& v = tile_verts[size_t(i + j)];
+                        triangle.vertices[j] = {v.x, v.y, v.z, v.camera_z};
+                        material.vertices[j] = {v.u, v.v, v.shade, v.stl_x, v.stl_y};
+                    }
+                    std::array<uint8_t, 1024> pixels{};
+                    const auto& first = tile_verts[size_t(i)];
+                    const auto* uploaded_atlas = dynamic_cast<const GLTileAtlas*>(m_atlas);
+                    bool known = capture_missing_tile;
+                    if (!capture_missing_tile && uploaded_atlas && first.atlas_layer >= 0 && first.atlas_layer < 32
+                        && first.tile >= 0 && first.tile < 2048
+                        && first.atlas_layer == float(unsigned(first.atlas_layer)) && first.tile == float(unsigned(first.tile))) {
+                        known = true;
+                        for (int j = 1; j < 3; ++j)
+                            known &= tile_verts[size_t(i+j)].atlas_layer == first.atlas_layer && tile_verts[size_t(i+j)].tile == first.tile;
+                        known &= uploaded_atlas->CopyUploadedTileForCapture(unsigned(first.atlas_layer), unsigned(first.tile), pixels);
+                    }
+                    if (!known) WorldSceneFailOutlineCapture(m_rt_outline_capture, "Complete GL terrain actual tile upload unavailable");
+                    else WorldSceneAppendGLTerrain(m_rt_outline_capture, triangle, material, capture_missing_tile ? nullptr : &pixels);
+                }
+            }
             glDrawArrays(GL_TRIANGLES, cmd.vert_start, cmd.vert_count);
         }
         else if (cmd.type == DrawCmd::CMD_PRELOAD_KSPR_ATLAS)
@@ -2548,8 +2992,11 @@ void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w
                 for (const auto& cmd : m_rt_draw_cmds)
                 {
                     if (cmd.type != DrawCmd::CMD_IR_KEEPER_SPRITES) continue;
-                    for (int i : sort_range(cmd))
+                    for (int i : sort_range(cmd)) {
+                        m_rt_outline_draw = size_t(i) < m_rt_outline_sprite_tags.size()
+                            ? m_rt_outline_sprite_tags[size_t(i)] : kfx::render::SceneOutlineNoDraw;
                         append_keeper_sprite_instance(m_rt_kspr_ir[i]);
+                    }
                 }
                 flush_keeper_sprite_instances();
             }
@@ -2558,11 +3005,15 @@ void GLWorldViewRenderer::gpu_execute_passes(int vp_x, int vp_y_gl, int screen_w
                 for (const auto& cmd : m_rt_draw_cmds)
                 {
                     if (cmd.type != DrawCmd::CMD_IR_KEEPER_SPRITES) continue;
-                    for (int i : sort_range(cmd))
+                    for (int i : sort_range(cmd)) {
+                        m_rt_outline_draw = size_t(i) < m_rt_outline_sprite_tags.size()
+                            ? m_rt_outline_sprite_tags[size_t(i)] : kfx::render::SceneOutlineNoDraw;
                         DrawKeeperSpriteGL(m_rt_kspr_ir[i]);
+                    }
                 }
             }
 
+            m_rt_outline_draw = kfx::render::SceneOutlineNoDraw;
             glDisable(GL_SCISSOR_TEST);
             glUseProgram(world_shader_id);
             glBindVertexArray(world_geom->vao);
@@ -2605,119 +3056,10 @@ void GLWorldViewRenderer::DrawIsometricView()
     render_ghost        = pixmap.ghost;
     render_alpha        = (unsigned char *)&alpha_sprite_table;
 
-    union {
-        struct BasicQ *b;
-        struct BucketKindPolygonStandard *polygonStandard;
-        struct BucketKindPolygonNearFP *polygonNearFP;
-        struct BucketKindJontySprite *jontySprite;
-        struct BucketKindCreatureShadow *creatureShadow;
-        struct BucketKindRoomFlag *roomFlag;
-        struct BucketKindFloatingGoldText *floatingGoldText;
-        struct BucketKindCreatureStatus *creatureStatus;
-        struct BucketKindSlabSelector *slabSelector;
-    } item;
-    struct PlayerInfo *player;
-    struct Camera *cam;
-
-    for (long bucket_num = BUCKETS_COUNT - 1; bucket_num > 0; bucket_num--)
-    {
-        m_current_bucket = (int)bucket_num;
-
-        for (item.b = buckets[bucket_num]; item.b != NULL; item.b = item.b->next)
-        {
-            switch (item.b->kind)
-            {
-            case QK_PolygonStandard: // All textured polygons for isometric and 'far' textures in 1st person view
-                append_triangle(item.polygonStandard->block,
-                                &item.polygonStandard->vertex_first,
-                                &item.polygonStandard->vertex_second,
-                                &item.polygonStandard->vertex_third);
-                break;
-            case QK_JontySprite:
-                draw_jonty_mapwho(item.jontySprite);
-                break;
-            case QK_JontyISOSprite:
-                player = get_my_player();
-                cam = get_local_active_camera(player);
-                if (cam != NULL)
-                {
-                    if (cam->view_mode == PVM_IsoWibbleView || cam->view_mode == PVM_IsoStraightView) {
-                        draw_jonty_mapwho(item.jontySprite);
-                    }
-                }
-                break;
-            case QK_CreatureShadow:
-            {
-                int32_t draw_idx;
-                const unsigned char* data;
-                int src_w, src_h;
-                if (resolve_keepersprite_draw_data(item.creatureShadow->anim_sprite,
-                        (short)item.creatureShadow->angle, item.creatureShadow->current_frame,
-                        &draw_idx, &data, &src_w, &src_h, nullptr))
-                {
-                    append_shadow_quad(item.creatureShadow, draw_idx, data, src_w, src_h);
-                }
-                break;
-            }
-            case QK_RoomFlagBottomPole: // Room-flag pole
-            {
-                const float ndc_z = 2.0f * ((float)m_current_bucket - 0.5f) / (float)(BUCKETS_COUNT - 1) - 1.0f;
-                RendererSetWorldOverlayFlat(ndc_z);
-                draw_engine_room_flagpole(item.roomFlag);
-                RendererClearWorldOverlayFlat();
-                break;
-            }
-            case QK_RoomFlagStatusBox: // Room-flag top status box
-            {
-                const float ndc_z = 2.0f * ((float)m_current_bucket - 0.5f) / (float)(BUCKETS_COUNT - 1) - 1.0f;
-                RendererSetWorldOverlayFlat(ndc_z);
-                draw_engine_room_flag_top(item.roomFlag);
-                RendererClearWorldOverlayFlat();
-                break;
-            }
-            case QK_FloatingGoldText: // Floating gold/damage/experience numbers
-            {
-                const float ndc_z = 2.0f * ((float)m_current_bucket - 0.5f) / (float)(BUCKETS_COUNT - 1) - 1.0f;
-                RendererSetWorldOverlayFlat(ndc_z);
-                draw_engine_number(item.floatingGoldText);
-                RendererClearWorldOverlayFlat();
-                break;
-            }
-            case QK_CreatureStatus: // Health-flower/anger/state icon above a creature.
-            {
-                const float ndc_z = 2.0f * ((float)m_current_bucket - 0.5f) / (float)(BUCKETS_COUNT - 1) - 1.0f;
-                RendererSetWorldOverlay(ndc_z);
-                draw_status_sprites(item.creatureStatus->x, item.creatureStatus->y, item.creatureStatus->thing);
-                RendererClearWorldOverlay();
-                break;
-            }
-
-            case QK_PolygonNearFP:
-                append_triangle(item.polygonNearFP->block,
-                                &item.polygonNearFP->vertex_first,
-                                &item.polygonNearFP->vertex_second,
-                                &item.polygonNearFP->vertex_third);
-                break;
-
-            case QK_SlabSelector: // Selection outline box for placing/digging slabs
-            {
-                // fudge the position of the slab selector to look more like CPU
-                const float true_bucket = (float)m_current_bucket + 2.0f;
-                const float ndc_z = 2.0f * (true_bucket - 0.5f) / (float)(BUCKETS_COUNT - 1) - 1.0f;
-                RendererSetWorldOverlay(ndc_z);
-                draw_clipped_line(item.slabSelector->p.X, item.slabSelector->p.Y,
-                                  item.slabSelector->p.U, item.slabSelector->p.V,
-                                  item.slabSelector->p.S);
-                RendererClearWorldOverlay();
-                break;
-            }
-
-            default:
-                break;
-            }
-        }
-    }
-
+    WorldSceneTraceBegin(1);
+    kfx::render::ProduceWorldDraws(kfx::render::WorldDrawView::Isometric,
+        buckets, {m_screen_w, m_screen_h, BUCKETS_COUNT}, pixel_size, nullptr, *this);
+    WorldSceneTraceEnd();
     gpu_flush();
 
 
@@ -2746,63 +3088,10 @@ void GLWorldViewRenderer::DrawFrontView(struct Camera* cam)
     render_ghost        = pixmap.ghost;
     render_alpha        = (unsigned char *)&alpha_sprite_table;
 
-    for (long bucket_num = BUCKETS_COUNT - 1; bucket_num >= 0; bucket_num--)
-    {
-        m_current_bucket = (int)bucket_num;
-        const float ndc_z = 2.0f * ((float)m_current_bucket - 0.5f) / (float)(BUCKETS_COUNT - 1) - 1.0f;
-        for (struct BasicQ* b = buckets[bucket_num]; b != NULL; b = b->next)
-        {
-            if (b->kind == QK_TextureQuad)
-                append_frontview_quad((const struct BucketKindTexturedQuad*)b);
-            else if (b->kind == QK_JontySprite)
-                draw_fastview_mapwho(cam, (struct BucketKindJontySprite*)b);
-            else if (b->kind == QK_JontyISOSprite)
-                draw_iso_only_fastview_mapwho(cam, (struct BucketKindJontySprite*)b);
-            else if (b->kind == QK_PolygonNearFP)
-            {
-                const struct BucketKindPolygonNearFP* p = (const struct BucketKindPolygonNearFP*)b;
-                append_triangle((int)p->block, &p->vertex_first, &p->vertex_second, &p->vertex_third);
-            }
-            else if (b->kind == QK_PolygonStandard)
-            {
-                const struct BucketKindPolygonStandard* p = (const struct BucketKindPolygonStandard*)b;
-                append_triangle((int)p->block, &p->vertex_first, &p->vertex_second, &p->vertex_third);
-            }
-            else if (b->kind == QK_SlabSelector) // Selection outline box for placing/digging slabs
-            {
-                const struct BucketKindSlabSelector* p = (const struct BucketKindSlabSelector*)b;
-                RendererSetWorldOverlay(ndc_z);
-                draw_clipped_line(p->p.X, p->p.Y, p->p.U, p->p.V, p->p.S);
-                RendererClearWorldOverlay();
-            }
-            else if (b->kind == QK_CreatureStatus) // Health-flower/anger/state icon above a creature
-            {
-                const struct BucketKindCreatureStatus* p = (const struct BucketKindCreatureStatus*)b;
-                RendererSetWorldOverlayFlat(ndc_z);
-                draw_status_sprites(p->x, p->y, p->thing);
-                RendererClearWorldOverlayFlat();
-            }
-            else if (b->kind == QK_FloatingGoldText) // Floating gold/damage/experience numbers
-            {
-                RendererSetWorldOverlayFlat(ndc_z);
-                draw_engine_number((struct BucketKindFloatingGoldText*)b);
-                RendererClearWorldOverlayFlat();
-            }
-            else if (b->kind == QK_RoomFlagBottomPole) // Room-flag pole
-            {
-                RendererSetWorldOverlayFlat(ndc_z);
-                draw_engine_room_flagpole((struct BucketKindRoomFlag*)b);
-                RendererClearWorldOverlayFlat();
-            }
-            else if (b->kind == QK_RoomFlagStatusBox) // Room-flag top status box
-            {
-                RendererSetWorldOverlayFlat(ndc_z);
-                draw_engine_room_flag_top((struct BucketKindRoomFlag*)b);
-                RendererClearWorldOverlayFlat();
-            }
-        }
-    }
-
+    WorldSceneTraceBegin(1);
+    kfx::render::ProduceWorldDraws(kfx::render::WorldDrawView::Front,
+        buckets, {m_screen_w, m_screen_h, BUCKETS_COUNT}, pixel_size, cam, *this);
+    WorldSceneTraceEnd();
     gpu_flush();
     {
         const int ir_count = (int)(m_kspr_ir.size() - m_kspr_pass_start);

@@ -1,3 +1,4 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 /******************************************************************************/
 // Dungeon Keeper - Renderer Abstraction Layer
 /******************************************************************************/
@@ -31,6 +32,8 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+namespace kfx::render { struct WorldScene; }
 
 // Forward declarations to avoid pulling renderer IR into every includer.
 struct Camera;
@@ -44,6 +47,14 @@ struct SpriteScale;
 class IWorldViewRenderer {
 public:
     virtual ~IWorldViewRenderer() = default;
+
+    // Immutable, world-space companion to the legacy projected draw commands.
+    // Backends may retain this reference until their frame has finished.
+    virtual void SetSceneSnapshot(std::shared_ptr<const kfx::render::WorldScene> scene) { m_scene = std::move(scene); }
+    const std::shared_ptr<const kfx::render::WorldScene>& GetSceneSnapshot() const { return m_scene; }
+private:
+    std::shared_ptr<const kfx::render::WorldScene> m_scene;
+public:
 
     // =========================================================================
     // Frame setup

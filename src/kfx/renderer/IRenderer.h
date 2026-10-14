@@ -1,7 +1,9 @@
+// KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #ifndef RENDERER_IRENDERER_H
 #define RENDERER_IRENDERER_H
 
 #include <cstdint>
+#include <array>
 
 // Selectable renderer backends.
 enum RendererType {
@@ -9,6 +11,7 @@ enum RendererType {
     RENDERER_AUTO     = 0,  // pick the best available backend at startup
     RENDERER_SOFTWARE = 1,  // CPU software renderer, SDL display output
     RENDERER_OPENGL   = 2,  // OpenGL backend
+    RENDERER_DX12     = 3,  // Optional Windows x64 development backend
 };
 
 enum OverlayCaptureKind {
@@ -55,6 +58,16 @@ public:
     // destination rect. Returns false if the image couldn't be drawn.
     virtual bool PresentImage(const struct RendererPresentImageDesc* desc) = 0;
 
+    // A custom indexed lens replaces this frame's world, before map-fade/UI.
+    // Begin must prove its destination still contains this clear index. Submit
+    // owns the source bytes before returning; index zero is an opaque colour.
+    virtual bool BeginIndexedWorldFallback(int width, int height, unsigned char& clear_index)
+        { (void)width; (void)height; (void)clear_index; return false; }
+    virtual bool SubmitIndexedWorldFallback(const struct RendererPresentImageDesc* desc)
+        { (void)desc; return false; }
+    virtual bool GetIndexedWorldFallbackPalette(std::array<uint8_t, 1024>& rgba) const
+        { (void)rgba; return false; }
+
     // Draw a full-screen RLE huge sprite (the landview window frame) over
     // whatever is already on screen.
     virtual void PresentHugeSprite(const struct TbHugeSprite* spr, int32_t sp_len,
@@ -77,6 +90,12 @@ public:
 
     // Save the current frame to a file (fmt: 1=PNG, 2=BMP). Default: unsupported.
     virtual bool ScheduleScreenshot(const char* path, int fmt) { (void)path; (void)fmt; return false; }
+
+    // Snapshot current counters without presenting or waiting for the GPU.
+    virtual bool WriteDiagnostics(const char* path) { (void)path; return false; }
+
+    // Opt-in local diagnostic; false means unsupported or not ready to arm.
+    virtual bool SetDiagnosticReaderHold(bool active) { (void)active; return false; }
 
     // Sub-renderers. Every backend provides all four once initialised.
     virtual class ITextRenderer*      GetTextRenderer()      = 0;
