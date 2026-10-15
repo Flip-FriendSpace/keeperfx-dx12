@@ -88,7 +88,8 @@ GLuint GLWorldViewRenderer::ResolveShaderId(GpuResourceHandle handle) const
 
 
 /** Max dimension of a keeper-sprite decode buffer (stride for GL_UNPACK_ROW_LENGTH). */
-static constexpr int k_kspr_decode_dim = kfx::render::WorldShadowDecodeDimension;
+static constexpr int k_kspr_decode_dim = 1024;
+static constexpr int k_kspr_atlas_dim = 512;
 
 /** Scratch buffer used to hold decoded RG pixels (palette index, coverage)
  *  before upload. Stride is always k_kspr_decode_dim pixels so glTexSubImage*()
@@ -939,14 +940,14 @@ void GLWorldViewRenderer::draw_shadows_gpu()
         if (m_rt_outline_capture) {
             if (cmd.capture_entry == kfx::render::SceneOutlineNoDraw || size_t(layer) >= m_capture_sprite_coverage.size()
                 || m_capture_sprite_coverage[layer].width != cmd.src_w || m_capture_sprite_coverage[layer].height != cmd.src_h
-                || m_capture_sprite_coverage[layer].bits.size() != size_t(k_kspr_decode_dim) * k_kspr_decode_dim / 8)
+                || m_capture_sprite_coverage[layer].bits.size() != size_t(k_kspr_atlas_dim) * k_kspr_atlas_dim / 8)
                 WorldSceneFailOutlineCapture(m_rt_outline_capture, "Complete GL shadow caster or actual source upload proof unavailable");
             else try {
                 const auto& uploaded = m_capture_sprite_coverage[layer];
                 kfx::render::SceneGLShadowSource source;
                 // The atlas upload initializes the entire layer. Shadow frame
                 // bounds can exceed the decoded artwork's logical dimensions.
-                source.width = k_kspr_decode_dim; source.height = k_kspr_decode_dim;
+                source.width = k_kspr_atlas_dim; source.height = k_kspr_atlas_dim;
                 source.coverage.resize(size_t(source.width) * source.height);
                 for (size_t i = 0; i < source.coverage.size(); ++i)
                     source.coverage[i] = (uploaded.bits[i / 8] & (1u << (i % 8))) ? 255 : 0;
@@ -961,7 +962,7 @@ void GLWorldViewRenderer::draw_shadows_gpu()
                         || cmd.u[i] < 0 || cmd.v[i] < 0
                         || cmd.u[i] > float(source.width - 1) / 256
                         || cmd.v[i] > float(source.height - 1) / 256)
-                        ERRORLOG("GL shadow capture bounds: entry=%u caster=%u draw=%d layer=%d source=%ux%u initialized=%ux256 vertex=%u xy=(%.9g,%.9g) uv=(%.9g,%.9g) texel=(%.9g,%.9g)",
+                        ERRORLOG("GL shadow capture bounds: entry=%u caster=%u draw=%d layer=%d source=%ux%u initialized=%ux512 vertex=%u xy=(%.9g,%.9g) uv=(%.9g,%.9g) texel=(%.9g,%.9g)",
                             cmd.capture_entry, unsigned(cmd.capture_caster.slot), cmd.draw_idx, layer,
                             unsigned(uploaded.width), unsigned(uploaded.height), unsigned(source.width), i,
                             double(cmd.x[i]), double(cmd.y[i]), double(cmd.u[i]), double(cmd.v[i]),
@@ -1074,19 +1075,19 @@ bool GLWorldViewRenderer::init_keeper_sprite_shader()
         }
     }
 
-    // Reusable 256x256 RG8 texture -- overwritten per sprite. Zero-initialised
+    // Reusable 1024x1024 RG8 fallback for oversized held frames. Zero-initialised
     // so unwritten regions sample as zero coverage (transparent) rather than
     // undefined garbage.
     {
-        static const uint8_t s_zero_256x256[256 * 256 * 2] = {};
+        static const uint8_t s_zero_keeper[k_kspr_decode_dim * k_kspr_decode_dim * 2] = {};
         GpuTextureDesc desc;
-        desc.width = 256;
-        desc.height = 256;
+        desc.width = k_kspr_decode_dim;
+        desc.height = k_kspr_decode_dim;
         desc.format = GpuTextureFormat::RG8;
         desc.min_filter = GpuTextureFilter::Nearest;
         desc.mag_filter = GpuTextureFilter::Nearest;
         desc.wrap = GpuTextureWrap::Clamp;
-        desc.initial_pixels.assign(s_zero_256x256, s_zero_256x256 + sizeof(s_zero_256x256));
+        desc.initial_pixels.assign(s_zero_keeper, s_zero_keeper + sizeof(s_zero_keeper));
         desc.debug_name = "kspr_sprite";
         m_kspr_sprite_tex_handle = m_resource_mapper->RequestCreateTexture(desc);
         if (m_resource_mapper->ResolveTexture(m_kspr_sprite_tex_handle) == nullptr)
@@ -1166,8 +1167,8 @@ bool GLWorldViewRenderer::init_keeper_sprite_shader()
         // expected here, matching the original's own glTexImage3D(...,
         // nullptr) call.
         GpuTextureDesc array_desc;
-        array_desc.width = k_kspr_decode_dim;
-        array_desc.height = k_kspr_decode_dim;
+        array_desc.width = k_kspr_atlas_dim;
+        array_desc.height = k_kspr_atlas_dim;
         array_desc.array_layers = k_kspr_atlas_layers;
         array_desc.format = GpuTextureFormat::RG8;
         array_desc.min_filter = GpuTextureFilter::Nearest;
@@ -1183,7 +1184,7 @@ bool GLWorldViewRenderer::init_keeper_sprite_shader()
             m_kspr_atlas_glow_shader_handle = kInvalidGpuResource;
             break;
         }
-        SYNCLOG("GLWorldViewRenderer: keeper-sprite decode atlas ready (%d layers, 256x256 GL_RG8)",
+        SYNCLOG("GLWorldViewRenderer: keeper-sprite decode atlas ready (%d layers, 512x512 GL_RG8)",
                 k_kspr_atlas_layers);
     } while (false);
 
@@ -1601,7 +1602,7 @@ void GLWorldViewRenderer::execute_preload_atlas()
         if ((size_t)i >= creature_table_length) continue;
         const struct KeeperSprite& ks = creature_table[i];
         if (ks.SWidth <= 0 || ks.SHeight <= 0 ||
-            ks.SWidth > k_kspr_decode_dim || ks.SHeight > k_kspr_decode_dim) continue;
+            ks.SWidth > k_kspr_atlas_dim || ks.SHeight > k_kspr_atlas_dim) continue;
         const uint8_t* data = *keepsprite[i];
         if (m_kspr_atlas_map.count(i)) continue;
 
@@ -1611,7 +1612,7 @@ void GLWorldViewRenderer::execute_preload_atlas()
         int layer = m_kspr_atlas_used++;
         glPixelStorei(GL_UNPACK_ROW_LENGTH, k_kspr_decode_dim);
         glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer,
-                        k_kspr_decode_dim, k_kspr_decode_dim, 1,
+                        k_kspr_atlas_dim, k_kspr_atlas_dim, 1,
                         GL_RG, GL_UNSIGNED_BYTE, s_kspr_decode_buf);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         m_kspr_atlas_map[i] = {layer, ks.SWidth, decoded_sprite_darkens(ks.SWidth, ks.SHeight)};
@@ -1625,7 +1626,7 @@ void GLWorldViewRenderer::execute_preload_atlas()
         if (!keepersprite_add[i]) continue;
         const struct KeeperSprite& ks = creature_table_add[i];
         if (ks.SWidth <= 0 || ks.SHeight <= 0 ||
-            ks.SWidth > k_kspr_decode_dim || ks.SHeight > k_kspr_decode_dim) continue;
+            ks.SWidth > k_kspr_atlas_dim || ks.SHeight > k_kspr_atlas_dim) continue;
         const uint8_t* data = keepersprite_add[i];
         const int32_t sprite_id = KEEPERSPRITE_ADD_OFFSET + i;
         if (m_kspr_atlas_map.count(sprite_id)) continue;
@@ -1636,7 +1637,7 @@ void GLWorldViewRenderer::execute_preload_atlas()
         int layer = m_kspr_atlas_used++;
         glPixelStorei(GL_UNPACK_ROW_LENGTH, k_kspr_decode_dim);
         glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer,
-                        k_kspr_decode_dim, k_kspr_decode_dim, 1,
+                        k_kspr_atlas_dim, k_kspr_atlas_dim, 1,
                         GL_RG, GL_UNSIGNED_BYTE, s_kspr_decode_buf);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         m_kspr_atlas_map[sprite_id] = {layer, ks.SWidth, decoded_sprite_darkens(ks.SWidth, ks.SHeight)};
@@ -1760,6 +1761,7 @@ int GLWorldViewRenderer::resolve_atlas_layer(int32_t sprite_id, const unsigned c
                                              bool* darkens)
 {
     if (darkens) *darkens = false;
+    if (src_w > k_kspr_atlas_dim || src_h > k_kspr_atlas_dim) return -1;
     if (!m_resource_mapper) return -1;
     const GLTexture* sprite_array = m_resource_mapper->ResolveTexture(m_kspr_sprite_array_handle);
     const GLTexture* clut_tex = m_resource_mapper->ResolveTexture(m_kspr_clut_tex_handle);
@@ -1789,7 +1791,7 @@ int GLWorldViewRenderer::resolve_atlas_layer(int32_t sprite_id, const unsigned c
     glPixelStorei(GL_UNPACK_ROW_LENGTH, k_kspr_decode_dim);
     glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
                     0, 0, atlas_layer,
-                    k_kspr_decode_dim, k_kspr_decode_dim, 1,
+                    k_kspr_atlas_dim, k_kspr_atlas_dim, 1,
                     GL_RG, GL_UNSIGNED_BYTE, s_kspr_decode_buf);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     const bool sprite_darkens = decoded_sprite_darkens(src_w, src_h);
@@ -2004,12 +2006,12 @@ void GLWorldViewRenderer::record_sprite_coverage_for_capture(int layer, int widt
     if (layer < 0 || size_t(layer) >= m_capture_sprite_coverage.size()) return;
     auto& source = m_capture_sprite_coverage[layer];
     source = {};
-    if (width <= 0 || width > 256 || height <= 0 || height > 256) return;
+    if (width <= 0 || width > k_kspr_decode_dim || height <= 0 || height > k_kspr_decode_dim) return;
     try {
-        source.bits.resize(size_t(k_kspr_decode_dim) * k_kspr_decode_dim / 8, 0);
-        for (int y = 0; y < k_kspr_decode_dim; ++y) for (int x = 0; x < k_kspr_decode_dim; ++x) {
-            const size_t pixel = size_t(y) * k_kspr_decode_dim + x;
-            if (rg[(size_t(y) * 256 + x) * 2 + 1]) source.bits[pixel / 8] |= uint8_t(1u << (pixel % 8));
+        source.bits.resize(size_t(k_kspr_atlas_dim) * k_kspr_atlas_dim / 8, 0);
+        for (int y = 0; y < k_kspr_atlas_dim; ++y) for (int x = 0; x < k_kspr_atlas_dim; ++x) {
+            const size_t pixel = size_t(y) * k_kspr_atlas_dim + x;
+            if (rg[(size_t(y) * k_kspr_decode_dim + x) * 2 + 1]) source.bits[pixel / 8] |= uint8_t(1u << (pixel % 8));
         }
         source.width = uint16_t(width); source.height = uint16_t(height);
     } catch (...) { source = {}; }

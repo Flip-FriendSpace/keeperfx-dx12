@@ -1883,7 +1883,7 @@ RuntimeAssetLease Device::PublishRuntimeAsset(const RuntimeAssetKey& key, const 
     } else if (key.kind == RuntimeAssetKind::TileR8) {
         if (desc.width != 32 || desc.height != 32) throw std::invalid_argument("Runtime tile must be32x32");
     } else if (key.kind == RuntimeAssetKind::SpriteRGBA8) {
-        if (desc.width > 256 || desc.height > 256) throw std::invalid_argument("Runtime sprite exceeds256x256");
+        if (desc.width > 1024 || desc.height > 1024) throw std::invalid_argument("Runtime sprite exceeds1024x1024");
         length *= 4;
     } else if (key.kind == RuntimeAssetKind::FadeR8) {
         if (desc.width != 256 || desc.height != 64) throw std::invalid_argument("Runtime fade must be256x64");
@@ -4520,8 +4520,8 @@ Resource Device::Impl::RenderOutlineSurface(const Image& background, const Image
             || draw.x < -65536 || draw.x > 65536 || draw.y < -65536 || draw.y > 65536
             || draw.phase_x < -16777216 || draw.phase_x > 16777216 || draw.phase_y < -16777216 || draw.phase_y > 16777216
             || draw.step_x <= 0 || draw.step_x > 16777216 || draw.step_y <= 0 || draw.step_y > 16777216
-            || !draw.source_width || !draw.source_height || draw.source_width > (enhanced ? 256u : 1024u)
-            || draw.source_height > (enhanced ? 256u : 1024u)
+            || !draw.source_width || !draw.source_height || draw.source_width > 1024u
+            || draw.source_height > 1024u
             || !draw.content_height || draw.content_height > draw.source_height
             || uint64_t(draw.mask_x) + draw.source_width > atlas.width || uint64_t(draw.mask_y) + draw.source_height > atlas.height
             || !std::isfinite(draw.z_ndc) || std::abs(draw.z_ndc) > 16)

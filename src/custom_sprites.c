@@ -18,6 +18,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/KeeperSpriteResolution.h"
 #include "custom_sprites.h"
 #include "custom_zip.h"
 #include "creature_graphics.h"
@@ -84,6 +85,7 @@ struct SpriteContext
     short fp_id, fp_sz;
 
     TbBool rotatable;
+    unsigned char resolution_shift;
 };
 
 static struct NamedCommand added_sprites[KEEPERSPRITE_ADD_NUM];
@@ -657,7 +659,7 @@ static int read_png_info(unzFile zip, const char *path, struct SpriteContext *co
     ctx = spng_ctx_new(0);
     spng_set_crc_action(ctx, SPNG_CRC_USE, SPNG_CRC_USE);
 
-    size_t limit = 1024 * 1024 * 2;
+    size_t limit = 1024 * 1024 * 4;
     spng_set_chunk_limits(ctx, limit, limit);
 
     spng_set_png_stream(ctx, zip_read_fn, (void *) zip);
@@ -671,6 +673,12 @@ static int read_png_info(unzFile zip, const char *path, struct SpriteContext *co
         return 1;
     }
 
+    if (ihdr.width == 0 || ihdr.height == 0 || ihdr.width > 1024 || ihdr.height > 1024)
+    {
+        ERRORLOG("Custom sprite dimensions must be between 1 and 1024 pixels");
+        spng_ctx_free(ctx);
+        return 0;
+    }
     if (ihdr.bit_depth != 8)
     {
         ERRORLOG("Wrong spec: %s/%s should be 8bit truecolor or indexed .png", path, subpath);
@@ -686,8 +694,8 @@ static int read_png_info(unzFile zip, const char *path, struct SpriteContext *co
 
     int fmt = SPNG_FMT_RGBA8; // for indexed should be SPNG_FMT_PNG
 
-    spng_decoded_image_size(ctx, fmt, &out_size);
-    if (limit < out_size) // Image is too big
+    r = spng_decoded_image_size(ctx, fmt, &out_size);
+    if (r != 0 || limit < out_size) // Image is too big or unsupported.
     {
         ERRORLOG("Unable to decode %s error: %s", path, spng_strerror(r));
         spng_ctx_free(ctx);
@@ -890,7 +898,7 @@ static size_t decode_png_to_sprite(unzFile zip, const char *path, const char *su
 
     spng_set_crc_action(ctx, SPNG_CRC_USE, SPNG_CRC_USE);
 
-    size_t limit = 1024 * 1024 * 2;
+    size_t limit = 1024 * 1024 * 4;
     spng_set_chunk_limits(ctx, limit, limit);
 
     spng_set_png_stream(ctx, zip_read_fn, (void *)zip);
@@ -1019,7 +1027,7 @@ static int read_png_data(unzFile zip, const char *path, struct SpriteContext *co
     ctx = spng_ctx_new(0);
     spng_set_crc_action(ctx, SPNG_CRC_USE, SPNG_CRC_USE);
 
-    size_t limit = 1024 * 1024 * 2;
+    size_t limit = 1024 * 1024 * 4;
     spng_set_chunk_limits(ctx, limit, limit);
 
     spng_set_png_stream(ctx, zip_read_fn, (void *) zip);
@@ -1068,9 +1076,9 @@ static int read_png_data(unzFile zip, const char *path, struct SpriteContext *co
     int dst_w = (int) context->sprite.SWidth;
     int dst_h = (int) context->sprite.SHeight;
 
-    if (dst_w >= 255 || dst_h >= 255)
+    if (dst_w <= 0 || dst_h <= 0 || dst_w > 1024 || dst_h > 1024)
     {
-        ERRORLOG("Sprites more than 255x255 are not supported");
+        ERRORLOG("Custom sprite dimensions must be between 1 and 1024 pixels");
         spng_ctx_free(ctx);
         return 0;
     }
@@ -1158,6 +1166,8 @@ static int read_png_data(unzFile zip, const char *path, struct SpriteContext *co
     READ_WITH_DEFAULT(shadow_offset, "shadow_offset", "fp_shadow_offset", "td_shadow_offset", (dst_h + ksprite->offset_y), value_int32)
 
     READ_WITH_DEFAULT(frame_flags, "frame_flags", "fp_frame_flags", "td_frame_flags", 0, value_uint32)
+    ksprite->frame_flags = (ksprite->frame_flags & ~KEEPER_SPRITE_RESOLUTION_MASK)
+        | (context->resolution_shift << 8);
 
 #undef READ_WITH_DEFAULT
 
@@ -1396,10 +1406,29 @@ collect_sprites(const char *path, unzFile zip, const char *blender_scene, struct
 #endif
     context->rotatable = (value_bool(value_dict_get(node, "rotatable")) > 0);
 
+    unsigned char resolution_shifts[2] = {0, 0};
+    for (int view = 0; view < 2; view++)
+    {
+        VALUE *resolution = value_dict_get(node, view ? "fp_resolution_scale" : "td_resolution_scale");
+        if (value_type(resolution) == VALUE_NULL)
+            resolution = value_dict_get(node, "resolution_scale");
+        if (value_type(resolution) == VALUE_NULL)
+            continue;
+        const int factor = value_type(resolution) == VALUE_INT32 ? value_int32(resolution) : 0;
+        if (factor != 1 && factor != 2 && factor != 4 && factor != 8)
+        {
+            WARNLOG("Sprite resolution_scale must be an integer 1, 2, 4 or 8 in '%s/sprites.json'", path);
+            return 1;
+        }
+        while ((1 << resolution_shifts[view]) < factor)
+            resolution_shifts[view]++;
+    }
+
     int prev_sz;
     VALUE *ud_lst;
     for (int is_fp = 0; is_fp < 2; is_fp++)
     {
+        context->resolution_shift = resolution_shifts[is_fp];
         if (is_fp == 0)
         {
             ud_lst = value_dict_get(node, "td");

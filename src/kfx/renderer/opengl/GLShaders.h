@@ -854,7 +854,10 @@ uniform sampler2DArray u_sprite;
 out vec4 fragColor;
 void main()
 {
-    if (texture(u_sprite, vec3(v_uv, v_layer)).g < 0.5) discard;
+    // Shadow UVs retain their original pixel/256 units, including captures.
+    ivec2 size = textureSize(u_sprite, 0).xy;
+    ivec2 p = clamp(ivec2(floor(v_uv * 256.0)), ivec2(0), size - 1);
+    if (texelFetch(u_sprite, ivec3(p, int(v_layer)), 0).g < 0.5) discard;
     float keep = 1.0 - v_darken;
     fragColor = vec4(keep, keep, keep, 1.0);
 }

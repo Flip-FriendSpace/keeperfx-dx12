@@ -23,6 +23,8 @@
 #include "kfx/renderer/SceneAssetCapture.h"
 #include "kfx/renderer/RendererSettings.h" // g_renderer_settings.creature_outline_class_mask
 #include "kfx/renderer/SpriteScale.h"
+#include "kfx/renderer/KeeperSpriteResolution.h"
+#include "kfx/renderer/KeeperShadowMask.h"
 #include <stddef.h>
 #include <limits.h>
 
@@ -567,7 +569,7 @@ static const char splittypes[64] = {
 static void do_map_who(short tnglist_idx);
 static void (*render_sprite_debug_fn) (struct Thing*, long scrpos_x, long scrpos_y) = NULL;
 static int render_sprite_debug_level = 0;
-static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angle, unsigned char current_frame, unsigned char *outbuf);
+static int draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angle, unsigned char current_frame, unsigned char *outbuf);
 void draw_jonty_mapwho(struct BucketKindJontySprite *jspr);
 
 static TbBool animation_sprite_id_invalid(unsigned short animation_sprite)
@@ -4145,7 +4147,7 @@ static void create_shadows(struct Thing *thing, struct EngineCoord *ecor, struct
     short dim_th;
     short dim_tw;
     get_keepsprite_unscaled_dimensions(animation_sprite, sprite_angle, current_frame, &dim_ow, &dim_oh, &dim_tw, &dim_th);
-    if (dim_ow <= 0 || dim_oh <= 0 || dim_ow > 256 || dim_oh > 256)
+    if (dim_ow <= 0 || dim_oh <= 0 || dim_ow > 512 || dim_oh > 512)
     {
         WARNLOG("[md10 crash investigation] Invalid shadow dimensions dim_ow=%d dim_oh=%d for thing %d (anim=%d frame=%d)",
                 dim_ow, dim_oh, thing->index, animation_sprite, current_frame);
@@ -4155,10 +4157,16 @@ static void create_shadows(struct Thing *thing, struct EngineCoord *ecor, struct
         int sh_angle_sin = LbSinL(sh_angle);
         int sh_angle_cos = LbCosL(sh_angle);
 
-        int base_y2 = 8 * (6 - dim_oh - dim_th + spr->shadow_offset);
-        int base_z2 = 8 * dim_tw;
-        int base_th = 8 * (dim_th - 4 * dist_sq) + 560;
-        int base_tw = 8 * (dim_tw + dim_ow);
+        /* Project a logical-size shadow while retaining full-resolution UVs. */
+        int logical_h = keeper_sprite_logical_pixels(dim_oh, spr->frame_flags);
+        int logical_y = keeper_sprite_logical_pixels(dim_th, spr->frame_flags);
+        int logical_x = keeper_sprite_logical_pixels(dim_tw, spr->frame_flags);
+        int logical_w = keeper_sprite_logical_pixels(dim_ow, spr->frame_flags);
+        int shadow_offset = keeper_sprite_logical_pixels(spr->shadow_offset, spr->frame_flags);
+        int base_y2 = 8 * (6 - logical_h - logical_y + shadow_offset);
+        int base_z2 = 8 * logical_x;
+        int base_th = 8 * (logical_y - 4 * dist_sq) + 560;
+        int base_tw = 8 * (logical_x + logical_w);
 
         int base_x = ecor->x;
         int base_y = ecor->y;
@@ -6791,15 +6799,23 @@ void display_drawlist(void) // Draws isometric and 1st person view. Not frontvie
                 draw_jonty_mapwho(item.jontySprite);
                 break;
             case QK_CreatureShadow: // Shadows of creatures in isometric and 1st person view
+            {
                 // TODO: this could be cached
                 WorldSceneTraceShadowBegin(item.creatureShadow->caster_slot);
-                draw_keepsprite_unscaled_in_buffer(item.creatureShadow->anim_sprite, item.creatureShadow->angle, item.creatureShadow->current_frame, big_scratch);
+                const int shadow_scale = draw_keepsprite_unscaled_in_buffer(item.creatureShadow->anim_sprite, item.creatureShadow->angle, item.creatureShadow->current_frame, big_scratch);
+                if (shadow_scale == 0) break;
+                struct BucketKindCreatureShadow shadow = *item.creatureShadow;
+                shadow.vertex_first.U /= shadow_scale; shadow.vertex_first.V /= shadow_scale;
+                shadow.vertex_second.U /= shadow_scale; shadow.vertex_second.V /= shadow_scale;
+                shadow.vertex_third.U /= shadow_scale; shadow.vertex_third.V /= shadow_scale;
+                shadow.vertex_fourth.U /= shadow_scale; shadow.vertex_fourth.V /= shadow_scale;
                 vec_map = big_scratch;
                 vec_mode = VM_SpriteTranslucent;
                 vec_colour = item.creatureShadow->vertex_first.S;
-                trig(&item.creatureShadow->vertex_first, &item.creatureShadow->vertex_second, &item.creatureShadow->vertex_third);
-                trig(&item.creatureShadow->vertex_first, &item.creatureShadow->vertex_third, &item.creatureShadow->vertex_fourth);
+                trig(&shadow.vertex_first, &shadow.vertex_second, &shadow.vertex_third);
+                trig(&shadow.vertex_first, &shadow.vertex_third, &shadow.vertex_fourth);
                 break;
+            }
             case QK_SlabSelector: // Selection outline box for placing/digging slabs
                 draw_clipped_line(
                     item.slabSelector->p.X,
@@ -7941,13 +7957,13 @@ TbBool resolve_keepersprite_cursor_geometry(short x, short y, unsigned short ksp
     long scaled_x, scaled_y;
     if (needs_xflip)
     {
-        scaled_x = (long)x - ((scale * (long)(creature_sprites->FrameWidth + creature_sprites->offset_x)) >> 5);
+        scaled_x = (long)x - keeper_sprite_scale_pixels(creature_sprites->FrameWidth + creature_sprites->offset_x, scale, creature_sprites->frame_flags);
     }
     else
     {
-        scaled_x = ((scale * (long)creature_sprites->offset_x) >> 5) + (long)x;
+        scaled_x = keeper_sprite_scale_pixels(creature_sprites->offset_x, scale, creature_sprites->frame_flags) + (long)x;
     }
-    scaled_y = ((scale * (long)creature_sprites->offset_y) >> 5) + (long)y;
+    scaled_y = keeper_sprite_scale_pixels(creature_sprites->offset_y, scale, creature_sprites->frame_flags) + (long)y;
 
     long x_off, y_off;
     if (needs_xflip)
@@ -7959,12 +7975,12 @@ TbBool resolve_keepersprite_cursor_geometry(short x, short y, unsigned short ksp
     if (creature_sprites->Rotable == 0)
     {
         set_sprite_scale(out_scale, scaled_x, scaled_y, kspr->FrameWidth, kspr->FrameHeight,
-            ((long)kspr->FrameWidth * scale) >> 5, ((long)kspr->FrameHeight * scale) >> 5, x_off, y_off);
+            keeper_sprite_scale_pixels(kspr->FrameWidth, scale, kspr->frame_flags), keeper_sprite_scale_pixels(kspr->FrameHeight, scale, kspr->frame_flags), x_off, y_off);
     }
     else
     {
-        set_sprite_scale(out_scale, scaled_x + ((x_off * scale) >> 5), scaled_y + ((y_off * scale) >> 5),
-            kspr->SWidth, kspr->SHeight, ((long)kspr->SWidth * scale) >> 5, ((long)kspr->SHeight * scale) >> 5, 0, 0);
+        set_sprite_scale(out_scale, scaled_x + keeper_sprite_scale_pixels(x_off, scale, kspr->frame_flags), scaled_y + keeper_sprite_scale_pixels(y_off, scale, kspr->frame_flags),
+            kspr->SWidth, kspr->SHeight, keeper_sprite_scale_pixels(kspr->SWidth, scale, kspr->frame_flags), keeper_sprite_scale_pixels(kspr->SHeight, scale, kspr->frame_flags), 0, 0);
     }
     return true;
 }
@@ -8020,8 +8036,8 @@ static void draw_single_keepersprite_omni_xflip(long kspos_x, long kspos_y, stru
     long src_dx = (long)kspr->FrameWidth;
     long x = src_dx - (long)kspr->FrameOffsW - (long)kspr->SWidth;
     long y = kspr->FrameOffsH;
-    long sp_dy = (src_dy * scale) >> 5;
-    long sp_dx = (src_dx * scale) >> 5;
+    long sp_dy = keeper_sprite_scale_pixels(src_dy, scale, kspr->frame_flags);
+    long sp_dx = keeper_sprite_scale_pixels(src_dx, scale, kspr->frame_flags);
     if ( thing_being_displayed_is_creature )
     {
       if ( (pointer_x >= kspos_x) && (pointer_x <= sp_dx + kspos_x) )
@@ -8043,8 +8059,8 @@ static void draw_single_keepersprite_omni(long kspos_x, long kspos_y, struct Kee
     long src_dx = (long)kspr->FrameWidth;
     long x = kspr->FrameOffsW;
     long y = kspr->FrameOffsH;
-    long sp_dy = (src_dy * scale) >> 5;
-    long sp_dx = (src_dx * scale) >> 5;
+    long sp_dy = keeper_sprite_scale_pixels(src_dy, scale, kspr->frame_flags);
+    long sp_dx = keeper_sprite_scale_pixels(src_dx, scale, kspr->frame_flags);
     if ( thing_being_displayed_is_creature )
     {
       if ( (pointer_x >= kspos_x) && (pointer_x <= sp_dx + kspos_x) )
@@ -8067,10 +8083,10 @@ static void draw_single_keepersprite_xflip(long kspos_x, long kspos_y, struct Ke
     long src_dx = (long)kspr->SWidth;
     long x = (long)kspr->FrameWidth - (long)kspr->FrameOffsW - src_dx;
     long y = kspr->FrameOffsH;
-    long sp_x = kspos_x + ((scale * x) >> 5);
-    long sp_y = kspos_y + ((scale * y) >> 5);
-    long sp_dy = (src_dy * scale) >> 5;
-    long sp_dx = (src_dx * scale) >> 5;
+    long sp_x = kspos_x + keeper_sprite_scale_pixels(x, scale, kspr->frame_flags);
+    long sp_y = kspos_y + keeper_sprite_scale_pixels(y, scale, kspr->frame_flags);
+    long sp_dy = keeper_sprite_scale_pixels(src_dy, scale, kspr->frame_flags);
+    long sp_dx = keeper_sprite_scale_pixels(src_dx, scale, kspr->frame_flags);
     if ( thing_being_displayed_is_creature )
     {
       if ( (pointer_x >= sp_x) && (pointer_x <= sp_dx + sp_x) )
@@ -8094,10 +8110,10 @@ static void draw_single_keepersprite(long kspos_x, long kspos_y, struct KeeperSp
     long src_dx = (long)kspr->SWidth;
     long x = kspr->FrameOffsW;
     long y = kspr->FrameOffsH;
-    long sp_x = kspos_x + ((scale * x) >> 5);
-    long sp_y = kspos_y + ((scale * y) >> 5);
-    long sp_dy = (src_dy * scale) >> 5;
-    long sp_dx = (src_dx * scale) >> 5;
+    long sp_x = kspos_x + keeper_sprite_scale_pixels(x, scale, kspr->frame_flags);
+    long sp_y = kspos_y + keeper_sprite_scale_pixels(y, scale, kspr->frame_flags);
+    long sp_dy = keeper_sprite_scale_pixels(src_dy, scale, kspr->frame_flags);
+    long sp_dx = keeper_sprite_scale_pixels(src_dx, scale, kspr->frame_flags);
     if ( thing_being_displayed_is_creature )
     {
         if ( (pointer_x >= x) && (pointer_x <= sp_dx + x) )
@@ -8162,13 +8178,13 @@ void process_keeper_sprite(short x, short y, unsigned short kspr_base, short ksp
     global_scaler = scale;
     if (needs_xflip)
     {
-        scaled_x = ((long)x - ((scale * (long)(creature_sprites->FrameWidth + creature_sprites->offset_x)) >> 5));
+        scaled_x = ((long)x - keeper_sprite_scale_pixels(creature_sprites->FrameWidth + creature_sprites->offset_x, scale, creature_sprites->frame_flags));
     }
     else
     {
-        scaled_x = ((scale * (long)creature_sprites->offset_x) >> 5) + (long)x;
+        scaled_x = keeper_sprite_scale_pixels(creature_sprites->offset_x, scale, creature_sprites->frame_flags) + (long)x;
     }
-    scaled_y = ((scale * (long)creature_sprites->offset_y) >> 5) + (long)y;
+    scaled_y = keeper_sprite_scale_pixels(creature_sprites->offset_y, scale, creature_sprites->frame_flags) + (long)y;
     SYNCDBG(17,"Scaled (%d,%d)",(int)scaled_x,(int)scaled_y);
     if (thing_is_invalid(thing_being_displayed))
     {
@@ -8181,7 +8197,7 @@ void process_keeper_sprite(short x, short y, unsigned short kspr_base, short ksp
         water_source_cutoff = 0;
     } else
     {
-        cutoff = 6;
+        cutoff = 6 << keeper_sprite_resolution_shift(creature_sprites->frame_flags);
         if (creature_sprites->shadow_offset > (2 * cutoff))
         {
             cutoff = creature_sprites->shadow_offset / 2;
@@ -8196,11 +8212,11 @@ void process_keeper_sprite(short x, short y, unsigned short kspr_base, short ksp
         if ((get_local_view_type(player) == PVT_CreatureContrl) || (get_local_view_type(player) == PVT_CreaturePasngr))
         {
             water_source_cutoff = cutoff;
-            water_y_offset = (2 * scale * cutoff) >> 5;
+            water_y_offset = keeper_sprite_scale_pixels(cutoff, 2 * scale, creature_sprites->frame_flags);
         } else
         {
             water_source_cutoff = 2 * cutoff;
-            water_y_offset = (scale * cutoff) >> 5;
+            water_y_offset = keeper_sprite_scale_pixels(cutoff, scale, creature_sprites->frame_flags);
         }
     }
     scaled_y += water_y_offset;
@@ -8607,7 +8623,7 @@ static void sprite_to_sbuff_xflip(const TbSpriteData sprdata, unsigned char *out
     }
 }
 
-static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angle, unsigned char current_frame, unsigned char *outbuf)
+static int draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angle, unsigned char current_frame, unsigned char *outbuf)
 {
     struct KeeperSprite *kspr_arr;
     unsigned long kspr_idx;
@@ -8630,21 +8646,64 @@ static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angl
     quarter = abs(4 - (i >> 8)); // i is restricted by "&" so (i>>8) is 0..7
     kspr_arr = keepersprite_array(kspr_n);
     if (kspr_arr == NULL) {
-        return;
+        return 0;
     }
     if (kspr_arr->FramesCount == 0) {
-        return;
+        return 0;
     }
     if (current_frame >= kspr_arr->FramesCount) {
         current_frame = kspr_arr->FramesCount - 1;
     }
     kspr_idx = keepersprite_index(kspr_n);
 
+    /* The software triangle sampler has an 8-bit texture address. Preserve
+     * full-resolution creature rendering, but use a logical-size shadow mask
+     * for large custom frames instead of overflowing its fixed 256 row. */
+    struct KeeperSprite *large_frame = &kspr_arr[current_frame
+        + (kspr_arr->Rotable == 2 ? quarter * kspr_arr->FramesCount : 0)];
+    const int canvas_w = kspr_arr->Rotable == 2 ? large_frame->SWidth : large_frame->FrameWidth;
+    const int canvas_h = kspr_arr->Rotable == 2 ? large_frame->SHeight : large_frame->FrameHeight;
+    if (canvas_w > 256 || canvas_h > 256)
+    {
+        int draw_idx, source_w, source_h;
+        const unsigned char *data;
+        if (canvas_w > 512 || canvas_h > 512 || !resolve_keepersprite_draw_data(kspr_n,
+            angle, current_frame, &draw_idx, &data, &source_w, &source_h, NULL))
+            return 0;
+        unsigned char *mask = calloc(512 * 512, 1);
+        if (mask == NULL) return 0;
+        int factor = 1 << keeper_sprite_resolution_shift(large_frame->frame_flags);
+        if (factor < 2) factor = 2;
+        int offset_x = kspr_arr->Rotable == 2 ? 0 : large_frame->FrameOffsW;
+        int offset_y = kspr_arr->Rotable == 2 ? 0 : large_frame->FrameOffsH;
+        if (offset_x < 0 || offset_y < 0 || offset_x + source_w > canvas_w
+            || offset_y + source_h > canvas_h)
+        {
+            free(mask);
+            return 0;
+        }
+        if (flip_range)
+            sprite_to_sbuff_xflip((TbSpriteData)data, mask + offset_y * 512
+                + canvas_w - offset_x, source_h, 512);
+        else
+            sprite_to_sbuff((TbSpriteData)data, mask + offset_y * 512 + offset_x, source_h, 512);
+        fill_w = (canvas_w + factor - 1) / factor;
+        fill_h = (canvas_h + factor - 1) / factor;
+        if (!keeper_shadow_logical_mask(outbuf, mask, canvas_w, canvas_h, 512, factor))
+        {
+            free(mask);
+            return 0;
+        }
+        free(mask);
+        WorldSceneTraceShadowMask(outbuf, fill_w, fill_h);
+        return factor;
+    }
+
     if (kspr_arr->Rotable == 0)
     {
         if (!heap_manage_keepersprite(kspr_idx))
         {
-            return;
+            return 0;
         }
         keepsprite_id = current_frame + kspr_idx;
         if (keepsprite_id >= KEEPERSPRITE_ADD_OFFSET)
@@ -8654,7 +8713,7 @@ static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angl
         else if (keepsprite_id >= KEEPSPRITE_LENGTH)
         {
             ERRORLOG("Sprite %d outside of valid range.", keepsprite_id);
-            return;
+            return 0;
         }
         else
         {
@@ -8693,7 +8752,7 @@ static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angl
     {
         if (!heap_manage_keepersprite(kspr_idx))
         {
-            return;
+            return 0;
         }
         kspr = &kspr_arr[current_frame + quarter * kspr_arr->FramesCount];
         fill_w = kspr->SWidth;
@@ -8705,7 +8764,7 @@ static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angl
         }
         else if (keepsprite_id >= KEEPSPRITE_LENGTH)
         {
-            return; // WTF?!!
+            return 0; // WTF?!!
         }
         else
         {
@@ -8734,9 +8793,10 @@ static void draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angl
     }
     else
     {
-        return;
+        return 0;
     }
     WorldSceneTraceShadowMask(outbuf, fill_w, fill_h);
+    return 1;
 }
 
 static void update_frontview_pointed_block(unsigned long laaa, unsigned char qdrant, long w, long h, long qx, long qy)

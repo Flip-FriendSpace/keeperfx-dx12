@@ -335,13 +335,14 @@ OwnedAssetLease OwnedWorldDrawSink::DbcSource(const AsianFont* font,uint32_t cod
 }
 OwnedAssetLease OwnedWorldDrawSink::KeeperSource(const uint8_t* data,int width,int height,int32_t sprite_id)
 {
-    if(!data || width<=0 || height<=0 || width>256 || height>256) { builder_.Fail(OwnedFrameStatus::InvalidInput); return {}; }
+    if(!data || width<=0 || height<=0 || width>1024 || height>1024) { builder_.Fail(OwnedFrameStatus::InvalidInput); return {}; }
     int32_t resolved=-1; size_t extent=0; uint64_t stamp=0;
     if(!get_keepersprite_source_identity(sprite_id,data,&resolved,&extent,&stamp)) { builder_.Fail(OwnedFrameStatus::InvalidInput); return {}; }
     const OwnedAssetKey key{builder_.Info().epoch,settings_.sprite_domain,uint64_t(resolved),1,stamp};
     auto source=assets_.Find(key);
     if(!source.Valid()) {
-        auto result=assets_.PublishKeeperSprite(key,{data,extent},uint32_t(width),uint32_t(height),256,256);
+        const uint32_t dimension = width > 512 || height > 512 ? 1024 : (width > 256 || height > 256 ? 512 : 256);
+        auto result=assets_.PublishKeeperSprite(key,{data,extent},uint32_t(width),uint32_t(height),dimension,dimension);
         if(!result) { builder_.Fail(result.status==OwnedAssetStatus::WouldBlock?OwnedFrameStatus::WouldBlock:OwnedFrameStatus::InvalidInput); return {}; }
         source=std::move(result.lease);
     }
@@ -351,7 +352,7 @@ void OwnedWorldDrawSink::CaptureKeeperSprite(const SpriteScale* scale,const uint
     int32_t content_height,unsigned flags,const uint8_t* remap,int32_t sprite_id,int owner,bool wants_outline,uint8_t alpha)
 {
     (void)alpha; // Normal hardware alpha is resolved from draw flags, matching the existing producer.
-    if(!scale || !data || width<=0 || height<=0 || width>256 || height>256) { builder_.Fail(OwnedFrameStatus::InvalidInput); return; }
+    if(!scale || !data || width<=0 || height<=0 || width>1024 || height>1024) { builder_.Fail(OwnedFrameStatus::InvalidInput); return; }
     if(content_height<=0 || content_height>height) content_height=height;
     SpriteScaleAxis x{},y{};
     sprite_scale_axis(scale->frame_x,scale->frame_src_w,scale->frame_dst_w,scale->window_w,scale->content_x,width,&x);
@@ -390,7 +391,7 @@ void OwnedWorldDrawSink::CaptureKeeperSprite(const SpriteScale* scale,const uint
     if(additive) {
         const auto pixels=source.Bytes(); bool darkens=false;
         for(int row=0;!darkens && row<height;++row) for(int col=0;col<width;++col) {
-            const size_t at=(size_t(row)*256+size_t(col))*4;
+            const size_t at=(size_t(row)*source.Desc().width+size_t(col))*4;
             if(pixels[at+1] && pixels[at]>=50 && pixels[at]<=56) { darkens=true; break; }
         }
         if(darkens) { draw.pass=OwnedSpritePass::GlowDarken; builder_.AddSprite(std::move(draw)); }

@@ -116,3 +116,9 @@ KeeperFX source is GPL version 2 or, at your option, any later version; see [LIC
 ## Modern original English audio
 
 [Modern original English audio](audio/README.md) is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).
+
+## Source-only creature sprite pipeline
+
+[Creature sprite tools](art-prototype/README.md) provide source-guided extraction, preparation, packaging, review templates and local validation. Original/generated sprites, runtime ZIPs, captures and evidence reports stay outside Git. Use the documented `<workspace>/keeperfx` checkout with sibling runtime/artifact directories, Python with Pillow/NumPy, Node and Windows PowerShell; the scripts require locally supplied game data and a built engine.
+
+The user accepted the thirteen-hero roster visual review on 2026-10-15 ("This looks great"); ordinary campaign play remains pending. Run `powershell -File local-dev/art-prototype/play_heroes.ps1 -QuickStart` from the checkout after preparing the local packages. It preserves existing texture/audio/base mods, keeps the API disabled and restores the prior mod order on exit. Workspace shortcuts are not distributed. See the [workflow](art-prototype/WORKFLOW.md) and [acceptance registry](art-prototype/prototype.json) for scope and limits.

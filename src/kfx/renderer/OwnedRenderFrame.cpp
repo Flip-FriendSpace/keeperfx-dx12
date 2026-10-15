@@ -367,7 +367,7 @@ bool OwnedFrameBuilder::AddSprite(OwnedWorldSprite draw) noexcept
     if((draw.phase!=OwnedFramePhase::WorldSprites && draw.phase!=OwnedFramePhase::Cursor)
         || (draw.phase==OwnedFramePhase::Cursor && outline) || unsigned(draw.pass)>unsigned(OwnedSpritePass::GlowDarken) || !draw.source.Valid()
         || draw.source.Key().epoch!=frame_->info_.epoch || draw.source.Desc().format!=OwnedAssetFormat::RGBA8
-        || !draw.source_width || !draw.source_height || draw.source_width>256 || draw.source_height>256
+        || !draw.source_width || !draw.source_height || draw.source_width>1024 || draw.source_height>1024
         || draw.source_width>draw.source.Desc().width || draw.source_height>draw.source.Desc().height
         || !draw.content_height || draw.content_height>draw.source_height || draw.width<=0 || draw.height<=0
         || draw.step_x<=0 || draw.step_y<=0 || !std::isfinite(draw.z_ndc) || !std::isfinite(draw.source_alpha)

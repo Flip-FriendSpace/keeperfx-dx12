@@ -272,7 +272,7 @@ void Fixtures(Runner& r)
         case 6:matrix[3]=std::numeric_limits<float>::infinity();break;
         case 7:matrix[4]=1025;break;
         case 8:draw.step_x=0;break;
-        case 9:draw.source_width=257;break;
+        case 9:draw.source_width=1025;break;
         case 10:atlas.rgba[1]=1;break;
         case 11:draw.kind=OutlinePassKind::GlowDarken;draw.lookup_row=NoSpriteColourRow;draw.source_alpha=0.5f;break;
         }

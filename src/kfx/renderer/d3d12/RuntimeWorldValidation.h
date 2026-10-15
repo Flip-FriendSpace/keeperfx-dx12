@@ -43,7 +43,7 @@ inline void ValidateRuntimeWorldFrame(const RuntimeWorldFrame& p)
     }
     const auto source = [&](const auto& draw, const RuntimeAssetLease& lease) {
         const auto desc = lease.Description();
-        require(draw.source_width && draw.source_height && draw.source_width <= 256 && draw.source_height <= 256
+        require(draw.source_width && draw.source_height && draw.source_width <= 1024 && draw.source_height <= 1024
             && uint64_t(draw.mask_x) + draw.source_width <= desc.width
             && uint64_t(draw.mask_y) + draw.source_height <= desc.height
             && std::isfinite(draw.z_ndc) && std::abs(draw.z_ndc) <= 16, "Invalid runtime source rectangle");

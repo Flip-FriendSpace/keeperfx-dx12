@@ -106,7 +106,7 @@ bool ValidateOutline(const SceneCapture& c)
         const auto& source = c.assets.sprites[draw.sprite];
         const auto& scale = draw.scale;
         SpriteScaleAxis x, y;
-        if (source.width > 256 || source.height > 256
+        if (source.width > 1024 || source.height > 1024
             || !OutlineAxis(scale.frame_x, scale.frame_src_w, scale.frame_dst_w, scale.window_w, scale.content_x, source.width, x)
             || !OutlineAxis(scale.frame_y, scale.frame_src_h, scale.frame_dst_h, scale.window_h, scale.content_y, draw.content_height, y)
             || x.dst_len <= 0 || y.dst_len <= 0 || sprite.dst_x != x.dst_start || sprite.dst_y != y.dst_start
@@ -176,7 +176,7 @@ bool ValidateOutline(const SceneCapture& c)
     for (size_t i = 0; i < seen_draw.size(); ++i) {
         const auto& draw = c.trace.draws[i]; const auto& scale = draw.scale;
         const auto& source = c.assets.sprites[draw.sprite]; SpriteScaleAxis x, y;
-        if (source.width > 256 || source.height > 256
+        if (source.width > 1024 || source.height > 1024
             || !OutlineAxis(scale.frame_x, scale.frame_src_w, scale.frame_dst_w, scale.window_w, scale.content_x, source.width, x)
             || !OutlineAxis(scale.frame_y, scale.frame_src_h, scale.frame_dst_h, scale.window_h, scale.content_y, draw.content_height, y)
             || bool(seen_draw[i]) != (x.dst_len > 0 && y.dst_len > 0)) return false;
@@ -345,7 +345,7 @@ bool ValidateGLWorld(const SceneCapture& c, const char** failure)
     if (used_tiles != w.tiles.size()) return reject("Unused GL world tile");
     std::set<std::tuple<uint16_t, uint16_t, std::vector<uint8_t>>> unique_sources;
     for (const auto& source : w.shadow_sources) {
-        if (!source.width || !source.height || source.width > 256 || source.height > 256
+        if (!source.width || !source.height || source.width > 512 || source.height > 512
             || source.coverage.size() != size_t(source.width) * source.height
             || !unique_sources.emplace(source.width, source.height, source.coverage).second)
             return reject("Invalid or duplicate GL shadow source");

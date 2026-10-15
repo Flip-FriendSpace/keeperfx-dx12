@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "name": "Imp and original hero sprite remaster",
+  "status": "roster_visual_review_accepted",
+  "review": "The user accepted the faithful original-guided 4x imp, then the corrected complete action set on 2026-10-14: This looks good. So Imp is done. Original pose authority and front-dig pickaxe-head correction remain part of the contract.",
+  "mod": "imp_art_prototype",
+  "scope": "Local sprite experiment with per-animation texture-resolution metadata in the shared renderer. No gameplay-rule changes.",
+  "actions": {
+    "idle": 1,
+    "walk": 6,
+    "dig": 6
+  },
+  "directions": [
+    "front",
+    "rf",
+    "right",
+    "rb",
+    "back"
+  ],
+  "views": [
+    "td",
+    "fp"
+  ],
+  "currentTest": {
+    "animation": 556,
+    "direction": 1,
+    "reference": "artifacts/art-prototype/original-imp/imp-original-primary.png",
+    "output": "artifacts/art-prototype/imp-faithful-v1.png",
+    "prompt": "artifacts/art-prototype/imp-restoration-prompt.txt",
+    "reviewStatus": "visual_direction_accepted",
+    "gameReady": false
+  },
+  "overheadWalkTest": {
+    "reviewStatus": "accepted",
+    "overheadAnimation": 557,
+    "walkAnimation": 555,
+    "direction": 1,
+    "frameCount": 6,
+    "overhead": "artifacts/art-prototype/imp-overhead-v1.png",
+    "walkSheet": "artifacts/art-prototype/imp-walk-sheet-v1.png",
+    "frameManifest": "artifacts/art-prototype/imp-walk-v1/manifest.json",
+    "animatedComparison": "artifacts/art-prototype/imp-walk-comparison-v1.gif",
+    "interactiveReview": "artifacts/art-prototype/imp-animation-review.html",
+    "prompts": [
+      "artifacts/art-prototype/imp-overhead-prompt.txt",
+      "artifacts/art-prototype/imp-walk-prompt.txt"
+    ],
+    "checks": "PNG transparency and six distinct unclipped frame crops verified. Six-frame GIF verified. Browser review tested idle/walk switching, pause/play, frame stepping and 2x/8x display scale.",
+    "assessment": "User accepted this overhead idle and six-frame walk. It remains the style reference for the expanded set.",
+    "gameReady": false
+  },
+  "expandedSet": {
+    "reviewStatus": "accepted_in_game_by_user",
+    "selectedResolutionScale": 4,
+    "root": "artifacts/art-prototype/imp-set",
+    "interactiveReview": "artifacts/art-prototype/imp-set/review.html",
+    "overheadFrames": 65,
+    "actions": {
+      "idle": 1,
+      "walk": 6,
+      "dig": 6
+    },
+    "directions": 5,
+    "generationMode": "Built-in image generation with original poses and accepted enhanced sprites as references",
+    "prompts": "artifacts/art-prototype/imp-set/*-prompt.txt",
+    "correctedFrame": "artifacts/art-prototype/imp-set/dig-d0-raised-corrected.png",
+    "correctionPrompt": "artifacts/art-prototype/imp-set/dig-d0-raised-correction-prompt.txt",
+    "packing": "Whole connected sprites are extracted across nominal cell boundaries. A shared scale and translation per sequence fit the original bounds; native anchors are retained. Conversion uses the engine palette and alpha cutoff. All 65 packed overhead frames have a transparent border.",
+    "package": "artifacts/art-prototype/imp-set/mod/imp_art_prototype/fxdata/imp-sprites.zip",
+    "runtimeTest": "artifacts/art-prototype/imp-set/Validation-HD-20261014-101351-805",
+    "checks": {
+      "creatureSize": 300,
+      "actualHDAnimations": [
+        "idle",
+        "walk",
+        "dig"
+      ],
+      "originalActionFallback": true,
+      "possessionRoundTrip": true,
+      "directionCaptures": 5,
+      "cycleCaptures": 6,
+      "dx12Submitted": 5086,
+      "dx12Rejected": 0,
+      "gpuValidation": {
+        "errors": 0,
+        "warnings": 0
+      },
+      "settingsRestored": true
+    },
+    "runtimeObservation": "The actual creature uses the HD idle, walk and dig animations at sprite_size 300. Original-action fallback and entering/leaving possession passed. DX12 reported no rejected frames or validation errors/warnings.",
+    "limitations": [
+      "New art covers idle, walk and digging only.",
+      "Possession and other actions retain original local game data.",
+      "Hands-on campaign art review remains; this is an opt-in local playtest.",
+      "The runtime ZIP contains original possession frames from local game data and must remain local."
+    ],
+    "recommendedNextStep": "Play the opt-in DX12 imp preview, review movement and digging during ordinary dungeon play, then fill the remaining original-art actions using the accepted style.",
+    "productionReady": false,
+    "integrationReport": "artifacts/art-prototype/imp-set/integration-report.json",
+    "playtestLauncher": "local-dev/art-prototype/play_imp.ps1"
+  },
+  "remainingActions": {
+    "status": "accepted_by_user",
+    "root": "artifacts/art-prototype/imp-actions",
+    "actions": {
+      "hit": 1,
+      "relax": 2,
+      "claim": 6,
+      "drag": 6,
+      "smoke": 8,
+      "scream": 4,
+      "death": 2,
+      "grab": 6,
+      "slap": 1
+    },
+    "nonRotating": [
+      "scream",
+      "death",
+      "grab"
+    ],
+    "additionalOverheadFrames": 132,
+    "additionalHandFrames": 6,
+    "completedSheets": [
+      "all 132 new overhead frames and six held frames; relax/drag/smoke corrected"
+    ],
+    "resume": "Imp accepted. Preserve this package; continue with the hero roster.",
+    "packedFrames": 197,
+    "handFrames": 6,
+    "userFeedback": {
+      "relax": "looks a bit off",
+      "drag": "does not match",
+      "smoke": "does not match the frames"
+    },
+    "revision": "Relax/drag/smoke d0-d3 v2; d4 v3. Original grips, poses and frame ordering restored.",
+    "acceptance": "This looks good. So Imp is done.",
+    "packageSHA256": "a1c742fcd4d207de741b0432723910633da3e35db60afb97477dc242fdf89819",
+    "integrationReport": "artifacts/art-prototype/imp-actions/integration-report.json",
+    "runtimeTest": "artifacts/art-prototype/imp-actions/Actions-HD-20261014-112424-360"
+  },
+  "heroes": {
+    "status": "roster_visual_review_accepted",
+    "pauseCheckpoint": "local-dev/art-prototype/HEROES-CHECKPOINT.md",
+    "packedHeroes": 13,
+    "passedGameFixtures": 13,
+    "scope": "Original Dungeon Keeper hero roster, with added KeeperFX hero inventory recorded separately",
+    "root": "artifacts/art-prototype/heroes",
+    "workflow": "local-dev/art-prototype/WORKFLOW.md",
+    "acceptanceRequired": "Record visual and runtime evidence independently; do not infer integration from generated sheets.",
+    "heroOverheadFrames": 1491,
+    "heroHeldFrames": 78,
+    "combinedValidation": "passed",
+    "combinedManifestSHA256": "375207fccff2e207c8632291df0001ac77d3865883dd812ab40aa19d02fe36a7",
+    "integrationReport": "artifacts/art-prototype/heroes/integration-report.json",
+    "interactiveReview": "artifacts/art-prototype/heroes/review.html",
+    "playtestLauncher": "local-dev/art-prototype/play_heroes.ps1",
+    "userVisualAcceptance": "roster_visual_review_accepted",
+    "resume": "Roster visual review accepted. Ordinary campaign play remains pending; repair only requested defects. Other creatures require a new user instruction.",
+    "userVisualAcceptanceDate": "2026-10-15",
+    "userVisualAcceptanceQuote": "This looks great",
+    "ordinaryCampaignPlay": "pending",
+    "userVisualAcceptanceManifestSHA256": "375207fccff2e207c8632291df0001ac77d3865883dd812ab40aa19d02fe36a7",
+    "currentPackageVisualAcceptance": "roster_visual_review_accepted"
+  }
+}
