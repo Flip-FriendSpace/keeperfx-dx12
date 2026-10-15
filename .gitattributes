@@ -8,3 +8,6 @@
 *.cpp text
 *.h text
 *.sh text eol=lf
+
+# Remastered playback assets must retain their exact bytes.
+*.wav binary

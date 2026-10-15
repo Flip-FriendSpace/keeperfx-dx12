@@ -42,6 +42,7 @@
 
 #include "config_strings.h"
 #include "config_campaigns.h"
+#include "config_mods.h"
 #include "config_keeperfx.h"
 #include "config_settings.h"
 #include "game_lghtshdw.h"
@@ -835,9 +836,55 @@ TbBool play_current_description_speech(short play_good)
     return play_description_speech(lvnum,play_good);
 }
 
+static TbBool find_mod_description_speech(char* dst, int dst_size, const char* filename)
+{
+    const struct ModConfigItem* lists[] = {
+        mods_conf.after_map_item, mods_conf.after_campaign_item, mods_conf.after_base_item
+    };
+    const int32_t counts[] = {
+        mods_conf.after_map_cnt, mods_conf.after_campaign_cnt, mods_conf.after_base_cnt
+    };
+    for (unsigned int list = 0; list < sizeof(lists) / sizeof(lists[0]); list++)
+    {
+        for (int32_t i = counts[list] - 1; i >= 0; i--)
+        {
+            const struct ModConfigItem* mod = &lists[list][i];
+            if (!mod->state.mod_dir)
+                continue;
+            char mod_dir[256];
+            snprintf(mod_dir, sizeof(mod_dir), "%s/%s", MODS_DIR_NAME, mod->name);
+            prepare_file_path_buf_mod(dst, dst_size, mod_dir, FGrp_AtlSound, filename);
+            if (dst[0] != '\0' && LbFileExists(dst))
+                return true;
+            // A lossless WAV may override a campaign's compressed speech file.
+            const char* extension = strrchr(filename, '.');
+            if (extension != NULL && strcasecmp(extension, ".wav") != 0)
+            {
+                char wav_name[DISKPATH_SIZE];
+                int written = snprintf(wav_name, sizeof(wav_name), "%.*s.wav",
+                    (int)(extension - filename), filename);
+                if (written < 0 || (size_t)written >= sizeof(wav_name))
+                    continue;
+                prepare_file_path_buf_mod(dst, dst_size, mod_dir, FGrp_AtlSound, wav_name);
+                if (dst[0] != '\0' && LbFileExists(dst))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+static const char* get_description_speech_path(const char* filename)
+{
+    static char path[4096];
+    if (!find_mod_description_speech(path, sizeof(path), filename))
+        prepare_file_path_buf(path, sizeof(path), FGrp_AtlSound, filename);
+    return path;
+}
+
 TbBool play_description_speech(LevelNumber lvnum, short play_good)
 {
-    char *fname;
+    const char *fname;
     if (playing_speech_lvnum == lvnum)
       return true;
     struct LevelInformation* lvinfo = get_level_info(lvnum);
@@ -853,11 +900,11 @@ TbBool play_description_speech(LevelNumber lvnum, short play_good)
           WARNLOG("No extension specified for good speech file; defaulting to '.wav'.");
           char path[DISKPATH_SIZE];
           snprintf(path, sizeof(path), "%s.wav", lvinfo->speech_before);
-          fname = prepare_file_fmtpath(FGrp_AtlSound, "%s", path);
+          fname = get_description_speech_path(path);
       }
       else
       {
-          fname = prepare_file_fmtpath(FGrp_AtlSound,"%s",lvinfo->speech_before);
+          fname = get_description_speech_path(lvinfo->speech_before);
       }
       playing_good_descriptive_speech = 1;
     } else
@@ -870,11 +917,11 @@ TbBool play_description_speech(LevelNumber lvnum, short play_good)
           WARNLOG("No extension specified for evil speech file; defaulting to '.wav'.");
           char path[DISKPATH_SIZE];
           snprintf(path, sizeof(path), "%s.wav", lvinfo->speech_after);
-          fname = prepare_file_fmtpath(FGrp_AtlSound, "%s", path);
+          fname = get_description_speech_path(path);
       }
       else
       {
-          fname = prepare_file_fmtpath(FGrp_AtlSound,"%s",lvinfo->speech_after);
+          fname = get_description_speech_path(lvinfo->speech_after);
       }
       playing_bad_descriptive_speech = 1;
     }

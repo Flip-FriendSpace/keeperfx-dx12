@@ -612,7 +612,43 @@ extern "C" void FreeAudio() {
 	SYNCDBG(6, "Audio cleanup complete");
 }
 
+// A buffer must be detached even from stopped sources before OpenAL can delete it.
+static void detach_custom_sound_sources(size_t first_index) {
+	if (first_index >= g_custom_bank.size())
+		return;
+	for (auto & source : g_sources) {
+		try {
+			// Finished voices clear their sample ID but keep the OpenAL binding.
+			ALint attached = 0;
+			alGetSourcei(source.id, AL_BUFFER, &attached);
+			const auto query_error = alGetError();
+			if (query_error != AL_NO_ERROR)
+				throw openal_error("Cannot query custom sound buffer", query_error);
+			bool custom_buffer = false;
+			for (size_t i = first_index; i < g_custom_bank.size(); ++i) {
+				if (g_custom_bank[i].buffer.id == (ALuint)attached) {
+					custom_buffer = true;
+					break;
+				}
+			}
+			if (!custom_buffer)
+				continue;
+			source.stop();
+			alSourcei(source.id, AL_BUFFER, 0);
+			const auto errcode = alGetError();
+			if (errcode != AL_NO_ERROR)
+				throw openal_error("Cannot detach custom sound buffer", errcode);
+			source.smptbl_id = 0;
+			source.emit_id = 0;
+			source.base_gain = 0;
+		} catch (const std::exception & e) {
+			ERRORLOG("%s", e.what());
+		}
+	}
+}
+
 extern "C" void custom_sound_bank_clear() {
+	detach_custom_sound_sources(0);
 	g_custom_bank.clear();
 	g_id_redirects.clear();
 	g_stack_policies.clear();
@@ -658,6 +694,7 @@ extern "C" void sound_restore_id_redirect_snapshot(void) {
 	if (g_custom_bank.size() > g_custom_bank_watermark) {
 		SYNCDBG(7, "Trimming custom bank from %" PRIuSIZE " to %" PRIuSIZE " entries",
 			SZCAST(g_custom_bank.size()), SZCAST(g_custom_bank_watermark));
+		detach_custom_sound_sources(g_custom_bank_watermark);
 		g_custom_bank.erase(g_custom_bank.begin() + (ptrdiff_t)g_custom_bank_watermark, g_custom_bank.end());
 	}
 	SYNCDBG(7, "Restored sound snapshot: %" PRIuSIZE " redirects, %" PRIuSIZE " stack policies",
@@ -1024,7 +1061,17 @@ extern "C" SoundVolume GetCurrentSoundMasterVolume() {
 	return g_master_volume;
 }
 
+static SoundSmplTblID resolve_sample_id_redirect(SoundSmplTblID smptbl_id) {
+	if (smptbl_id > 0 && smptbl_id < g_speech_offset) {
+		const auto redirect = g_id_redirects.find(smptbl_id);
+		if (redirect != g_id_redirects.end())
+			return redirect->second;
+	}
+	return smptbl_id;
+}
+
 extern "C" void SetSampleVolume(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundVolume volume) {
+	smptbl_id = resolve_sample_id_redirect(smptbl_id);
 	for (auto & source : g_sources) {
 		if (source.emit_id == emit_id && source.smptbl_id == smptbl_id) {
 			try {
@@ -1037,6 +1084,7 @@ extern "C" void SetSampleVolume(SoundEmitterID emit_id, SoundSmplTblID smptbl_id
 }
 
 extern "C" void SetSamplePan(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundPan pan) {
+	smptbl_id = resolve_sample_id_redirect(smptbl_id);
 	for (auto & source : g_sources) {
 		if (source.emit_id == emit_id && source.smptbl_id == smptbl_id) {
 			try {
@@ -1049,6 +1097,7 @@ extern "C" void SetSamplePan(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, S
 }
 
 extern "C" void SetSamplePitch(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundPitch pitch) {
+	smptbl_id = resolve_sample_id_redirect(smptbl_id);
 	for (auto & source : g_sources) {
 		if (source.emit_id == emit_id && source.smptbl_id == smptbl_id) {
 			try {
@@ -1078,12 +1127,7 @@ extern "C" SoundMilesID play_sample(
 		return 0;
 	}
 	// Apply raw-ID redirect before bank dispatch (only for effect-bank IDs)
-	if (smptbl_id > 0 && smptbl_id < g_speech_offset) {
-		auto redir = g_id_redirects.find(smptbl_id);
-		if (redir != g_id_redirects.end()) {
-			smptbl_id = redir->second;
-		}
-	}
+	smptbl_id = resolve_sample_id_redirect(smptbl_id);
 	// Resolve sample data from unified ID space
 	const openal_buffer * buf = nullptr;
 	if (smptbl_id >= g_custom_offset) {
@@ -1204,6 +1248,7 @@ extern "C" SoundMilesID play_sample(
 }
 
 extern "C" void stop_sample(SoundEmitterID emit_id, SoundSmplTblID smptbl_id) {
+	smptbl_id = resolve_sample_id_redirect(smptbl_id);
 	for (auto & source : g_sources) {
 		if (emit_id == source.emit_id && smptbl_id == source.smptbl_id) {
 			try {

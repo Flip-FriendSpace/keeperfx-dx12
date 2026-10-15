@@ -343,8 +343,9 @@ static const struct NamedCommand speech_desc[] = {
 /**
  * @brief Parse a [speech] block, mapping SMsg_* names to override file paths.
  *
- * Each line has the form:
+ * Each line accepts an SMsg_* name or a numeric speech-bank ID:
  *   GraveyardMadeVampire = speech/custom_vampire.ogg
+ *   110 = speech/keeper_taunt.wav
  *
  * Paths are resolved at playback time, searching campaign configs, levels, media (MEDIA_LOCATION),
  * and game root in that order. Language-specific variants are tried first (e.g. "eng/file.wav").
@@ -391,7 +392,10 @@ static TbBool parse_speech_section(char* buf, long len, const char* config_textn
             continue;
         }
 
-        long smsg_id = get_id(speech_desc, name_buf);
+        char* id_end = NULL;
+        long smsg_id = strtol(name_buf, &id_end, 10);
+        if (id_end == name_buf || *id_end != '\0')
+            smsg_id = get_id(speech_desc, name_buf);
         if (smsg_id <= 0 || smsg_id >= SMsg_MAX)
         {
             if (smsg_id < 0)
