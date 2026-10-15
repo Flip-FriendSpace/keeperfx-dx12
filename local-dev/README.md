@@ -62,7 +62,7 @@ Dependency preparation downloads the versions in the checked-in JSON manifests a
 
 The build wrapper also performs these steps. The x64 dependency cache includes the Linux `png2ico` icon tool; no x86 build/cache is required for an x64 build. DX12 preparation supplies the pinned Agility SDK, DirectX headers, shader compiler and D3D12 Memory Allocator. `prepare-x64-runtime.ps1` shares large asset directories with the base runtime through junctions while keeping x64 executables, saves, replays and logs separate. The build deploys required DLLs, compiled shaders and dependency notices.
 
-Original game data, independently installed texture packs, runtime packages, captures, screenshots, saves and private settings are not part of this source release. Keep them outside the checkout and do not publish them with test output.
+The remastered original English recordings are included with a separate provenance notice. Other original game data, independently installed texture packs, runtime packages, captures, screenshots, saves and private settings are not part of this release. Keep them outside the checkout and do not publish them with test output.
 
 ## Build and play
 
@@ -112,3 +112,7 @@ GPU validation needs Windows Graphics Tools. `dx12-install-tools.ps1` explicitly
 ## Licensing
 
 KeeperFX source is GPL version 2 or, at your option, any later version; see [LICENSE](../LICENSE) and source headers. Preserve upstream contributor credits and dependency notices. The source licence does not grant redistribution rights to original Dungeon Keeper data or independently installed assets.
+
+## Modern original English audio
+
+[Modern original English audio](audio/README.md) is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).

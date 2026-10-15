@@ -77,7 +77,6 @@ debug.log
 /local-dev/render-interface-coverage.json
 /local-dev/render-research.json
 /local-dev/render-coverage.mjs
-/config/mods/load_order.cfg
 /config/mods/keeper_enhanced_default/
 
 # Machine-specific settings and credentials; example templates may be tracked.

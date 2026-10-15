@@ -26,6 +26,7 @@
 #include "bflib_sndlib.h"
 #include "bflib_fileio.h"
 #include "bflib_planar.h"
+#include "bflib_math.h"
 #include "custom_zip.h"
 #include <deque>
 #include <algorithm>
@@ -105,7 +106,9 @@ struct CustomMessage : Message {
 
 	void play() const noexcept override
 	{
-		if (play_streamed_sample(fname.c_str(), settings.mentor_volume)) {
+		// Match the original bank's 0..127 mentor slider conversion.
+		SoundVolume volume = LbLerp(0, FULL_LOUDNESS, (float)settings.mentor_volume / 127.0);
+		if (play_streamed_sample(fname.c_str(), volume)) {
 			g_recent_filenames[fname] = get_gameturn() + duration;
 		}
 	}
