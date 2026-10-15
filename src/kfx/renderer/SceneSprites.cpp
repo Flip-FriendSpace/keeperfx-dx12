@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "kfx/renderer/SceneSprites.h"
+#include "kfx/renderer/KeeperSpriteResolution.h"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -46,7 +47,8 @@ SceneSpriteMesh BuildSceneSprites(const SceneCapture& capture, const TerrainMesh
         const auto& sprite = capture.assets.sprites[binding.sprite];
         if (!sprite.width || !sprite.height) { ++result.empty; continue; }
         // Legacy sprite scale is quantized to 1/32 of a source pixel.
-        const double scale = std::floor(p.pixels_per_unit*o.size)/32;
+        const double scale = std::floor(p.pixels_per_unit*o.size)
+            / (32u << keeper_sprite_resolution_shift(sprite.flags));
         if (scale <= 0) { ++result.clipped; continue; }
         const double x_origin = flip ? -std::floor((binding.origin_width+binding.origin_x)*scale)
             : std::floor(binding.origin_x*scale);

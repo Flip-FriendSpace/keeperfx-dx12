@@ -116,3 +116,11 @@ KeeperFX source is GPL version 2 or, at your option, any later version; see [LIC
 ## Modern original English audio
 
 [Modern original English audio](audio/README.md) is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).
+
+## Enhanced creature sprite pipeline
+
+[Creature sprite tools](art-prototype/README.md) include the approved enhanced PNG frames and assembly metadata under `assets/creatures/`. The installer combines them with original fallback frames from your prepared compatible runtime; original pixels, extracted references, source sheets, runtime ZIPs and local reports stay outside Git. No image generation or pre-existing art artifacts are needed to install.
+
+Run `powershell -NoProfile -File local-dev/art-prototype/install_enhanced_sprites.ps1 -RuntimePath C:\Games\KeeperFX` with Python 3.10 or newer and Pillow installed. It verifies and stages the mod, keeps dated backups, preserves texture/audio/base mod choices and enables `enhanced_creatures` under `[after_map]`. It does not launch the game or modify API settings. See the [installation guide](art-prototype/README.md) and [asset notice](../assets/creatures/NOTICE.md).
+
+The user accepted the thirteen-hero roster visual review on 2026-10-15 ("This looks great"); ordinary campaign play remains pending. Development extraction/review tools additionally use the documented workspace layout, NumPy, Node and PowerShell. Scope and limits remain in the [workflow](art-prototype/WORKFLOW.md) and [acceptance registry](art-prototype/prototype.json).

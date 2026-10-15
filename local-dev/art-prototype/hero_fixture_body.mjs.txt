@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Body appended to the shared local API/receipt helpers by prepare_hero_tests.py.
+  const counts=names.map(n=>meta[n].count),ids={};
+  const luaNames=names.map(n=>'"'+n.toUpperCase()+'"').join(',');
+  const originals=names.map(n=>meta[n].td_animation).join(',');
+  await setup(`artFixtures={}; artNames={${luaNames}}; artOriginal={${originals}}; for a=1,#artNames do for v=1,2 do local x=183+((a-1)%3)*8+(v-1)*3; local y=183+math.floor((a-1)/3)*7; local t=AddObjectToLevelAtPos("GOLD_CHEST",x,y,0,PLAYER0,0); assert(t); t.anim_sprite=v==1 and artOriginal[a] or ("ARTHERO_${hero.toUpperCase()}_HD_"..artNames[a]); t.anim_speed=256; t.sprite_size=300; t.sprite_size_min=300; t.sprite_size_max=300; t.pos={val_x=x*256+128,val_y=y*256+128,val_z=256}; table.insert(artFixtures,t) end end`);
+  await command('scenecheck reference short-walls 0');await command('scenecheck reference clear-ui');
+  const camera='scenecheck reference camera 49536 49536 0 0 -266 4200 94';
+  const coverage=Object.fromEntries(names.map(n=>[n,[]]));
+  for(const [d,angle] of [1024,768,512,256,0,1792,1536,1280].entries()) {
+    await setup(`for _,t in ipairs(artFixtures) do t.orientation=${angle} end`);
+    const seen=names.map(()=>new Set());
+    for(let frame=0;frame<Math.max(...counts);frame++) {
+      await step();await command(camera);const r=await receipt(`heading-${d}-tick-${frame}`);
+      for(let a=0;a<names.length;a++) {
+        const x=(186+(a%3)*8)*256+128,y=(183+Math.floor(a/3)*7)*256+128;
+        const o=r.objects.find(o=>o.simulationPosition[0]===x&&o.simulationPosition[1]===y);
+        assert.ok(o,`Missing ${names[a]}`);assert.equal(o.size,300);assert.ok(o.animation>1000);ids[names[a]]=o.animation;seen[a].add(o.frame);
+      }
+    }
+    for(let a=0;a<names.length;a++){assert.equal(seen[a].size,counts[a],`${names[a]} heading ${d} frame coverage`);coverage[names[a]].push([...seen[a]]);}
+  }
+  report.forcedCoverage=coverage;report.animationIds=ids;
+  await setup(`for _,t in ipairs(artFixtures) do t:delete() end; artFixtures={}; for _,t in ipairs(GetThingsOfClass("CREATURE")) do t:delete() end; artHero=AddCreatureToLevel(PLAYER0,"${hero.toUpperCase()}",{stl_x=193,stl_y=193},1,0); assert(artHero); artHero.state="ManualControl"; artHero.orientation=1024; artHero.pos={val_x=49536,val_y=49536,val_z=256}; artSize=artHero.sprite_size; assert(artSize==300); assert(AddObjectToLevelAtPos("CANDLESTCK",191,191,0,PLAYER0,0)); assert(AddObjectToLevelAtPos("TORCH",195,191,0,PLAYER0,0))`);
+  async function real(id,action){await command('scenecheck reference camera 49536 49536 0 0 -266 10000 94');const r=await receipt(id,false);assert.equal(r.creatures.length,1);assert.equal(r.creatures[0].size,300);if(action)assert.equal(r.creatures[0].animation,ids[action],id);return r;}
+  await step();await real('real-idle','idle');
+  await setup('assert(artHero:walk_to(195,193))');
+  // Slow-turning heroes must finish facing the destination before walking.
+  let walked=false;for(let i=0;i<40;i++){await step();const r=await real('real-walk-'+i);if(r.creatures[0].animation===ids.walk){walked=true;break;}}
+  assert.ok(walked,'No real walking animation');
+  for(const [instance,alias] of [['SWING_WEAPON_SWORD','Attack'],['FIRE_ARROW','RangedAttack'],['CELEBRATE_SHORT','Celebrate'],['TOKING','Smoke'],['RELAXING','Relax'],['EAT','EatChicken'],['MOAN','Scream']]) {
+    await setup(`artHero.instance="NULL"; artHero.state="ManualControl"; artHero.instance="${instance}"`);
+    await step();await real('real-instance-'+instance,plan.aliases[alias]);
+  }
+  await setup('artHero.instance="NULL"; artHero.state="ManualControl"; UsePowerOnCreature(artHero,"POWER_SLAP",0,PLAYER0,true)');
+  let slapSeen=false;
+  for(let i=0;i<40;i++){await step();const r=await real('real-slap-'+i);if(r.creatures[0].animation===ids.slap){slapSeen=true;break;}}
+  assert.ok(slapSeen,'Slap cower was not observed after initial hit freeze');
+  await setup('artHero.instance="NULL"; artHero.state="ManualControl"; artHero:stun(100)');
+  await step();await real('real-collapse','death');
+  for(let i=0;i<5;i++)await step();await real('real-collapse-settled','death');
+  await setup('artHero.state="ManualControl"; artHero.health=1000; artHero:kill()');
+  await command('scenecheck reference camera 49536 49536 0 0 -266 10000 94');
+  const dead=await receipt('real-death-start',false);assert.ok(dead.allObjects.some(o=>o.class===4&&o.animation===ids.scream),'No HD dying hero');
+  let corpseSeen=false;
+  // Dying corpses play the scream sequence three times at half-frame speed.
+  const deathTurnLimit=Math.max(100,meta.scream.count*6+12);
+  for(let i=0;i<deathTurnLimit;i++){await step();await command('scenecheck reference camera 49536 49536 0 0 -266 10000 94');const r=await receipt('real-death-progress-'+i,false);if(r.allObjects.some(o=>o.class===4&&o.animation===ids.death)){corpseSeen=true;break;}}
+  assert.ok(corpseSeen,'No settled HD hero corpse');report.realDeath=true;
+  await setup(`artHero=AddCreatureToLevel(PLAYER0,"${hero.toUpperCase()}",{stl_x=193,stl_y=193},1,0); assert(artHero); artHero.state="ManualControl"; artHero.pos={val_x=49536,val_y=49536,val_z=256}; artHero.orientation=1024`);
+  await step();
+  // Check the separate original first-person view and return before pickup.
+  await command('pause');await command('scenecheck possession '+hero.toUpperCase());await delay(600);await command('pause');await waitPaused();
+  const possession=await receipt('possession-original-view',false);assert.equal(possession.camera.view,2);
+  await command('pause');await command('scenecheck overhead');await delay(200);await command('pause');await waitPaused();
+  await setup('artHero.instance="NULL"; artHero.state="ManualControl"; assert(artHero.sprite_size==300)');await real('return-from-possession');
+  await command('scenecheck reference mouse 960 540');
+  await setup('UsePowerOnCreature(artHero,"POWER_HAND",0,PLAYER0,true); assert(artHero.state=="InPowerHand",artHero.state); assert(artHero.sprite_size==300); artHeldAnimation=artHero.anim_sprite; assert(artHeldAnimation>1000)');
+  for(let i=0;i<meta.grab.fp[0].length;i++){await step();await command('scenecheck reference camera 49536 49536 0 0 -266 10000 94');await receipt('real-held-'+i,false);}
+  await setup(`assert(artHero.state=="InPowerHand"); artHero.anim_sprite=${meta.grab.fp_animation}`);await receipt('original-held-size-control',false);
+  await setup('artHero.anim_sprite=artHeldAnimation; assert(artHero.sprite_size==300)');await receipt('hd-held-restored',false);report.realPickup=true;
+  report.finalStats=await stats();report.passed=true;await command('quit');
+} catch(e){report.error=e.message;throw e;}
+finally{socket?.destroy();await writeFile(join(out,'fixture-report.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({passed:report.passed,error:report.error,stages:report.stages.length}));}

@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+import assert from 'node:assert/strict';import net from 'node:net';import {setTimeout as delay} from 'node:timers/promises';import {readFile,writeFile,readdir,rm} from 'node:fs/promises';import {join} from 'node:path';
+const [out,mode,variant,renderer='DX12']=process.argv.slice(2),report={testOnly:true,renderer,stages:[],passed:false};let socket,pending,buffer='',ack=0,failure;
+async function request(action,fields={}){if(failure)throw failure;const sequence=++ack;const result=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('API timeout')),10000);pending={ack:sequence,resolve:r=>{clearTimeout(timer);resolve(r);},reject};socket.write(JSON.stringify({action,ack:sequence,...fields}));});pending=undefined;assert.equal(result.success,true,JSON.stringify(result));return result.data;}
+const command=command=>request('console_command',{command}),setup=lua=>command('scenecheck reference setup '+lua);
+async function paused(){for(let i=0;i<100;i++){try{await setup('assert(true)');return;}catch(e){await delay(50);}}throw Error('Pause timeout');}
+async function step(){const before=(await request('get_current_game_info')).game_turn;await command('step');for(let i=0;i<200;i++){if((await request('get_current_game_info')).game_turn===before+1){await paused();return;}await delay(25);}throw Error('Step timeout');}
+async function receipt(id){const before=new Set(await readdir(out));await command('scenecheck receipt');for(let i=0;i<400;i++){const names=(await readdir(out)).filter(n=>!before.has(n)&&/^temporal-\d+-\d+\.png\.ready\.json$/.test(n));if(names.length){const r=JSON.parse(await readFile(join(out,names[0]),'utf8'));report.stages.push({id,receipt:names[0],image:names[0].slice(0,-11),camera:r.camera,creatures:r.objects.filter(o=>o.class===5)});return r;}await delay(50);}throw Error('Receipt timeout '+id);}
+try{
+ socket=await new Promise((resolve,reject)=>{const s=net.createConnection({host:'127.0.0.1',port:5599});s.once('error',reject);s.once('connect',()=>resolve(s));});socket.on('error',e=>{failure=e;pending?.reject(e);});socket.on('data',d=>{buffer+=d.toString().replaceAll('\0','');let r;try{r=JSON.parse(buffer);}catch{return;}buffer='';if(r.ack===pending?.ack)pending.resolve(r);});
+ for(let i=0;i<120;i++){const game=await request('get_current_game_info');if(game.game_turn>0)break;await delay(250);}
+ await command('scenecheck overhead');await command('zoomto.subtilecoord 193 193');await delay(700);await command('pause');await paused();
+ await setup('for x=60,68 do for y=60,68 do ChangeSlabType(x,y,11); ChangeSlabOwner(x,y,PLAYER0) end end; RevealMapRect(PLAYER0,193,193,40,40); for _,t in ipairs(GetThingsOfClass("CREATURE")) do if t.model=="IMP" then t:delete() end end; largeImp=AddCreatureToLevel(PLAYER0,"IMP",{stl_x=193,stl_y=193},1,0); assert(largeImp); largeImp.state="ManualControl"; largeImp.pos={val_x=49536,val_y=49536,val_z=256}; assert(largeImp.sprite_size==300); assert(AddObjectToLevelAtPos("CANDLESTCK",191,191,0,PLAYER0,0))');
+ await step();const camera='scenecheck reference camera 49536 49536 0 0 -266 13000 94';
+ for(const angle of [1024,768,512,256,0,1792,1536,1280]){await setup(`largeImp.orientation=${angle}; largeImp.anim_sprite="ARTIMP_HD_IDLE"`);await command(camera);const r=await receipt('large512-heading-'+angle);assert.equal(r.objects.filter(o=>o.class===5).length,1);assert.equal(r.objects.find(o=>o.class===5).size,300);}
+ await setup('largeImp.anim_sprite=556');await command(camera);await receipt('original-size-control');
+ await setup('ChangeSlabType(64,64,"WATER"); largeImp.anim_sprite="ARTIMP_HD_IDLE"');await step();await command(camera);await receipt('large512-water-cutoff');
+ await setup('ChangeSlabType(64,64,11)');
+ await command('scenecheck reference clear-ui');await command('scenecheck reference mouse 1100 500');
+ await setup('largeImp.anim_sprite="ARTIMP_HD_IDLE"; UsePowerOnCreature(largeImp,"POWER_HAND",0,PLAYER0,true); assert(largeImp.state=="InPowerHand"); heldAnimation=largeImp.anim_sprite; assert(heldAnimation>1000); assert(largeImp.sprite_size==300)');
+ for(let i=0;i<6;i++){await step();await command(camera);await receipt('large596-held-'+i);}
+ await setup('largeImp.anim_sprite=574');await receipt('original-held-size-control');await setup('largeImp.anim_sprite=heldAnimation');await receipt('large-held-restored');
+ if(renderer==='DX12'){await command('scenecheck reference renderer-stats');for(let i=0;i<100;i++){try{report.rendererStats=JSON.parse(await readFile(join(out,'renderer-stats.json'),'utf8'));break;}catch{await delay(50);}}assert.equal(report.rendererStats.rejected,0);assert.equal(report.rendererStats.validation.errors,0);assert.equal(report.rendererStats.validation.warnings,0);}
+ report.passed=true;await command('quit');
+}catch(e){report.error=e.message;throw e;}finally{socket?.destroy();await writeFile(join(out,'fixture-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,error:report.error,stages:report.stages.length}));}

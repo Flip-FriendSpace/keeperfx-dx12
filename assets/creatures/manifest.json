@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "id": "original-heroes-and-imp-4x-v1",
+  "canonical_package_manifest_sha256": "375207fccff2e207c8632291df0001ac77d3865883dd812ab40aa19d02fe36a7",
+  "counts": {
+    "creatures": 14,
+    "animations": 158,
+    "four_x_overhead": 1688,
+    "four_x_held": 84,
+    "enhanced_native_comparison": 65,
+    "enhanced_files": 1837,
+    "fallback_frames": 1669
+  },
+  "creatures": [
+    {
+      "slug": "wizard",
+      "recipe": "recipes/wizard.json",
+      "sha256": "ce0ec53d264c51e2d69d9fe0f17bbbb848abc7085a180d230ebe0e3f3a911984"
+    },
+    {
+      "slug": "barbarian",
+      "recipe": "recipes/barbarian.json",
+      "sha256": "dae74633e3c81454869ffb888f2b4e70d9b1d7159dfa9acbf4e0993f8f2b76d6"
+    },
+    {
+      "slug": "archer",
+      "recipe": "recipes/archer.json",
+      "sha256": "4fa04f8102406203586c8b51480536af3e23aad572be5ecdd2c6be03e3a6c2db"
+    },
+    {
+      "slug": "monk",
+      "recipe": "recipes/monk.json",
+      "sha256": "fccf1c61552914d842db1ab36d55fe5777728f285eabb91d1929f47353348bc8"
+    },
+    {
+      "slug": "dwarfa",
+      "recipe": "recipes/dwarfa.json",
+      "sha256": "90fb0627cf1961ccffb16185623943aee778b8c3234cb22db4e5d2307c81e208"
+    },
+    {
+      "slug": "knight",
+      "recipe": "recipes/knight.json",
+      "sha256": "45fc0b3be74cccb26136f306a11b0bb0b3610c5e044838b52bd96fce666cbc39"
+    },
+    {
+      "slug": "avatar",
+      "recipe": "recipes/avatar.json",
+      "sha256": "401c1d8c9d6bccb86b661a83dbc39b12510a4b3922750a04727967381c8c0c0d"
+    },
+    {
+      "slug": "tunneller",
+      "recipe": "recipes/tunneller.json",
+      "sha256": "c3153c18e892fa3d508df17ae142896c2d8d08c6d7bc851f1df0cab91292e7d3"
+    },
+    {
+      "slug": "witch",
+      "recipe": "recipes/witch.json",
+      "sha256": "b20bcb52691c2676433cd64e16f0d7129ed1f0279a66ec2bf85d8d9d0b1cf7a9"
+    },
+    {
+      "slug": "giant",
+      "recipe": "recipes/giant.json",
+      "sha256": "deac5f99fe3b49785a9db9fcc3ad00a37a8da8a51aec4cff6d70d2f86f44bc9d"
+    },
+    {
+      "slug": "fairy",
+      "recipe": "recipes/fairy.json",
+      "sha256": "d46069b7169b2b0fe04be6fd882b4ebe8372b634007d15e6d12c46b747d10c5e"
+    },
+    {
+      "slug": "thief",
+      "recipe": "recipes/thief.json",
+      "sha256": "40470f34e16a850f60977e7b5cde7feab771a9d24503e7c0e84f9211a346c9c6"
+    },
+    {
+      "slug": "samurai",
+      "recipe": "recipes/samurai.json",
+      "sha256": "0b785b47204fe315210772312e9a28944df5abff136376cbffb06cb34d258382"
+    },
+    {
+      "slug": "imp",
+      "recipe": "recipes/imp.json",
+      "sha256": "fd080588a0b14901046346246056cc311676a10b4154b12d9a0858599f1954a0"
+    }
+  ],
+  "original_data": "Not included. Fallback frames are decoded from the player's compatible local creature.tab, creature.jty and palette.dat.",
+  "notice": "NOTICE.md"
+}

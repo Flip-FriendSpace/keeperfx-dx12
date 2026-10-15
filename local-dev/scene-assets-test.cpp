@@ -621,7 +621,7 @@ std::vector<uint8_t> CheckV7(const std::vector<uint8_t>& v6)
         &SceneOutlineSprite::phase_x,&SceneOutlineSprite::phase_y,&SceneOutlineSprite::step_x,&SceneOutlineSprite::step_y})
         reject([&](auto& x) { ++(x.trace.outline.sprites[0].*member); });
     reject([](auto& x) { x.trace.draws[0].scale.frame_dst_w = 65536; }); // Step exceeds signed 16.16 storage.
-    reject([](auto& x) { x.assets.sprites[0].width = 257; x.assets.sprites[0].pixels.resize(257*2*2); });
+    reject([](auto& x) { x.assets.sprites[0].width = 1025; x.assets.sprites[0].pixels.resize(1025*2*2); });
     reject([](auto& x) { x.trace.outline.sprites[0].flags = 1; });
     reject([](auto& x) { x.trace.outline.sprites[0].z_ndc = .1f; });
     reject([](auto& x) { x.trace.outline.sprites[0].outline_z_ndc = 0; });

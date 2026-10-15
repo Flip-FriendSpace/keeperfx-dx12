@@ -26,6 +26,7 @@
 
 #include "actionpt.h"
 #include "bflib_datetm.h"
+#include "bflib_mouse.h"
 #include "bflib_sound.h"
 #include "bflib_sndlib.h"
 #include "config_sounds.h"
@@ -852,6 +853,18 @@ static TbBool cmd_scene_reference(char *args)
         settings.tooltips_on = false;
         memset(&tool_tip_box, 0, sizeof(tool_tip_box));
         return true;
+    }
+    if (strcmp(action, "mouse") == 0) {
+        // Paused, explicitly enabled local reference sessions only. Place the
+        // hand inside the viewport so large held sprites can be reviewed.
+        char *x_arg = strsep_param_with_space(&args);
+        char *y_arg = strsep_param_with_space(&args);
+        if (!x_arg || !y_arg || strsep_param_with_space(&args)) return false;
+        char *x_end, *y_end;
+        long x = strtol(x_arg, &x_end, 10), y = strtol(y_arg, &y_end, 10);
+        if (*x_end || *y_end || x < 0 || y < 0 || x >= lbDisplay.PhysicalScreenWidth
+            || y >= lbDisplay.PhysicalScreenHeight) return false;
+        return LbMouseSetPosition(x, y) == Lb_SUCCESS;
     }
     if (strcmp(action, "short-walls") == 0) {
         char *value = strsep_param_with_space(&args);

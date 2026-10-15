@@ -144,9 +144,9 @@ ShadowPixel ShadowVS(ShadowInput input)
 }
 float4 ShadowPS(ShadowPixel input) : SV_Target
 {
-    // Production sampler is nearest/clamp on the full256x256 layer. Logical
+    // UVs retain pixel/256 units on both 256 and 512 coverage layers. Logical
     // source padding is explicitly owned zero; this is not software UV wrap.
-    int2 p=clamp(int2(floor(input.uv*256.0)),0,255);
+    int2 p=clamp(int2(floor(input.uv*256.0)),0,511);
     if(any(p>=int2(input.source.zw)))discard;
     if(sprite_atlas.Load(int3(input.source.xy+uint2(p),0)).g<0.5)discard;
     float keep=1.0-input.darken;

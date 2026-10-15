@@ -61,6 +61,21 @@ static void Focused() {
     Compare(std::vector<uint8_t>{128,128,128,3,0,1,2,0},1,1); // clips skips/literals without overflow
     Compare(std::vector<uint8_t>{4,7,8,9,10,0},2,1); // over-wide literal clipping
     Compare(std::vector<uint8_t>{0,0},1,2); // zero is a row terminator, not a skip/run
+    // Hero TD canvases reach 508 pixels and the knight held view reaches 596.
+    // Exercise complete runs across signed-byte boundaries, initialized atlas
+    // padding, target strides and all guard bytes through the production decoder.
+    for (unsigned width : {254u,255u,256u,508u,512u,596u,1024u}) {
+        std::vector<uint8_t> large;
+        for (unsigned y=0;y<3;++y) {
+            unsigned left=width;
+            while(left) { const unsigned run=std::min(left,127u);large.push_back(uint8_t(run));
+                for(unsigned x=0;x<run;++x)large.push_back(uint8_t((left+x+y)%256));
+                left-=run; }
+            large.push_back(0);
+        }
+        const unsigned dimension=width>512?1024:(width>256?512:256);
+        Compare(large,width,3,dimension,dimension,dimension*2);
+    }
     const std::vector<uint8_t> complete={2,0,255,0,255,1,12,0};
     for(size_t n=0;n<complete.size();++n) {
         std::array<uint8_t,32> out; out.fill(0xa7);

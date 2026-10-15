@@ -86,7 +86,7 @@ inline void ValidateEnhancedWorldPass(const EnhancedWorldPass& pass, uint32_t at
         }
     }
     for(const auto& shadow:pass.shadows){
-        require(shadow.source_width&&shadow.source_height&&shadow.source_width<=256&&shadow.source_height<=256
+        require(shadow.source_width&&shadow.source_height&&shadow.source_width<=512&&shadow.source_height<=512
             &&uint64_t(shadow.mask_x)+shadow.source_width<=atlas_width
             &&uint64_t(shadow.mask_y)+shadow.source_height<=atlas_height
             &&std::isfinite(shadow.z_ndc)&&std::abs(shadow.z_ndc)<=16
