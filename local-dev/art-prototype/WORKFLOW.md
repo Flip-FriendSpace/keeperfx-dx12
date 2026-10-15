@@ -1,4 +1,4 @@
-Source-only tooling and local prerequisites are described in [README.md](README.md). Original and generated pixels, ZIPs and evidence reports remain local and are not provided by this checkout.
+Installation and prerequisites are described in [README.md](README.md). Selected enhanced PNGs and assembly metadata are published in `assets/creatures/` by explicit user approval. Original pixels, extracted references, generated source sheets, rejected variants, runtime ZIPs and local evidence reports remain outside Git. The installer assembles original fallback views locally from a compatible runtime; no image generation or historical artifacts are needed to install.
 
 # Faithful creature sprite enhancement
 
@@ -26,7 +26,7 @@ Paths below are relative to the workspace containing `keeperfx/`:
 - `keeperfx/local-dev/art-prototype/test_imp_set.ps1` / `.mjs`: controlled DX12 validation and Original/HD crowd comparison.
 - `keeperfx/local-dev/art-prototype/play_imp.ps1`: opt-in user playtest. Run it directly with PowerShell; workspace shortcuts are not included in the repository.
 
-Do not commit original pixels, generated art derived from commercial references, runtime ZIPs, test captures, saves or build output. Keep original/source files and prompts locally for reproducibility. Reuse the existing dedicated `keeperfx-dev` WSL environment for engine builds.
+Publish only the approved enhanced PNG frames and assembly metadata under `assets/creatures/`. Do not commit original pixels, extracted references, source sheets, rejected variants, runtime ZIPs, test captures, saves or build output. Keep original/source files and prompts locally for reproducibility. Reuse the existing dedicated `keeperfx-dev` WSL environment for engine builds.
 
 ## Extract and generate
 

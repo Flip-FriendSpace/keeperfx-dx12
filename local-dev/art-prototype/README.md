@@ -1,24 +1,25 @@
-# Local creature sprite tools
+# Enhanced creature sprites
 
-This directory publishes source tools, review templates and workflow metadata only. Original Dungeon Keeper pixels, extracted references, generated artwork, sprite ZIPs, runtime executables, screenshots and evidence reports are not included. Supply original game data locally and keep all derived commercial-source assets and reports outside Git. Existing source licences and notices remain applicable.
+The repository includes the selected enhanced PNG frames and their assembly metadata under `assets/creatures/`. Original Dungeon Keeper pixels, extracted references, source sheets, rejected versions, runtime sprite ZIPs, game captures and local evidence reports are not distributed. See [asset notice](../../assets/creatures/NOTICE.md) for provenance and scope. Existing source licences and notices remain applicable.
 
-## Layout and prerequisites
+## Install into a prepared runtime
 
-Use a checkout named `keeperfx` inside a workspace with sibling `runtime/keeperfx-x64/` and `artifacts/art-prototype/` directories. The scripts resolve those siblings from their own location; they do not download missing game assets or create a complete runtime. The extraction tools also expect source/config files under the checkout's `keeperfx` name. An arbitrarily named worktree needs its own matching layout before these tools can run.
+Use a compatible KeeperFX runtime with the large-sprite engine support in this branch and your locally supplied original game data. Its `data/` directory must contain `creature.tab`, `creature.jty` and `palette.dat`. Installation assembles the unchanged original fallback views locally alongside the published enhanced frames; no image generation or pre-existing art-prototype artifacts are needed.
 
-Use Python 3 with Pillow and NumPy, Node.js and Windows PowerShell. Node clients use built-in modules. Game tests additionally need the locally built engine, original game data and palette, and the local diagnostic commands described in [WORKFLOW.md](WORKFLOW.md). Ordinary play requires no API listener; controlled tests verify their loopback listener and owned process.
-
-From the `keeperfx/` checkout:
+Install Python 3.10 or newer with Pillow, then run from the repository:
 
 ```powershell
-powershell -NoProfile -File local-dev/art-prototype/play_imp.ps1 -QuickStart
-powershell -NoProfile -File local-dev/art-prototype/play_heroes.ps1 -QuickStart
+powershell -NoProfile -File local-dev/art-prototype/install_enhanced_sprites.ps1 -RuntimePath C:\Games\KeeperFX
 ```
 
-Workspace `.cmd` shortcuts are not part of this repository. Launchers require already prepared local packages; the heroes launcher verifies the report, marker and content hashes before installing its temporary mod override, preserves base/texture/audio mods, disables the API and restores prior load-order bytes after exit. Keep its window open until the game closes.
+The default runtime is `<workspace>/runtime/keeperfx-x64`, a sibling of the checkout. Use `-OriginalDataPath` if your original data lives elsewhere, and `-PythonExecutable` to select a Python executable. Prepared-runtime `data` and `mods` junctions are supported: explicitly selected roots are resolved to physical directories; links inside a mod are rejected. Close KeeperFX before installing. The installer stages and verifies the local mod, preserves an existing verified installation as a dated backup, and enables `enhanced_creatures` under `[after_map]` while preserving texture/audio/base mods. Known older local hero/imp preview entries are replaced to avoid duplicate overrides. The previous load-order bytes are saved as a dated file in the runtime mods directory. It does not launch the game or change API settings; normal preview play keeps the API disabled.
 
-## Recorded scope
+Runtime ZIPs contain original fallback frames and must remain local. For packaging without activating a mod, use the Python CLI directly with `--assets`, `--data` and required `--output` paths. The PowerShell wrapper is for installation and activation in an existing runtime. Workspace `.cmd` shortcuts are not included in this repository.
 
-The imp has 197 enhanced overhead frames and six held frames. The thirteen original heroes have 1,491 overhead frames and 78 held frames. Other possession views and shared effects retain original art. The user accepted the roster visual review on 2026-10-15: "This looks great" (`roster_visual_review_accepted` in [prototype.json](prototype.json)). Ordinary campaign play remains pending. These recorded local checks do not supply the artwork or qualify every campaign, hardware configuration or OpenGL crowd workload.
+## Scope and development
 
-Follow [WORKFLOW.md](WORKFLOW.md) for preparation, packaging, review and controlled validation. The current checkpoint is [HEROES-CHECKPOINT.md](HEROES-CHECKPOINT.md). Repacking or rerunning evidence aggregation must preserve the explicit visual decision recorded in the registry.
+The imp has 197 enhanced overhead frames and six held frames. The thirteen original heroes have 1,491 overhead frames and 78 held frames. Other possession views and shared effects retain original art. The user accepted the roster visual review on 2026-10-15: "This looks great" (`roster_visual_review_accepted` in [prototype.json](prototype.json)). Ordinary campaign play remains pending; local fixtures do not qualify every campaign or broad OpenGL crowd performance.
+
+The extraction and generation workflow in [WORKFLOW.md](WORKFLOW.md) is for development and corrections, not installation. Those tools expect a checkout named `<workspace>/keeperfx` with sibling runtime/artifact directories, Python with Pillow/NumPy, Node and Windows PowerShell. Node clients use built-in modules. Review templates require locally prepared comparison data and original references. The installer accepts an explicit runtime path and does not require this historical development layout.
+
+The current checkpoint is [HEROES-CHECKPOINT.md](HEROES-CHECKPOINT.md). Preserve the explicit visual decision when aggregating evidence again. Keep source sheets, original pixels, local reports, runtime packages, saves and build output outside Git.

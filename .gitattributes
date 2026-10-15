@@ -11,3 +11,7 @@
 
 # Remastered playback assets must retain their exact bytes.
 *.wav binary
+
+# Enhanced sprite manifests contain byte hashes; preserve their checkout bytes.
+/assets/creatures/**/*.json text eol=lf
+/assets/creatures/**/*.png binary
