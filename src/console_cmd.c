@@ -826,6 +826,12 @@ static TbBool cmd_scene_reference(char *args)
             return true;
         }
         struct RendererSettings render_settings = *RendererGetSettings();
+        if (strcmp(key, "fullbright") == 0) {
+            if (value > 1) return false;
+            render_settings.shade_fullbright = (float)value;
+            RendererApplySettings(&render_settings);
+            return true;
+        }
         int *field = NULL;
         int maximum = 1;
         if (strcmp(key, "lighting") == 0) field = &render_settings.lighting_mode;
@@ -838,6 +844,41 @@ static TbBool cmd_scene_reference(char *args)
         if (!field || value > maximum) return false;
         *field = value;
         RendererApplySettings(&render_settings);
+        return true;
+    }
+    if (strcmp(action, "terrain-gallery") == 0) {
+        // Bounded, disposable texture inspection; the surrounding reference
+        // gate requires a paused local test session. Never used in normal play.
+        if (!console_cmd_cheats_allowed(my_player_number)) return false;
+        long values[2];
+        for (int i = 0; i < 2; ++i) {
+            char *token = strsep_param_with_space(&args), *end = NULL;
+            if (!token) return false;
+            values[i] = strtol(token, &end, 10);
+            if (end == token || *end) return false;
+        }
+        // 544 A cells, 88 populated B cells, then 61 animated aliases.
+        if (strsep_param_with_space(&args) || values[0] < 0 || values[0] >= 693
+            || values[1] < 1 || values[1] > 64 || values[0] + values[1] > 693
+            || game.map_subtiles_x < 204 || game.map_subtiles_y < 204) return false;
+        for (int n = 0; n < 64; ++n) {
+            const long ordinal = values[0] + n;
+            const unsigned short texture = n >= values[1] ? 27 :
+                ordinal < 544 ? ordinal : ordinal < 632 ? 1000 + ordinal - 544 : 544 + ordinal - 632;
+            struct Column column = {0};
+            column.floor_texture = texture;
+            column.bitfields = CLF_ACTIVE;
+            long index = find_column(&column);
+            if (!index) index = create_column(&column);
+            if (!index) return false;
+            // Each cell occupies a 3x3 subtile patch to expose repetition.
+            for (int y = 0; y < 3; ++y) {
+                for (int x = 0; x < 3; ++x) {
+                    struct Map *mapblk = get_map_block_at(180 + (n % 8) * 3 + x, 180 + (n / 8) * 3 + y);
+                    set_mapblk_column_index(mapblk, index);
+                }
+            }
+        }
         return true;
     }
     if (strcmp(action, "setup") == 0) {

@@ -20,6 +20,17 @@ int main()
     auto palette=Asset(assets,2,OwnedAssetFormat::RGBA8,256,1,4);
     auto fade=Asset(assets,3,OwnedAssetFormat::R8,256,64,1);
     auto lightmap=Asset(assets,4,OwnedAssetFormat::R16LE,511,511,2);
+    // Mixed-resolution terrain keeps the same projected world vertices.
+    for(uint32_t size:{64u,128u,256u}) {
+        OwnedFrameMailbox box({1,0,0,0,0,65536});auto b=box.Begin(Info(1000+size));
+        WorldDrawTriangle triangle{};
+        auto hd=Asset(assets,9000+size,OwnedAssetFormat::R8,size,size,1);
+        assert(b.AddTerrain({triangle,hd}));assert(b.SetWorldAssets(palette,fade,lightmap));Finish(b);auto frame=b.Seal();
+        assert(frame->Complete() && frame->Terrain()[0].tile.Desc().width==size);
+    }
+    { OwnedFrameMailbox box({1,0,0,0,0,65536});auto b=box.Begin(Info(2000));
+      auto nonsquare=Asset(assets,10000,OwnedAssetFormat::R8,128,64,1);
+      assert(!b.AddTerrain({{},nonsquare}) && b.Seal()->Status()==OwnedFrameStatus::InvalidInput); }
     OwnedFrameLease survives;
     {
         OwnedFrameMailbox box({2,4,2,2,2,65536});

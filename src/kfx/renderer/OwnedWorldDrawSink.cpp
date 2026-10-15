@@ -3,6 +3,7 @@
 #include "pre_inc.h"
 #include "kfx/renderer/OwnedWorldDrawSink.h"
 #include "kfx/renderer/TileSource.h"
+#include "kfx/renderer/HdTerrainPack.h"
 #include "kfx/renderer/SpriteScale.h"
 #include "kfx/renderer/IUIRenderer.h"
 #include "kfx/renderer/DrawState.h"
@@ -226,11 +227,17 @@ void OwnedWorldDrawSink::Triangle(const WorldDrawTriangle& vertices)
     for(const auto& v:vertices) if(v.atlas_layer!=variation || v.tile!=tile) { builder_.Fail(OwnedFrameStatus::InvalidInput); return; }
     TileSourceView source;
     if(!ResolveLogicalTileSource(uint32_t(variation),uint32_t(tile),source)) { builder_.Fail(OwnedFrameStatus::InvalidInput); return; }
-    const OwnedAssetKey key{builder_.Info().epoch,settings_.terrain_domain,source.bank_offset,source.mutation_serial,1};
+    const auto* hd=ResolveHdTerrain(uint32_t(tile),source);
+    // HD identity follows the authenticated record. In v2 animated aliases use
+    // physical frame IDs; native bank reloads advance the source serial.
+    const uint64_t identity=hd?((1ull<<63) | uint64_t(hd->tile)):uint64_t(source.bank_offset);
+    const OwnedAssetKey key{builder_.Info().epoch,settings_.terrain_domain,identity,source.mutation_serial,1};
     assets_.ResetBank(key.domain,key.generation);
     auto lease=assets_.Find(key);
     if(!lease.Valid()) {
-        auto result=assets_.Publish(key,{{OwnedAssetFormat::R8,32,32},source.bytes,source.row_stride});
+        const uint32_t dimension=hd?hd->dimension:32;
+        const std::span<const uint8_t> pixels=hd?std::span<const uint8_t>(hd->pixels):source.bytes;
+        auto result=assets_.Publish(key,{{OwnedAssetFormat::R8,dimension,dimension},pixels,hd?dimension:source.row_stride});
         if(!result) { builder_.Fail(result.status==OwnedAssetStatus::WouldBlock?OwnedFrameStatus::WouldBlock:OwnedFrameStatus::InvalidInput); return; }
         lease=std::move(result.lease);
     }

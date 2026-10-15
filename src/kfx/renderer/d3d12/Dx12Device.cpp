@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "Dx12Device.h"
+#include "kfx/renderer/TerrainTextureResolution.h"
 #include "RuntimeWorldValidation.h"
 #include "RuntimePageRegions.h"
 #include "RuntimeLightmapUpdates.h"
@@ -1881,7 +1882,8 @@ RuntimeAssetLease Device::PublishRuntimeAsset(const RuntimeAssetKey& key, const 
         if (desc.width != 256 || desc.height != 1) throw std::invalid_argument("Runtime palette must be256x1");
         length *= 4;
     } else if (key.kind == RuntimeAssetKind::TileR8) {
-        if (desc.width != 32 || desc.height != 32) throw std::invalid_argument("Runtime tile must be32x32");
+        if (!TerrainTextureDimension(desc.width) || desc.width != desc.height)
+            throw std::invalid_argument("Runtime tile must be square with dimension32,64,128 or256");
     } else if (key.kind == RuntimeAssetKind::SpriteRGBA8) {
         if (desc.width > 1024 || desc.height > 1024) throw std::invalid_argument("Runtime sprite exceeds1024x1024");
         length *= 4;
@@ -2392,7 +2394,7 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
         // Every source was admitted before planning. No throwing lookup or
         // allocation is permitted when regenerating committed CPU shadow bytes.
         const auto* binding = triangle.tile.state ? &bindings[indices.find(triangle.tile.state.get())->second] : nullptr;
-        const uint32_t tile = binding ? binding->y / 32 * 128 + binding->x / 32 : MissingEnhancedTile;
+        const uint32_t tile = binding ? TerrainTextureReference(binding->x,binding->y,triangle.tile.Description().width) : MissingEnhancedTile;
         std::array<TerrainVertex, 3> vertices{};
         for (size_t i = 0; i < vertices.size(); ++i) {
             const auto& v = triangle.vertices[i];

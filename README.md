@@ -6,9 +6,11 @@ This is an unofficial development fork of [KeeperFX](https://github.com/dkfans/k
 
 Representative native 3840 x 2160 training and combat display measurements on an RX 7900 GRE met the scoped 60 FPS target. This is not an all-map or wider-hardware guarantee; the 120 FPS stretch target is unqualified. See the [developer guide](local-dev/README.md) for the dedicated WSL build, runtime layout, checks and known limits.
 
-This is a source release, with no packaged binaries yet. Original Dungeon Keeper files, runtime packages, installed texture packs, saves and captured test data are not included. A legally obtained copy of the original game is required. Back up existing saves: this fork rejects legacy raw-memory saves and older replay versions without migration.
+This is a source release, with no packaged binaries yet. Original Dungeon Keeper files, runtime packages, saves and captured test data are not included. Selected enhanced fan artwork and its installation metadata are included under `assets/`. A legally obtained copy of the original game is required. Back up existing saves: this fork rejects legacy raw-memory saves and older replay versions without migration.
 
 Source is GPL version 2 or, at your option, any later version; see [LICENSE](LICENSE) and source headers. Upstream licences and contributor credits are preserved; dependencies and original game assets retain their own terms.
+
+The DX12 build installs 601 enhanced original terrain tiles at 4x resolution and uses them by default. The actual [enhanced PNGs and indexed assets](assets/terrain/standard-hd/README.md) are included. Installation reconstructs source authentication from local original game files. Use `play.ps1 -DX12Preview -NativeTerrain` for native terrain; see the [terrain guide](local-dev/terrain/README.md) for setup and validation limits.
 
 The upstream project overview follows.
 

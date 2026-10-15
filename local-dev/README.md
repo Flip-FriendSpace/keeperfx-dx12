@@ -2,6 +2,10 @@
 
 This is an unofficial Windows x64 and DirectX 12 single-player preview based on [KeeperFX](https://github.com/dkfans/keeperfx). OpenGL remains available. There are no packaged binaries for this fork yet. The upstream starting revision is `fb0ab7f4d152286d25e73189530ed5536a360478`; see also the upstream [building guide](https://github.com/dkfans/keeperfx/wiki/Building-KeeperFX).
 
+## Enhanced original terrain
+
+The DX12 build installs the bundled 601-tile original terrain enhancement and loads it automatically. The 24 relief exceptions and seven solid/debug cells remain native. Use `play.ps1 -DX12Preview -NativeTerrain` to opt out for a session. See the [terrain guide](terrain/README.md) for the installer, actual asset bundle, tests and the open broader GPU stress limitation.
+
 ## Workspace and prerequisites
 
 The PowerShell wrappers expect a source checkout and writable sibling directories:

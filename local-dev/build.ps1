@@ -27,3 +27,7 @@ $log = Join-Path $workspace "artifacts/build-$target-$Architecture$suffix-$Confi
 & wsl.exe -d keeperfx-dev --exec bash $linuxScript $Configuration $target $Jobs $Architecture $backend 2>&1 | Tee-Object -FilePath $log
 if ($LASTEXITCODE -ne 0) { throw "KeeperFX build failed. See $log" }
 & (Join-Path $PSScriptRoot 'sync-config.ps1')
+
+if ($DX12) {
+  & (Join-Path $PSScriptRoot 'terrain/install_enhanced_terrain.ps1') -RuntimePath (Join-Path $workspace 'runtime/keeperfx-x64')
+}
