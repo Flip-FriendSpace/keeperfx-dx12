@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Export enhanced terrain pixels and native fingerprints without native pixels."""
-import argparse,hashlib,json,struct
+import argparse,gzip,hashlib,io,json,struct
 from pathlib import Path
 from PIL import Image
 def digest(data):return hashlib.sha256(data).hexdigest()
@@ -26,9 +26,13 @@ def export(source,destination):
   records.append({'tile':tile,'dimension':size,'offset':len(payload),'bytes':len(pixels),'sha256':digest(pixels),'native_sha256':digest(native),'png':name,'png_sha256':digest(png),'family':c.get('family') or c.get('label') or 'Accepted wall restoration'})
   payload.extend(pixels)
  if at!=len(pack):raise ValueError('Trailing pack data')
- (destination/'terrain.index8').write_bytes(payload)
- result={'schema':1,'id':'dungeon-keeper-standard-terrain-4x-v1','scale':4,'native_dimension':32,'replacement_dimension':128,'count':601,'payload':'terrain.index8','payload_bytes':len(payload),'payload_sha256':digest(payload),'runtime_pack_sha256':digest(pack),'native_files':{'tmapa000.dat':{'bytes':557056,'sha256':m['source_sha256']},'tmapb000.dat':{'bytes':90112,'sha256':m['source_b_sha256']}},'palette_sha256':m['palette_sha256'],'preserved_native_tiles':m['full_terrain']['retained_original'],'tiles':records}
- (destination/'manifest.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
- print(json.dumps({'enhanced_pngs':count,'indexed_bytes':len(payload),'native_pixel_bytes_exported':0,'runtime_pack_sha256':result['runtime_pack_sha256']}))
+ archive=io.BytesIO()
+ with gzip.GzipFile(fileobj=archive,mode='wb',filename='',mtime=0,compresslevel=9) as compressed:
+  compressed.write(payload)
+ encoded=archive.getvalue()
+ (destination/'terrain.index8.gz').write_bytes(encoded)
+ result={'schema':2,'id':'dungeon-keeper-standard-terrain-4x-v1','scale':4,'native_dimension':32,'replacement_dimension':128,'count':601,'payload':'terrain.index8.gz','payload_compression':'gzip','compressed_bytes':len(encoded),'compressed_sha256':digest(encoded),'payload_bytes':len(payload),'payload_sha256':digest(payload),'runtime_pack_sha256':digest(pack),'native_files':{'tmapa000.dat':{'bytes':557056,'sha256':m['source_sha256']},'tmapb000.dat':{'bytes':90112,'sha256':m['source_b_sha256']}},'palette_sha256':m['palette_sha256'],'preserved_native_tiles':m['full_terrain']['retained_original'],'tiles':records}
+ (destination/'manifest.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8',newline='\n')
+ print(json.dumps({'enhanced_pngs':count,'indexed_bytes':len(payload),'compressed_bytes':len(encoded),'native_pixel_bytes_exported':0,'runtime_pack_sha256':result['runtime_pack_sha256']}))
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('--source',required=True,type=Path);p.add_argument('--output',required=True,type=Path);a=p.parse_args();export(a.source,a.output)

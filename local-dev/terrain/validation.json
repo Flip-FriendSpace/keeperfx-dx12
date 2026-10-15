@@ -30,7 +30,7 @@
   },
   "installer": {
     "passed": true,
-    "synthetic_cases": 8,
+    "synthetic_cases": 12,
     "full_bundle_roundtrip": true,
     "idempotence_and_verify_only": true,
     "original_data_and_mods_preserved": true
@@ -117,5 +117,16 @@
     "src/kfx/renderer/OwnedRenderFrame.cpp": "c430a54231251cc53ee412346997f2cc8e453977778b6efce0cd802187f8ab87",
     "src/kfx/renderer/d3d12/Dx12Device.cpp": "a94e119ab4c4d846c64e119bf00d3d84f9eb4686c7b4bcad261f545c6f6e693f",
     "src/kfx/renderer/d3d12/EnhancedWorld.hlsl": "48bb7fd72fc3f8b72c41237cfe670d47f34c72854625dc619ef27525e1281883"
+  },
+  "packaging": {
+    "compression": "gzip",
+    "compressed_bytes": 5628563,
+    "decoded_bytes": 9846784,
+    "decoded_sha256": "91e5ee83162eaf9292d3394104c44a68839c4df78c166557d7a80f9c63d60bef",
+    "runtime_pack_sha256": "eaa17e2521139d2323df20eaab83e50658d17e9fafc937588a94730e5ff0d282",
+    "runtime_pack_byte_identical": true,
+    "previous_install_upgraded": true,
+    "verify_only": true,
+    "gzip_deterministic_export": true
   }
 }

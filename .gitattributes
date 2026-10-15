@@ -20,3 +20,4 @@
 /assets/terrain/**/*.json text eol=lf
 /assets/terrain/**/*.png binary
 /assets/terrain/**/*.index8 binary
+/assets/terrain/**/*.index8.gz binary

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Windows installer checks with synthetic game data; no commercial fixtures."""
-import hashlib,json,os,struct,subprocess,tempfile,unittest,zlib
+import gzip,hashlib,json,os,struct,subprocess,tempfile,unittest,zlib
 from pathlib import Path
 SCRIPT=Path(__file__).with_name('install_enhanced_terrain.ps1')
 def sha(data):return hashlib.sha256(data).hexdigest()
@@ -24,8 +24,8 @@ class Installer(unittest.TestCase):
    pixels=bytes([index])*16384;image=png(pixels);name=f'tiles/{tile:04d}.png';(self.assets/name).write_bytes(image)
    records.append(dict(tile=tile,dimension=128,offset=len(payload),bytes=len(pixels),sha256=sha(pixels),native_sha256=sha(bytes([index])*1024),png=name,png_sha256=sha(image)))
    payload.extend(pixels);pack.extend(struct.pack('<3I',tile,128,0)+bytes([index])*1024+pixels)
-  self.expected=bytes(pack);(self.assets/'terrain.index8').write_bytes(payload)
-  self.manifest=dict(schema=1,id='dungeon-keeper-standard-terrain-4x-v1',count=2,payload='terrain.index8',payload_bytes=len(payload),payload_sha256=sha(payload),runtime_pack_sha256=sha(pack),palette_sha256=sha(pal),native_files={name:dict(bytes=len(data),sha256=sha(data)) for name,data in banks.items()},tiles=records);self.save_manifest()
+  self.expected=bytes(pack);self.payload=bytes(payload);encoded=gzip.compress(payload,mtime=0);(self.assets/'terrain.index8.gz').write_bytes(encoded)
+  self.manifest=dict(schema=2,id='dungeon-keeper-standard-terrain-4x-v1',count=2,payload='terrain.index8.gz',payload_compression='gzip',compressed_bytes=len(encoded),compressed_sha256=sha(encoded),payload_bytes=len(payload),payload_sha256=sha(payload),runtime_pack_sha256=sha(pack),palette_sha256=sha(pal),native_files={name:dict(bytes=len(data),sha256=sha(data)) for name,data in banks.items()},tiles=records);self.save_manifest()
  def tearDown(self):self.temp.cleanup()
  def save_manifest(self):(self.assets/'manifest.json').write_text(json.dumps(self.manifest),encoding='utf-8')
  def run_installer(self,*flags,success=True):
@@ -38,8 +38,22 @@ class Installer(unittest.TestCase):
   receipt=self.runtime/'fxdata/standard-hd-install.json';old=receipt.read_bytes();backups=sorted(self.runtime.rglob('*.bak'))
   self.run_installer();self.run_installer('-VerifyOnly');self.assertEqual(receipt.read_bytes(),old);self.assertEqual(sorted(self.runtime.rglob('*.bak')),backups)
  def test_payload_corruption_preserves_install(self):
-  self.run_installer();(self.assets/'terrain.index8').write_bytes(b'bad');self.run_installer(success=False)
+  self.run_installer();(self.assets/'terrain.index8.gz').write_bytes(b'bad');self.run_installer(success=False)
   self.assertEqual((self.runtime/'fxdata/standard-hd.kfht').read_bytes(),self.expected)
+ def replace_archive(self,encoded):
+  (self.assets/'terrain.index8.gz').write_bytes(encoded)
+  self.manifest.update(compressed_bytes=len(encoded),compressed_sha256=sha(encoded));self.save_manifest()
+ def assert_no_install(self):
+  self.run_installer(success=False)
+  self.assertFalse((self.runtime/'fxdata/standard-hd.kfht').exists());self.assertEqual((self.runtime/'mods/load_order.cfg').read_bytes(),self.order)
+ def test_invalid_gzip_with_matching_archive_hash_is_rejected(self):
+  self.replace_archive(b'not a gzip archive');self.assert_no_install()
+ def test_short_decoded_payload_is_rejected(self):
+  self.replace_archive(gzip.compress(self.payload[:-1],mtime=0));self.assert_no_install()
+ def test_excess_decoded_payload_is_rejected(self):
+  self.replace_archive(gzip.compress(self.payload+b'x',mtime=0));self.assert_no_install()
+ def test_decoded_payload_hash_mismatch_is_rejected(self):
+  self.replace_archive(gzip.compress(b'x'+self.payload[1:],mtime=0));self.assert_no_install()
  def test_native_mismatch_has_no_mutations(self):
   p=self.runtime/'data/tmapa000.dat';p.write_bytes(b'x'+p.read_bytes()[1:]);self.run_installer(success=False)
   self.assertFalse((self.runtime/'fxdata/standard-hd.kfht').exists());self.assertEqual((self.runtime/'mods/load_order.cfg').read_bytes(),self.order)

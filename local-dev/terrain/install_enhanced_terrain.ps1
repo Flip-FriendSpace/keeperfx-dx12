@@ -21,6 +21,24 @@ function Read-Regular([string]$Path) {
     if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Expected an ordinary file: $Path" }
     return ,([IO.File]::ReadAllBytes($Path))
 }
+# Allocate only the declared, bounded decoded size; reject shorter or longer streams.
+function Expand-TerrainPayload([byte[]]$Compressed, [int]$Length) {
+    $inputStream = [IO.MemoryStream]::new($Compressed, $false)
+    try {
+        $gzip = [IO.Compression.GZipStream]::new($inputStream, [IO.Compression.CompressionMode]::Decompress)
+        try {
+            $decoded = New-Object byte[] $Length
+            $offset = 0
+            while ($offset -lt $Length) {
+                $count = $gzip.Read($decoded, $offset, $Length - $offset)
+                if ($count -eq 0) { throw 'Compressed terrain payload is shorter than declared.' }
+                $offset += $count
+            }
+            if ($gzip.ReadByte() -ne -1) { throw 'Compressed terrain payload exceeds its declared length.' }
+            return ,$decoded
+        } finally { $gzip.Dispose() }
+    } finally { $inputStream.Dispose() }
+}
 function Resolve-SelectedDirectory([string]$Path) {
     $resolved = [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
     for ($hop = 0; $hop -lt 32; $hop++) {
@@ -68,11 +86,16 @@ if (-not $OriginalDataPath) { $OriginalDataPath = Join-Path $RuntimePath 'data' 
 $OriginalDataPath = Resolve-SelectedDirectory $OriginalDataPath
 $manifestBytes = Read-Regular (Join-Path $AssetsPath 'manifest.json')
 $manifest = [Text.Encoding]::UTF8.GetString($manifestBytes) | ConvertFrom-Json
-if ($manifest.schema -ne 1 -or $manifest.id -ne 'dungeon-keeper-standard-terrain-4x-v1' -or
+if ($manifest.schema -ne 2 -or $manifest.id -ne 'dungeon-keeper-standard-terrain-4x-v1' -or
     $manifest.count -lt 1 -or $manifest.count -gt 1088 -or @($manifest.tiles).Count -ne $manifest.count -or
-    $manifest.payload -cne 'terrain.index8' -or $manifest.payload_bytes -gt 80MB -or
+    $manifest.payload -cne 'terrain.index8.gz' -or $manifest.payload_compression -cne 'gzip' -or
+    $manifest.payload_bytes -lt 1 -or $manifest.payload_bytes -gt 80MB -or
+    $manifest.compressed_bytes -lt 1 -or $manifest.compressed_bytes -gt 80MB -or
+    $manifest.compressed_sha256 -notmatch '^[a-f0-9]{64}$' -or $manifest.payload_sha256 -notmatch '^[a-f0-9]{64}$' -or
     $manifest.runtime_pack_sha256 -notmatch '^[a-f0-9]{64}$') { throw 'Unsupported terrain manifest.' }
-$payload = Read-Regular (Join-Path $AssetsPath 'terrain.index8')
+$compressed = Read-Regular (Join-Path $AssetsPath 'terrain.index8.gz')
+if ($compressed.Length -ne $manifest.compressed_bytes -or (Get-BytesSha256 $compressed) -ne $manifest.compressed_sha256) { throw 'Compressed terrain payload hash/length mismatch.' }
+$payload = Expand-TerrainPayload $compressed ([int]$manifest.payload_bytes)
 if ($payload.Length -ne $manifest.payload_bytes -or (Get-BytesSha256 $payload) -ne $manifest.payload_sha256) { throw 'Enhanced terrain payload hash/length mismatch.' }
 $banks = @{}
 foreach ($name in @('tmapa000.dat','tmapb000.dat')) {

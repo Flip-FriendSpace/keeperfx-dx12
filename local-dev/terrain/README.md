@@ -18,7 +18,7 @@ The DX12 build installs the bundle after syncing configuration. To install or ve
 ./keeperfx/local-dev/terrain/install_enhanced_terrain.ps1 -VerifyOnly
 ```
 
-Use `-RuntimePath` for another prepared runtime, `-OriginalDataPath` for its original data directory, or `-AssetsPath` for another checked-out bundle. Installation needs Windows PowerShell and .NET; Python and image generation are not needed. The installer validates the original A/B banks, palette, per-tile fingerprints, enhanced payload and PNG hashes before rebuilding the exact KFHT v2 pack. It writes an ownership receipt, preserves other mods/settings, and disables only the active `keeper_enhanced_default` entry to select the original artwork. Changed files receive backups. Unknown or modified output files are refused.
+Use `-RuntimePath` for another prepared runtime, `-OriginalDataPath` for its original data directory, or `-AssetsPath` for another checked-out bundle. Installation needs Windows PowerShell and .NET; Python and image generation are not needed. The schema 2 bundle stores the indexed payload in `terrain.index8.gz`. The installer authenticates the compressed file, decompresses it within the declared size bound, and verifies the decoded hash before rebuilding the exact KFHT v2 pack. Original A/B banks, palette, per-tile fingerprints and PNG hashes are also verified. Compression happens only in the published bundle; the installed pack and game loading remain unchanged. It writes an ownership receipt, preserves other mods/settings, and disables only the active `keeper_enhanced_default` entry to select the original artwork. Changed files receive backups. Unknown or modified output files are refused.
 
 For the native terrain during a DX12 session:
 
@@ -44,7 +44,7 @@ python ./keeperfx/local-dev/terrain/test_install_enhanced_terrain.py
 python ./keeperfx/local-dev/terrain/verify_complete_terrain.py --before '<Original run>' --after '<Default run>' --manifest ./keeperfx/assets/terrain/standard-hd/manifest.json --animations ./runtime/keeperfx/fxdata/textureanim.toml --output ./artifacts/terrain/verification.json
 ```
 
-Native tests use ASan/UBSan in `keeperfx-dev`. Eight installer tests use synthetic fixtures. The live fixture owns a disposable loopback API session, restores settings, and writes local captures/receipts. `compare_captures.py` builds local visual comparison sheets from those runs (Pillow required). Do not publish captures or locally rebuilt packs containing original data.
+Native tests use ASan/UBSan in `keeperfx-dev`. Twelve installer tests use synthetic fixtures, including invalid gzip, decoded size bounds and decoded hash mismatches. The live fixture owns a disposable loopback API session, restores settings, and writes local captures/receipts. `compare_captures.py` builds local visual comparison sheets from those runs (Pillow required). Do not publish captures or locally rebuilt packs containing original data.
 
 [validation.json](validation.json) records the reviewed scope: both x64 builds, 32 matching camera/terrain stages, all 601 replacements, 17,568 animation bindings, normal automatic loading and native opt-out with the API disabled. Tracked resource peaks remain within configured budgets. This does not establish whole-campaign performance, distant shimmer, every door gameplay state or full renderer qualification.
 
@@ -58,4 +58,4 @@ Keep the original pixels, generation masters, prompts and comparison captures in
 python ./keeperfx/local-dev/terrain/export_enhanced_terrain.py --source '<accepted local terrain artifacts>' --output ./keeperfx/assets/terrain/standard-hd
 ```
 
-The exporter requires Pillow, checks the accepted 601-record pack, and verifies every PNG against its runtime INDEX8 pixels. It publishes enhanced pixels and native hashes only. Review tiling joins, multi-cell motifs, palette/light response and temporal consistency before changing a family. Preserve the agreed original relief exceptions unless separately reviewed.
+The exporter requires Pillow, checks the accepted 601-record pack, and verifies every PNG against its runtime INDEX8 pixels. It publishes enhanced pixels and native hashes only, with a gzip payload containing no filename or timestamp. Review tiling joins, multi-cell motifs, palette/light response and temporal consistency before changing a family. Preserve the agreed original relief exceptions unless separately reviewed.
