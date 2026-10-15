@@ -2,6 +2,7 @@
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 #include "OwnedRenderFrame.h"
 #include "PaletteIndexTable.h"
+#include "TerrainTextureResolution.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -164,7 +165,11 @@ void OwnedFrameBuilder::RecordPhase(OwnedFramePhase phase) noexcept
 bool OwnedFrameBuilder::AddTerrain(OwnedWorldTerrain draw) noexcept
 {
     if(!frame_) return false;
-    if(!Asset(draw.tile,frame_->info_.epoch,OwnedAssetFormat::R8,32,32)) { Fail(OwnedFrameStatus::InvalidInput); return false; }
+    const auto shape=draw.tile.Desc();
+    if(!TerrainTextureDimension(shape.width) || shape.width!=shape.height
+        || !Asset(draw.tile,frame_->info_.epoch,OwnedAssetFormat::R8,shape.width,shape.height)) {
+        Fail(OwnedFrameStatus::InvalidInput);return false;
+    }
     for(const auto& v:draw.vertices) {
         const std::array<float,14> fields{v.x,v.y,v.z,v.u,v.v,v.shade,v.stl_x,v.stl_y,v.camera_z,v.atlas_layer,v.wx,v.wy,v.wz,v.tile};
         for(float value:fields) if(!std::isfinite(value)) { Fail(OwnedFrameStatus::InvalidInput); return false; }

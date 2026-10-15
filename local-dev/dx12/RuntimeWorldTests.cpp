@@ -177,6 +177,33 @@ RuntimeWorldTestResult RunRuntimeWorldTests(Device& device,const Options& option
     try{
         const auto analytic=Analytic(synthetic);const auto reference=r.Reference(synthetic,"synthetic-core",&analytic);
         if(!capture.empty())r.Case("retained-capture-adapted-once-world-only",[&]{const auto owned=Captured(capture);const auto wanted=r.Reference(owned,"captured-core");r.Configure();device.Resize(owned.world.native_width,owned.world.native_height);auto p=Packet(device,owned);auto t=r.Submit(p,true);r.result.preview=r.Compare(t,wanted,"captured");const auto before=device.GetRuntimeResourceDiagnostics();for(unsigned i=0;i<6;++i){auto q=r.Submit(p,false);}const auto after=device.GetRuntimeResourceDiagnostics();r.Check(after.world_upload_bytes==before.world_upload_bytes,"Retained world repeated asset uploads");});
+        r.Case("mixed32-64-128-256-terrain-native-size-wrap-and-fine-texels",[&]{
+            r.Configure();device.Resize(64,64);
+            RuntimeWorldFrame q;q.native_width=q.native_height=q.viewport_width=q.viewport_height=64;
+            q.shade_settings={1,0,1,1,0,0,1,0,0};
+            std::vector<uint8_t> palette(1024);for(unsigned i=0;i<256;++i){palette[i*4]=palette[i*4+1]=palette[i*4+2]=uint8_t(i);palette[i*4+3]=255;}
+            q.palette=Publish(device,RuntimeAssetKind::PaletteRGBA8,1,256,1,palette);
+            q.fade=Publish(device,RuntimeAssetKind::FadeR8,2,256,64,std::vector<uint8_t>(16384));
+            q.lightmap=Publish(device,RuntimeAssetKind::LightmapR16,3,511,511,std::vector<uint8_t>(511*511*2));
+            for(uint32_t size:{32u,64u,128u,256u}) {
+                std::vector<uint8_t> pixels(size*size);for(uint32_t y=0;y<size;++y)for(uint32_t x=0;x<size;++x)pixels[y*size+x]=uint8_t(x*3+y*5);
+                auto tile=Publish(device,RuntimeAssetKind::TileR8,90000+size,size,size,pixels);
+                for(unsigned mode=0;mode<3;++mode){
+                    const float start=mode==1?-32:mode==2?30:0,span=mode==2?4:32;
+                    const auto v=[&](float x,float y,float u,float w){EnhancedTerrainVertex a;a.position={x,y,0,1};a.u=u;a.v=w;return a;};
+                    const auto a=v(-1,1,start,start),b=v(1,1,start+span,start),c=v(1,-1,start+span,start+span),d=v(-1,-1,start,start+span);
+                    q.terrain={{{a,b,c},tile},{{a,c,d},tile}};
+                    Image expected{64,64,std::vector<uint8_t>(64*64*4)};
+                    for(unsigned y=0;y<64;++y)for(unsigned x=0;x<64;++x){
+                        const int tx=int(std::floor((start+(float(x)+0.5f)*span/64)*float(size)/32))&int(size-1);
+                        const int ty=int(std::floor((start+(float(y)+0.5f)*span/64)*float(size)/32))&int(size-1);
+                        const uint8_t index=pixels[size_t(ty)*size+size_t(tx)];const size_t at=(size_t(y)*64+x)*4;
+                        expected.rgba[at]=expected.rgba[at+1]=expected.rgba[at+2]=index;expected.rgba[at+3]=255;
+                    }
+                    auto ticket=r.Submit(q,true);r.Compare(ticket,expected,"terrain-resolution-"+std::to_string(size)+"-wrap-"+std::to_string(mode));
+                }
+            }
+        });
         r.active="synthetic-setup";
         r.Configure();r.Validation("after-configure");
         device.Resize(80,64);r.Validation("after-resize80x64");

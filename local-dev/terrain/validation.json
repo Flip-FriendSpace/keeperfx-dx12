@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "review_date": "2026-10-15",
+  "scope": "Accepted original STANDARD terrain with automatic installed-pack loading in the Windows x64 DX12 preview",
+  "base_revision": "fe2ce2c9b",
+  "artwork": {
+    "user_accepted": true,
+    "enhanced_tiles": 601,
+    "native_tiles_retained": 31,
+    "previous_21_records_byte_identical": true,
+    "png_payload_equality_verified": true,
+    "runtime_pack_sha256": "eaa17e2521139d2323df20eaab83e50658d17e9fafc937588a94730e5ff0d282",
+    "original_pixels_published": false
+  },
+  "builds": {
+    "x64_dx12": true,
+    "x64_non_dx12": true,
+    "dx12_executable_sha256": "8ff7047fec40266c3ac5ae688a1e88a3bf8d1a0008f7f2b52791a6d4b8e70110"
+  },
+  "native": {
+    "passed": true,
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "cases": [
+      "hd-terrain-pack-test",
+      "owned-render-frame-test"
+    ]
+  },
+  "installer": {
+    "passed": true,
+    "synthetic_cases": 8,
+    "full_bundle_roundtrip": true,
+    "idempotence_and_verify_only": true,
+    "original_data_and_mods_preserved": true
+  },
+  "live_default": {
+    "passed": true,
+    "matched_camera_and_column_stages": 32,
+    "matched_replacements": 601,
+    "animation_aliases": 61,
+    "animation_phases": 8,
+    "animation_variations": 32,
+    "binding_checks": 17568,
+    "animation_loop_closed": true,
+    "rejected_submissions": 0,
+    "gpu_validation_errors": 0,
+    "gpu_validation_warnings": 0,
+    "memory": {
+      "cpuBytes": 22561692,
+      "cpuHighWater": 22578076,
+      "cpuBudgetBytes": 134217728,
+      "defaultBytes": 91363328,
+      "defaultHighWater": 130107392,
+      "defaultBudgetBytes": 536870912,
+      "uploadBytes": 17170432,
+      "uploadHighWater": 19267584,
+      "uploadBudgetBytes": 134217728,
+      "readbackBytes": 0,
+      "readbackHighWater": 8294400,
+      "readbackBudgetBytes": 134217728,
+      "geometryCpuBytes": 1572864,
+      "geometryCpuHighWater": 1572864,
+      "geometryCpuBudgetBytes": 134217728,
+      "producerBytes": 25068294,
+      "producerHighWater": 25068294,
+      "producerBudgetBytes": 134217728,
+      "producerTableBytes": 7346176,
+      "packetCapacityBytes": 68046720,
+      "uiScratchBytes": 100196
+    },
+    "descriptors": {
+      "current": 24585,
+      "highWater": 28681,
+      "budget": 131072
+    }
+  },
+  "normal_launch": {
+    "automatic_default": true,
+    "native_opt_out": true,
+    "api_disabled": true,
+    "owned_listeners": 0,
+    "clean_exits": true,
+    "settings_restored": true
+  },
+  "campaign_and_sound_smoke": {
+    "DX12": {
+      "passed": true,
+      "owned_loopback_api": true
+    },
+    "OPENGL": {
+      "passed": true,
+      "owned_loopback_api": true
+    },
+    "SOFTWARE": {
+      "passed": true,
+      "owned_loopback_api": true
+    }
+  },
+  "limits": {
+    "broader_gpu_stress": "OPEN: GPU validation 1358, immutable page SRV reported in COPY_DEST layout; same-host legacy/current sampler controls also reproduce on unrelated outline/lens draws. Focused terrain runs pass; full stress suite is not passed.",
+    "not_qualified": [
+      "whole-campaign coverage",
+      "all door gameplay states",
+      "distance shimmer",
+      "whole-process VRAM and FPS targets",
+      "wider hardware"
+    ]
+  },
+  "engine_inputs_sha256_lf": {
+    "src/console_cmd.c": "4ff358db0ae205b5a898ed2ec2488401c21e0f025b122f084cddf48aa3552a11",
+    "src/kfx/renderer/HdTerrainPack.h": "eadb451c3e0fa3fee37b6c60ef302a42a28cc4bf2096efff498f1401e85d6f8b",
+    "src/kfx/renderer/HdTerrainPack.cpp": "29380d326454b05ddf4ec64d6d62ac9b74679f431058256f9647bb9c92aea21f",
+    "src/kfx/renderer/TerrainTextureResolution.h": "f327d6891d87785b791fc52acae923c08636c673feac2eb8221a3069dde22e00",
+    "src/kfx/renderer/OwnedWorldDrawSink.cpp": "c9ac756ad9bc717504436c63ad268a73ccb5cdd825f56d1c977bac1c30df71ab",
+    "src/kfx/renderer/OwnedRenderFrame.cpp": "c430a54231251cc53ee412346997f2cc8e453977778b6efce0cd802187f8ab87",
+    "src/kfx/renderer/d3d12/Dx12Device.cpp": "a94e119ab4c4d846c64e119bf00d3d84f9eb4686c7b4bcad261f545c6f6e693f",
+    "src/kfx/renderer/d3d12/EnhancedWorld.hlsl": "48bb7fd72fc3f8b72c41237cfe670d47f34c72854625dc619ef27525e1281883"
+  }
+}

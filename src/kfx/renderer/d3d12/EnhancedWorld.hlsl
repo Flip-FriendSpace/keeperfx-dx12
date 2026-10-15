@@ -72,9 +72,11 @@ float Fbm(float2 p)
 }
 float TileIndex(uint tile, int2 texel)
 {
-    // Dense 32x32 versions have 128 tiles per row; no inter-tile filtering.
-    int2 origin=int2(tile%128,tile/128)*32;
-    return tile_atlas.Load(int3(origin+(texel&31),0));
+    // Origins stay on the32-texel atlas grid. Runtime references additionally
+    // carry a resolution code; old diagnostic/32x32 references have code0.
+    uint address=tile&0xffffff,dimension=32u<<((tile>>24)&3u);
+    int2 origin=int2(address%128,address/128)*32;
+    return tile_atlas.Load(int3(origin+(texel&int(dimension-1)),0));
 }
 float4 Decode(float index, float fade_v)
 {
@@ -101,14 +103,15 @@ float4 TerrainPS(TerrainPixel input) : SV_Target
     raw=lerp(raw,1.0,shade0.x);
     float fade_v=(clamp(raw*32.0,0.0,63.0)+0.5)/64.0;
     float4 colour;
+    float2 terrain_uv=input.uv*float(1u<<((input.tile>>24)&3u));
     if(shade2.x==1){
-        float2 px=input.uv-0.5,f=frac(px); int2 base=int2(floor(px));
+        float2 px=terrain_uv-0.5,f=frac(px); int2 base=int2(floor(px));
         float4 a=Decode(TileIndex(input.tile,base),fade_v);
         float4 b=Decode(TileIndex(input.tile,base+int2(1,0)),fade_v);
         float4 c=Decode(TileIndex(input.tile,base+int2(0,1)),fade_v);
         float4 d=Decode(TileIndex(input.tile,base+int2(1,1)),fade_v);
         colour=lerp(lerp(a,b,f.x),lerp(c,d,f.x),f.y);
-    }else colour=Decode(TileIndex(input.tile,int2(floor(input.uv))),fade_v);
+    }else colour=Decode(TileIndex(input.tile,int2(floor(terrain_uv))),fade_v);
     if(shade1.y==1)return float4(colour.rgb,1);
     if(shade1.y==2){
         float mask=1.0-saturate(raw);

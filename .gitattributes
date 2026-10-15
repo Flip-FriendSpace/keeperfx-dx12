@@ -15,3 +15,8 @@
 # Enhanced sprite manifests contain byte hashes; preserve their checkout bytes.
 /assets/creatures/**/*.json text eol=lf
 /assets/creatures/**/*.png binary
+
+# Enhanced terrain manifests and indexed pixel payloads retain exact bytes.
+/assets/terrain/**/*.json text eol=lf
+/assets/terrain/**/*.png binary
+/assets/terrain/**/*.index8 binary
