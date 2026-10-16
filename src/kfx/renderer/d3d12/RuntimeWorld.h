@@ -13,6 +13,7 @@ struct RuntimeWorldTerrain {
     std::array<EnhancedTerrainVertex, 3> vertices{};
     // Empty means the existing missing-texture checkerboard, never hidden geometry.
     RuntimeAssetLease tile;
+    bool emissive_lava=false;
 };
 struct RuntimeWorldShadow {
     EnhancedShadowQuad draw;
@@ -81,8 +82,9 @@ struct RuntimeWorldFrame {
     // Native-space hands precede ordinary Cursor quads; depth is disabled.
     std::vector<RuntimeWorldSprite> cursor_sprites;
 };
-// TileR8 is 32x32. SpriteRGBA8 owns every declared texel (R=index, G=binary
-// coverage), including initialized padding; dimensions are at most 256x256.
+// TileR8 is square32,64,128 or256, at unchanged32-texel world UV extent.
+// SpriteRGBA8 owns every declared texel (R=index, G=binary
+// coverage), including initialized padding; keeper slots adapt to 256/512/1024.
 // ColourRowRGBA8 is 256x1, retaining actual uploaded alpha. FadeR8 is 256x64;
 // LightmapR16 is 511x511 tightly packed little-endian uint16. Source coordinates
 // in draws are lease-local, and their declared rectangle must fit that lease.

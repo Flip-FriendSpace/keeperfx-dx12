@@ -795,7 +795,14 @@ void draw_map_level_name(void)
     {
         LbTextSetWindow(x, y, w, h);
         int tx_units_per_px = ( (MyScreenHeight < 400) && (dbc_initialized && dbc_enabled) ) ? scale_ui_value(32) : (22 * units_per_pixel) / LbTextLineHeight();
-        LbTextDrawResized((w-LbTextStringWidth(lv_name)*units_per_pixel/16)/2, h/10 - 8*units_per_pixel/16, tx_units_per_px, lv_name);
+        int native_tx_units_per_px = tx_units_per_px;
+        tx_units_per_px = LbTextScaleUi(tx_units_per_px);
+        int text_x = (w-LbTextStringWidth(lv_name)*units_per_pixel/16)/2;
+        if (tx_units_per_px != native_tx_units_per_px)
+        {
+            text_x = (w - LbTextStringPartWidthM(lv_name, INT_MAX, tx_units_per_px)) / 2;
+        }
+        LbTextDrawResized(text_x, h/10 - 8*units_per_pixel/16, tx_units_per_px, lv_name);
     }
 }
 

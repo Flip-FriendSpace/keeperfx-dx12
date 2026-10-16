@@ -530,11 +530,42 @@ void toggle_tooltips(void)
 void draw_tooltip_slab64k(char *tttext, long pos_x, long pos_y, long ttwidth, long ttheight, long viswidth)
 {
     unsigned int flg_mem = RendererGetDrawFlags();
-    if (ttwidth > viswidth)
+    const TbBool low_res_dbc = (MyScreenHeight < 400) && (dbc_initialized && dbc_enabled);
+    int native_text_units_per_px = 0;
+    if (tttext != NULL && tttext[0] != '\0')
+    {
+        native_text_units_per_px = low_res_dbc ? scale_value_by_horizontal_resolution(32)
+            : calculate_relative_upp(22, units_per_pixel_ui, LbTextLineHeight());
+    }
+    const int tx_units_per_px = LbTextScaleUi(native_text_units_per_px);
+    const TbBool scaled_text = tx_units_per_px != native_text_units_per_px;
+    // Keep the native slab and clipping geometry. Only the text and its marquee
+    // width use the preference; no alignment flag means no automatic wrapping.
+    const long scroll_width = scaled_text
+        ? LbTextStringPartWidthM(tttext, TOOLTIP_MAX_LEN, tx_units_per_px) : ttwidth;
+    const long scroll_viswidth = scaled_text ? scale_ui_value_lofi(viswidth) : viswidth;
+    static TbBool previous_scaled_text;
+    static int previous_text_units_per_px;
+    static long previous_scroll_width;
+    static long previous_scroll_viswidth;
+    if ((scaled_text || previous_scaled_text)
+        && (scaled_text != previous_scaled_text || tx_units_per_px != previous_text_units_per_px
+            || scroll_width != previous_scroll_width || scroll_viswidth != previous_scroll_viswidth))
+    {
+        render_tooltip_scroll_offset = 0;
+        render_tooltip_scroll_timer = 25.0;
+    }
+    previous_scaled_text = scaled_text;
+    previous_text_units_per_px = tx_units_per_px;
+    previous_scroll_width = scroll_width;
+    previous_scroll_viswidth = scroll_viswidth;
+    const float scroll_offset = scaled_text
+        ? scale_ui_value_lofi(render_tooltip_scroll_offset) : render_tooltip_scroll_offset;
+    if (scroll_width > scroll_viswidth)
     {
         if (render_tooltip_scroll_timer <= 0)
         {
-            if (-ttwidth >= render_tooltip_scroll_offset)
+            if (-scroll_width >= scroll_offset)
               render_tooltip_scroll_offset = viswidth;
             else
               render_tooltip_scroll_offset -= ((MyScreenHeight >= 400) ? 4.0 : 2.0) * game.delta_time;
@@ -566,25 +597,29 @@ void draw_tooltip_slab64k(char *tttext, long pos_x, long pos_y, long ttwidth, lo
         {
             draw_slab64k(x, y, units_per_pixel_ui, scale_ui_value_lofi(viswidth), scale_ui_value_lofi(ttheight));
             RendererSetDrawFlags(0);
-            int tx_units_per_px, tx, ty;
-            if ( (MyScreenHeight < 400) && (dbc_initialized && dbc_enabled) )
+            int tx, ty;
+            if (low_res_dbc)
             {
                 LbTextSetWindow(x, y, scale_ui_value(viswidth * 2), scale_ui_value(ttheight * 2));
-                tx_units_per_px = scale_value_by_horizontal_resolution(32);
                 tx = scale_ui_value(render_tooltip_scroll_offset * 2);
                 ty = -scale_ui_value(2);
             }
             else
             {
                 LbTextSetWindow(x, y, scale_ui_value_lofi(viswidth), scale_ui_value_lofi(ttheight));
-                tx_units_per_px = calculate_relative_upp(22, units_per_pixel_ui, LbTextLineHeight());
                 tx = scale_ui_value_lofi(render_tooltip_scroll_offset);
                 ty = -scale_ui_value_lofi(2);
+            }
+            if (scaled_text)
+            {
+                const long native_height = ttheight * native_text_units_per_px / 16;
+                const long text_height = ttheight * tx_units_per_px / 16;
+                ty += (native_height - text_height) / 2;
             }
             LbTextDrawResized(tx, ty, tx_units_per_px, tttext);
         }
     }
-    LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenHeight/pixel_size, MyScreenWidth/pixel_size);
+    LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
     RendererSetDrawFlags(flg_mem);
 }
 

@@ -201,12 +201,13 @@ void frontnet_draw_session_selected(struct GuiButton *gbtn)
             RendererSetDrawFlags(0);
             LbTextSetFont(frontend_font[i]);
             // Set drawing window and draw the text
-            int tx_units_per_px;
-            tx_units_per_px = (gbtn->height*13/14) * 16 / LbTextLineHeight();
+            const int native_text_units_per_px = (gbtn->height*13/14) * 16 / LbTextLineHeight();
+            const int tx_units_per_px = LbTextScaleUi(native_text_units_per_px);
             int h;
-            h = LbTextLineHeight()*tx_units_per_px/16;
+            h = LbTextLineHeight()*native_text_units_per_px/16;
             LbTextSetWindow(gbtn->scr_pos_x + 13*fs_units_per_px/16, gbtn->scr_pos_y, gbtn->width - 26*fs_units_per_px/16, h);
-            LbTextDrawResized(0, 0, tx_units_per_px, text);
+            const int text_y_offset = (h - LbTextLineHeight() * tx_units_per_px / 16) / 2;
+            LbTextDrawResized(0, text_y_offset, tx_units_per_px, text);
         }
     }
 }
@@ -219,6 +220,15 @@ static void draw_lobby_text(int x, int y, int width, int height, int font, const
     int32_t text_width = LbTextStringWidth(text);
     if (text_width > 0) {
         scale = min(scale, width * 16 / text_width);
+    }
+    const int native_fitted_scale = scale;
+    scale = LbTextScaleUi(native_fitted_scale);
+    // Preserve native column/popup geometry; validate scaled per-glyph fit.
+    // The public declaration is supplied once by the shared text-metrics patch.
+    if (scale != native_fitted_scale)
+    {
+        while (scale > 1 && LbTextStringPartWidthM(text, INT_MAX, scale) > width)
+            scale--;
     }
     LbTextSetWindow(x, y, width, height);
     LbTextDrawResized(0, (height - LbTextLineHeight() * scale / 16) / 2, scale, text);

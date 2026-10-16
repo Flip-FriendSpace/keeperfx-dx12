@@ -354,8 +354,8 @@ void GLUIRenderer::DrawGlyphQuad(SpriteHandle glyph, float x, float y, int units
             WARNLOG("GLUIRenderer::DrawGlyphQuad: GetUV(handle=%u) failed -- glyph/cursor not in atlas", (unsigned)glyph);
         return;
     }
-    float w = uv.pixel_w * units_per_px / 16.0f;
-    float h = uv.pixel_h * units_per_px / 16.0f;
+    float w = uv.logical_w * units_per_px / 16.0f;
+    float h = uv.logical_h * units_per_px / 16.0f;
     if (sample_palette && cmap != nullptr)
     {
         const int clut_row = resolve_clut_row(cmap);
@@ -625,7 +625,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
             apply_flip_flags(c.draw_flags, u0, v0, u1, v1);
             UIQuad q;
             q.x0 = (float)c.x; q.y0 = (float)c.y;
-            q.x1 = q.x0 + uv.pixel_w; q.y1 = q.y0 + uv.pixel_h;
+            q.x1 = q.x0 + uv.logical_w; q.y1 = q.y0 + uv.logical_h;
             q.u0 = u0; q.v0 = v0; q.u1 = u1; q.v1 = v1;
             q.a = draw_flags_source_weight(c.draw_flags);
             q.ndc_z = c.ndc_z; q.mode = (float)PASS_SPRITE; q.seq = c.seq;
@@ -640,7 +640,7 @@ void GLUIRenderer::AppendQuadsFromIR(const UICommandBuffers& ui, std::vector<UIQ
             apply_flip_flags(c.draw_flags, u0, v0, u1, v1);
             UIQuad q;
             q.x0 = (float)c.x; q.y0 = (float)c.y;
-            q.x1 = q.x0 + uv.pixel_w; q.y1 = q.y0 + uv.pixel_h;
+            q.x1 = q.x0 + uv.logical_w; q.y1 = q.y0 + uv.logical_h;
             q.u0 = u0; q.v0 = v0; q.u1 = u1; q.v1 = v1;
             PaletteColour(c.colour, &q.r, &q.g, &q.b);
             q.a = draw_flags_source_weight(c.draw_flags);

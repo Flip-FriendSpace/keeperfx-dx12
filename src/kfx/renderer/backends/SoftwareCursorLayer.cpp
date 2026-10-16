@@ -44,6 +44,27 @@ void set_scaling_h_simple(long y, long sh, long dh)
     LbSpriteSetScalingHeightSimpleArray(s_ysteps, y, sh, dh);
 }
 
+/** Subdivide the existing logical spans without moving their endpoints.
+ * The legacy scaler starts at a logical half-pixel phase. Computing its
+ * phase from the denser source would move the visible cursor at UI scales.
+ */
+void expand_logical_steps(int32_t* steps, int logical_size, int physical_size)
+{
+    const int density = physical_size / logical_size;
+    for (int i = logical_size - 1; i >= 0; --i)
+    {
+        const int start = steps[2 * i];
+        const int length = steps[2 * i + 1];
+        for (int k = density - 1; k >= 0; --k)
+        {
+            const int a = (k * length) / density;
+            const int b = ((k + 1) * length) / density;
+            steps[2 * (i * density + k)] = start + a;
+            steps[2 * (i * density + k) + 1] = b - a;
+        }
+    }
+}
+
 /** Draw the cursor sprite directly into the software draw target. */
 void draw_pointer_sprite(int32_t x, int32_t y, const TbSprite* spr)
 {
@@ -51,6 +72,25 @@ void draw_pointer_sprite(int32_t x, int32_t y, const TbSprite* spr)
     if (outbuf == nullptr)
         return;
     int32_t scanline = SwTargetScanline();
+
+    // TbSprite metrics and hotspot remain logical. A sidecar may provide a
+    // denser, source-bound RLE image without changing the click position.
+    const unsigned char* source_data = spr->Data;
+    int source_width = spr->SWidth;
+    int source_height = spr->SHeight;
+    TbSpriteSourceIdentity identity{};
+    if (get_ui_sprite_source_identity(spr, &identity)
+        && identity.data != nullptr && identity.bytes > 0
+        && identity.width > 0 && identity.width <= SW_CURSOR_XSTEPS
+        && identity.height > 0 && identity.height <= SW_CURSOR_YSTEPS
+        && spr->SWidth > 0 && spr->SHeight > 0
+        && identity.width % spr->SWidth == 0
+        && identity.height % spr->SHeight == 0)
+    {
+        source_data = identity.data;
+        source_width = static_cast<int>(identity.width);
+        source_height = static_cast<int>(identity.height);
+    }
 
     int dw = scale_ui_value_lofi(spr->SWidth);
     int dh = scale_ui_value_lofi(spr->SHeight);
@@ -67,9 +107,13 @@ void draw_pointer_sprite(int32_t x, int32_t y, const TbSprite* spr)
     else
         set_scaling_h_simple(y, spr->SHeight, dh);
 
+    expand_logical_steps(s_xsteps, spr->SWidth, source_width);
+    expand_logical_steps(s_ysteps, spr->SHeight, source_height);
+
     outbuf = &outbuf[s_xsteps[0] + scanline * s_ysteps[0]];
     const TbSourceBuffer buf = {
-        spr->Data, spr->SWidth, spr->SHeight, spr->SWidth,
+        source_data, static_cast<unsigned long>(source_width),
+        static_cast<unsigned long>(source_height), static_cast<unsigned long>(source_width),
     };
     LbSpriteDrawUsingScalingUpDataSolidLR(outbuf, scanline,
                                           lbDisplay.MouseWindowHeight,

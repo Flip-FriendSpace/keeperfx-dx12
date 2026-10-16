@@ -20,6 +20,7 @@
 #include "pre_inc.h"
 #include "kfx/renderer/KeeperSpriteResolution.h"
 #include "custom_sprites.h"
+#include "kfx/renderer/RawIndexSprite.h"
 #include "custom_zip.h"
 #include "creature_graphics.h"
 #include "front_simple.h"
@@ -52,6 +53,18 @@
 #define MAX_COLOR_VALUE 64
 static uint8_t * rgb_to_pal_table = NULL;
 static short next_free_sprite = 0;
+
+/* Original animation IDs remain stable for gameplay and FP/TD selection. */
+static unsigned short original_sprite_replacements[CREATURE_FRAMELIST_LENGTH];
+
+unsigned short resolve_original_sprite_replacement(unsigned short animation)
+{
+    if (animation < CREATURE_FRAMELIST_LENGTH
+        && original_sprite_replacements[animation] != 0)
+        return original_sprite_replacements[animation];
+    return animation;
+}
+
 static short next_free_icon = 0;
 
 struct TbSpriteSheet * gui_panel_sprites = NULL;
@@ -85,6 +98,7 @@ struct SpriteContext
     short fp_id, fp_sz;
 
     TbBool rotatable;
+    TbBool raw_indices;
     unsigned char resolution_shift;
 };
 
@@ -539,6 +553,7 @@ void init_custom_sprites(LevelNumber lvnum)
 
     // Clear creature table (there sprites live)
     memset(creature_table_add, 0, sizeof(creature_table_add));
+    memset(original_sprite_replacements, 0, sizeof(original_sprite_replacements));
     memset(td_to_fp_sprite_add, 0, sizeof(td_to_fp_sprite_add));
     memset(fp_to_td_sprite_add, 0, sizeof(fp_to_td_sprite_add));
     next_free_sprite = 0;
@@ -1101,8 +1116,10 @@ static int read_png_data(unzFile zip, const char *path, struct SpriteContext *co
         spng_ctx_free(ctx);
         return 0;
     }
-    const size_t encoded_bytes = compress_raw(&context->sprite, dst_buf,
-        context->x, context->y, dst_w, dst_h, NULL, capacity);
+    const size_t encoded_bytes = context->raw_indices
+        ? kfx_raw_index_rle(context->sprite.Data, capacity, dst_buf, dst_w, dst_h)
+        : compress_raw(&context->sprite, dst_buf,
+            context->x, context->y, dst_w, dst_h, NULL, capacity);
     if (encoded_bytes == 0)
     {
         free(context->sprite.Data);
@@ -1363,6 +1380,20 @@ collect_sprites(const char *path, unzFile zip, const char *blender_scene, struct
 {
     char szCurrentFileName[256];
 
+    VALUE *encoding = value_dict_get(node, "pixel_encoding");
+    context->raw_indices = false;
+    if (value_type(encoding) != VALUE_NULL)
+    {
+        if (value_type(encoding) != VALUE_STRING
+            || (strcmp(value_string(encoding), "raw-index") != 0
+                && strcmp(value_string(encoding), "palette") != 0))
+        {
+            WARNLOG("Sprite pixel_encoding must be raw-index or palette in '%s/sprites.json'", path);
+            return 1;
+        }
+        context->raw_indices = strcmp(value_string(encoding), "raw-index") == 0;
+    }
+
     if (blender_scene != NULL) // Collect sprites by blender_scene
     {
         for (int err = unzGoToFirstFile(zip);
@@ -1552,6 +1583,19 @@ static int process_sprite_from_list(const char *path, unzFile zip, int idx, VALU
         return 0;
     }
     const char *name = value_string(val);
+    int replace_original = -1;
+    VALUE *replacement = value_dict_get(root, "replace_original");
+    if (value_type(replacement) != VALUE_NULL)
+    {
+        if (value_type(replacement) != VALUE_INT32
+            || value_int32(replacement) < 0
+            || value_int32(replacement) >= CREATURE_FRAMELIST_LENGTH)
+        {
+            WARNLOG("Invalid replace_original in '%s/sprites.json[%d]'", path, idx);
+            return 0;
+        }
+        replace_original = value_int32(replacement);
+    }
     const char *blend_scene = NULL;
     SYNCDBG(2, "found sprite: '%s/%s'", path,name);
     val = value_dict_get(root, "blender_scene");
@@ -1564,6 +1608,20 @@ static int process_sprite_from_list(const char *path, unzFile zip, int idx, VALU
     {
         WARNLOG("Unable to collect sprites from %s", path);
         return 0;
+    }
+
+    if (replace_original >= 0)
+    {
+        const unsigned char original_frames = keepersprite_frames(replace_original);
+        const unsigned char original_rotation = keepersprite_rotable(replace_original);
+        const struct KeeperSprite *candidate = &creature_table_add[context.td_id - KEEPERSPRITE_ADD_OFFSET];
+        if (original_frames == 0
+            || candidate->FramesCount != original_frames
+            || candidate->Rotable != original_rotation)
+        {
+            WARNLOG("Replacement must preserve original frame count and rotation in '%s/sprites.json[%d]'", path, idx);
+            return 0;
+        }
     }
 
     struct NamedCommand key = {name, 0};
@@ -1586,6 +1644,9 @@ static int process_sprite_from_list(const char *path, unzFile zip, int idx, VALU
         spr->name = strdup(name);
         spr->num = context.td_id;
     }
+    /* Publish only after all frame/name checks succeed. Later mod order wins. */
+    if (replace_original >= 0)
+        original_sprite_replacements[replace_original] = context.td_id;
 
     return 1;
 }

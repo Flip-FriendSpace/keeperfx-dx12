@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+param([string]$WorkspacePath)
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
 $original = Join-Path $workspace 'runtime/keeperfx'
 $runtime = Join-Path $workspace 'runtime/keeperfx-x64'
 if (-not (Test-Path -LiteralPath (Join-Path $original 'fxdata/creature.cfg'))) { throw 'Original runtime data is missing.' }

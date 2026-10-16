@@ -151,7 +151,8 @@ void draw_resurrect_creature(struct GuiButton *gbtn)
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
     struct Dungeon* dungeon = get_my_dungeon();
     int i = selected_resurrect_creature(dungeon, gbtn);
-    int tx_units_per_px = scale_ui_value_lofi(16);
+    int sprite_units_per_px = scale_ui_value_lofi(16);
+    int tx_units_per_px = LbTextScaleUi(sprite_units_per_px);
     if (i != -1)
     {
         struct CreatureStorage* cstore = &dungeon->dead_creatures[i];
@@ -160,14 +161,19 @@ void draw_resurrect_creature(struct GuiButton *gbtn)
         long spr_idx = get_creature_model_graphics(cstore->model, CGI_HandSymbol);
         const struct TbSprite* spr = get_panel_sprite(spr_idx);
         int x = gbtn->scr_pos_x - scale_ui_value_lofi(1);
-        int y = gbtn->scr_pos_y - (19 * tx_units_per_px / 16);
+        int y = gbtn->scr_pos_y - (19 * sprite_units_per_px / 16);
 
         if (RendererScreenHeight() < 400)
         {
-            y = gbtn->scr_pos_y - (19 * tx_units_per_px / 32);
+            y = gbtn->scr_pos_y - (19 * sprite_units_per_px / 32);
         }
-        LbSpriteDrawResized(x, y, tx_units_per_px, spr);
+        LbSpriteDrawResized(x, y, sprite_units_per_px, spr);
         int h = scale_ui_value_lofi(gbtn->height) / 16;
+        if (tx_units_per_px != sprite_units_per_px)
+        {
+            int font_height = LbTextLineHeight();
+            h += (font_height * sprite_units_per_px / 16 - font_height * tx_units_per_px / 16) / 2;
+        }
         int w = scale_ui_value_lofi(spr->SWidth + 2);
         LbTextDrawResizedFmt(w, h, tx_units_per_px, "%s", get_string(crconf->namestr_idx));
         RendererSetDrawFlags(Lb_TEXT_HALIGN_RIGHT);
@@ -237,7 +243,8 @@ void draw_transfer_creature(struct GuiButton *gbtn)
     struct Dungeon* dungeon = get_my_dungeon();
     struct Thing* thing = INVALID_THING;
     int listitm_idx = selected_transfer_creature(dungeon, gbtn);
-    int tx_units_per_px = scale_ui_value_lofi(16);
+    int sprite_units_per_px = scale_ui_value_lofi(16);
+    int tx_units_per_px = LbTextScaleUi(sprite_units_per_px);
     if (listitm_idx != -1)
     {
         thing = get_player_list_nth_creature_with_property(dungeon->creatr_list_start, CMF_NoTransfer, listitm_idx);
@@ -250,13 +257,18 @@ void draw_transfer_creature(struct GuiButton *gbtn)
         long spr_idx = get_creature_model_graphics(thing->model, CGI_HandSymbol);
         const struct TbSprite* spr = get_panel_sprite(spr_idx);
         int x = gbtn->scr_pos_x - scale_ui_value_lofi(1);
-        int y = gbtn->scr_pos_y - (19 * tx_units_per_px / 16);
+        int y = gbtn->scr_pos_y - (19 * sprite_units_per_px / 16);
         if (RendererScreenHeight() < 400)
         {
-            y = gbtn->scr_pos_y - (19 * tx_units_per_px / 32);
+            y = gbtn->scr_pos_y - (19 * sprite_units_per_px / 32);
         }
-        LbSpriteDrawResized(x, y, tx_units_per_px, spr);
+        LbSpriteDrawResized(x, y, sprite_units_per_px, spr);
         int h = scale_ui_value_lofi(gbtn->height)/16;
+        if (tx_units_per_px != sprite_units_per_px)
+        {
+            int font_height = LbTextLineHeight();
+            h += (font_height * sprite_units_per_px / 16 - font_height * tx_units_per_px / 16) / 2;
+        }
         int w = scale_ui_value_lofi(spr->SWidth + 2);
         LbTextDrawResizedFmt(w, h, tx_units_per_px, "%s", get_string(crconf->namestr_idx));
         RendererSetDrawFlags(Lb_TEXT_HALIGN_RIGHT);

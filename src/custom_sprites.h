@@ -51,6 +51,7 @@ void load_sprites_for_multi_front(LevelNumber lvnum);
 
 extern TbBigChecksum required_sprite_zip_checksums[REQUIRED_SPRITE_ZIP_COUNT];
 
+unsigned short resolve_original_sprite_replacement(unsigned short animation);
 short get_anim_id(const char *name, struct ObjectConfigStats* objst);
 short get_anim_id_(const char* name);
 short get_icon_id(const char *name);

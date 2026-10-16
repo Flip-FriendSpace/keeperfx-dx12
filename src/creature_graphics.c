@@ -19,6 +19,7 @@
 #include "pre_inc.h"
 #include "kfx/renderer/RendererManager.h"
 #include "creature_graphics.h"
+#include "custom_sprites.h"
 
 #include "globals.h"
 #include "bflib_basics.h"
@@ -171,6 +172,7 @@ struct PickedUpOffset *get_creature_picked_up_offset(struct Thing *thing)
 
 unsigned char keepersprite_frames(unsigned short n)
 {
+    n = resolve_original_sprite_replacement(n);
     if (n >= KEEPERSPRITE_ADD_OFFSET && n < KEEPERSPRITE_ADD_OFFSET + KEEPERSPRITE_ADD_NUM)
     {
         return creature_table_add[n - KEEPERSPRITE_ADD_OFFSET].FramesCount;
@@ -189,6 +191,7 @@ unsigned char keepersprite_frames(unsigned short n)
 
 unsigned char keepersprite_rotable(unsigned short n)
 {
+    n = resolve_original_sprite_replacement(n);
     if (n >= KEEPERSPRITE_ADD_OFFSET && n < KEEPERSPRITE_ADD_OFFSET + KEEPERSPRITE_ADD_NUM)
     {
         return creature_table_add[n - KEEPERSPRITE_ADD_OFFSET].Rotable;
@@ -207,6 +210,7 @@ unsigned char keepersprite_rotable(unsigned short n)
 
 struct KeeperSprite * keepersprite_array(unsigned short n)
 {
+    n = resolve_original_sprite_replacement(n);
     if (n >= KEEPERSPRITE_ADD_OFFSET && n < KEEPERSPRITE_ADD_OFFSET + KEEPERSPRITE_ADD_NUM)
     {
         return &creature_table_add[n - KEEPERSPRITE_ADD_OFFSET];
@@ -225,6 +229,7 @@ struct KeeperSprite * keepersprite_array(unsigned short n)
 
 unsigned long keepersprite_index(unsigned short n)
 {
+    n = resolve_original_sprite_replacement(n);
     if (n >= KEEPERSPRITE_ADD_OFFSET && n < KEEPERSPRITE_ADD_OFFSET + KEEPERSPRITE_ADD_NUM)
     {
         return n;
@@ -249,6 +254,8 @@ long get_lifespan_of_animation(long ani, long speed)
 
 static struct KeeperSprite* sprite_by_frame(long kspr_frame)
 {
+    if (kspr_frame >= 0 && kspr_frame <= USHRT_MAX)
+        kspr_frame = resolve_original_sprite_replacement((unsigned short)kspr_frame);
     if (kspr_frame >= KEEPERSPRITE_ADD_OFFSET &&  kspr_frame < KEEPERSPRITE_ADD_OFFSET + KEEPERSPRITE_ADD_NUM)
     {
         return &creature_table_add[kspr_frame - KEEPERSPRITE_ADD_OFFSET];

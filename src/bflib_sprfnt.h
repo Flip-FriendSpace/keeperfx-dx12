@@ -82,6 +82,8 @@ extern struct AsianFont *active_dbcfont;
 
 #pragma pack()
 /******************************************************************************/
+/** Scale UI text before width/height, wrapping and cursor layout. */
+int LbTextScaleUi(int units_per_px);
 TbBool LbTextDraw(int posx, int posy, const char *text);
 #define LbTextDrawFmt(posx, posy, fmt, ...) LbTextDrawResizedFmt(posx, posy, 16, fmt, ##__VA_ARGS__)
 TbBool LbTextDrawResized(int posx, int posy, int units_per_px, const char *text);
@@ -110,6 +112,7 @@ unsigned char LbTextGetFontFaceColor(void);
 unsigned char LbTextGetFontBackColor(void);
 int LbTextStringWidth(const char *str);
 int LbTextStringPartWidth(const char *text, int part);
+int LbTextStringPartWidthM(const char *text, int part, long units_per_px);
 int LbTextStringHeight(const char *str);
 int LbTextWordWidth(const char *str);
 int LbTextCharWidth(const uint32_t chr);

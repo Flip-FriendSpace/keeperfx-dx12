@@ -1418,17 +1418,25 @@ void draw_map_level_descriptions(void)
       return;
     const char* lv_name = get_level_description(lvinfo); 
     set_level_name_text(lvnum, lv_name);
+    int tx_units_per_px = LbTextScaleUi(units_per_pixel_landview);
     long w = LbTextStringWidth(level_name);
     long x = lvinfo->ensign_x - (long)map_info.screen_shift_x;
     long y = lvinfo->ensign_y - (long)map_info.screen_shift_y - 8;
     long h = LbTextHeight(level_name);
     TbPixel black = LbPaletteFindColour(frontend_palette, 0, 0, 0);
-    LbDrawBox(scale_value_landview(x-4), scale_value_landview(y), scale_value_landview(w+8), scale_value_landview(h), black);
+    long box_width = scale_value_landview(w+8);
+    long box_height = scale_value_landview(h);
+    if (tx_units_per_px != units_per_pixel_landview)
+    {
+        box_width = LbTextStringPartWidthM(level_name, INT_MAX, tx_units_per_px) + scale_value_landview(8);
+        box_height = h * tx_units_per_px / 16;
+    }
+    LbDrawBox(scale_value_landview(x-4), scale_value_landview(y), box_width, box_height, black);
     
     lbSpriteReMapPtr = netfont_palette_remap;
     RendererSetDrawFlags(Lb_TEXT_REMAP);
 
-    LbTextDrawResized(scale_value_landview(x), scale_value_landview(y), units_per_pixel_landview, level_name);
+    LbTextDrawResized(scale_value_landview(x), scale_value_landview(y), tx_units_per_px, level_name);
     RendererSetDrawFlags(0);
   }
 }

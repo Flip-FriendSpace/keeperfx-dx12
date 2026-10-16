@@ -11,7 +11,7 @@ SamplerState nearest_clamp : register(s0);
 cbuffer WorldState : register(b0) {
     float4 shade0; // fullbright, ambient, scale, gamma
     float4 shade1; // lighting mode, darkness mode, fog speed, fog density
-    float4 shade2; // filter, time, diagnostic explicit fade addressing, unused
+    float4 shade2; // filter, time, diagnostic explicit fade addressing, LightingRemasterFlags
     float4 viewport; // width, height, native x, native height - native y
 };
 struct TerrainInput {
@@ -46,6 +46,7 @@ float SampleLightmap(float2 position)
     float2 p = clamp(position, 0, 510);
     int2 lo = int2(floor(p)), hi = min(lo + 1, 510);
     float2 f = frac(p);
+    if ((uint(shade2.w) & 1u) != 0) f = f * f * (3.0 - 2.0 * f);
     float a = float(lightmap.Load(int3(lo, 0)));
     float b = float(lightmap.Load(int3(hi.x, lo.y, 0)));
     float c = float(lightmap.Load(int3(lo.x, hi.y, 0)));
@@ -81,6 +82,18 @@ float TileIndex(uint tile, int2 texel)
 float4 Decode(float index, float fade_v)
 {
     if(shade1.y!=0){
+        if ((uint(shade2.w) & 2u) != 0) {
+            // Blend decoded colours, never palette indices. Clamp the final
+            // row explicitly; filtering cannot read a neighbouring table.
+            float row = clamp(fade_v * 64.0 - 0.5, 0.0, 63.0);
+            int lo = int(floor(row)), hi = min(lo + 1, 63);
+            int column = min(int(index * 256.0), 255);
+            float a = fade_table.Load(int3(column, lo, 0));
+            float b = fade_table.Load(int3(column, hi, 0));
+            float4 ca = palette.Load(int3(min(int(a * 256.0), 255), 0, 0));
+            float4 cb = palette.Load(int3(min(int(b * 256.0), 255), 0, 0));
+            return lerp(ca, cb, frac(row));
+        }
         // The opt-in path specifies floor addressing without the sampler's
         // subtexel snap. Keep the same interpolated shade, normalization and
         // horizontal index coordinate; no epsilon or row bias is introduced.
@@ -112,6 +125,15 @@ float4 TerrainPS(TerrainPixel input) : SV_Target
         float4 d=Decode(TileIndex(input.tile,base+int2(1,1)),fade_v);
         colour=lerp(lerp(a,b,f.x),lerp(c,d,f.x),f.y);
     }else colour=Decode(TileIndex(input.tile,int2(floor(terrain_uv))),fade_v);
+    // Explicit material bit, independent of physical animated atlas address.
+    // Preserve native shade/fog after response; never brighten concealed pixels.
+    // Native unlit liquid/front producers legitimately have no lightmap UV.
+    // Material admission comes from the visibility-filtered producer, not UVs.
+    if((input.tile&0x10000000u)!=0 && raw>0.0001) {
+        float warm=saturate((colour.r-max(colour.g,colour.b))*3.0);
+        float mask=warm*smoothstep(0.2,0.75,max(colour.r,max(colour.g,colour.b)));
+        colour.rgb=saturate(colour.rgb*(1.0+mask*0.14));
+    }
     if(shade1.y==1)return float4(colour.rgb,1);
     if(shade1.y==2){
         float mask=1.0-saturate(raw);
@@ -147,11 +169,30 @@ ShadowPixel ShadowVS(ShadowInput input)
 }
 float4 ShadowPS(ShadowPixel input) : SV_Target
 {
-    // UVs retain pixel/256 units on both 256 and 512 coverage layers. Logical
+    // UVs retain pixel/256 units on 256/512/1024 coverage sources. Logical
     // source padding is explicitly owned zero; this is not software UV wrap.
-    int2 p=clamp(int2(floor(input.uv*256.0)),0,511);
+    int2 p=clamp(int2(floor(input.uv*256.0)),0,1023);
     if(any(p>=int2(input.source.zw)))discard;
-    if(sprite_atlas.Load(int3(input.source.xy+uint2(p),0)).g<0.5)discard;
-    float keep=1.0-input.darken;
+    float coverage = sprite_atlas.Load(int3(input.source.xy+uint2(p),0)).g;
+    if ((uint(shade2.w) & 4u) != 0) {
+        // A bounded screen-footprint filter, confined to this source lease.
+        // Projected geometry/depth stay authoritative; no outward world blur.
+        float2 texel = input.uv * 256.0;
+        float2 footprint = max(abs(ddx(texel)), abs(ddy(texel)));
+        float radius = clamp(max(footprint.x, footprint.y), 0.5, 4.0);
+        float sum = 0.0;
+        [unroll] for (int y = -1; y <= 1; ++y) {
+            [unroll] for (int x = -1; x <= 1; ++x) {
+                int2 tap = int2(floor(texel + float2(x,y) * radius));
+                float weight = float((x == 0 ? 2 : 1) * (y == 0 ? 2 : 1));
+                if (all(tap >= 0) && all(tap < int2(input.source.zw)))
+                    sum += weight * sprite_atlas.Load(int3(input.source.xy + uint2(tap), 0)).g;
+            }
+        }
+        coverage = sum / 16.0;
+    }
+    if ((uint(shade2.w) & 4u) == 0) coverage = coverage >= 0.5 ? 1.0 : 0.0;
+    if (coverage < 0.0001) discard;
+    float keep=1.0-input.darken*coverage;
     return float4(keep,keep,keep,1);
 }

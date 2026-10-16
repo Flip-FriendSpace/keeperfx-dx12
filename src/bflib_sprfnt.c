@@ -986,6 +986,39 @@ TbBool LbTextDrawResizedImmediate(int posx, int posy, int units_per_px, const ch
     return true;
 }
 
+/** Apply the local UI text preference before measuring or drawing a label.
+ * Native metrics and non-text geometry are unchanged. Low-resolution and DBC
+ * text retain their existing sizing until those layouts are qualified.
+ */
+int LbTextScaleUi(int units_per_px)
+{
+    static int percent = -1;
+    if (percent < 0)
+    {
+        percent = 100;
+        const char *value = getenv("KFX_UI_TEXT_PERCENT");
+        if (value != NULL && *value != '\0')
+        {
+            int parsed = 0;
+            int digits = 0;
+            const char *p = value;
+            while (*p >= '0' && *p <= '9' && digits < 3)
+            {
+                parsed = parsed * 10 + (*p++ - '0');
+                digits++;
+            }
+            if (*p == '\0' && digits > 0 && parsed >= 50 && parsed <= 100)
+                percent = parsed;
+        }
+        if (percent != 100)
+            SYNCLOG("UI text scale: %d percent (western text at height >=720)", percent);
+    }
+    if (percent == 100 || units_per_px <= 0 || MyScreenHeight < 720 ||
+        (dbc_initialized && dbc_enabled))
+        return units_per_px;
+    return max(1, (int)(((int64_t)units_per_px * percent + 50) / 100));
+}
+
 /** Route a text draw through the renderer, which either records it for this
  *  frame or draws it now. LbTextDrawResizedImmediate is the draw itself.
  */

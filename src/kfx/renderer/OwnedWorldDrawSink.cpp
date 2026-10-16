@@ -4,6 +4,9 @@
 #include "kfx/renderer/OwnedWorldDrawSink.h"
 #include "kfx/renderer/TileSource.h"
 #include "kfx/renderer/HdTerrainPack.h"
+#include "kfx/renderer/EmissivePresentation.h"
+#include "thing_data.h"
+#include "thing_list.h"
 #include "kfx/renderer/SpriteScale.h"
 #include "kfx/renderer/IUIRenderer.h"
 #include "kfx/renderer/DrawState.h"
@@ -24,17 +27,21 @@
 #include "post_inc.h"
 
 namespace kfx::render {
+static_assert(TCls_Object==1 && TCls_Shot==2 && TCls_EffectElem==3);
 class OwnedWorldUI final:public IUIRenderer,private TextLayoutSink {
     OwnedAssetLease glyph_source_;
+    uint32_t glyph_logical_width_=0, glyph_logical_height_=0;
     const IRTextDrawCmd* text_state_=nullptr;
     bool text_ok_=true;
     OwnedWorldDrawSink& owner;
     bool BeginWesternGlyph(const TbSprite* sprite) override {
+        glyph_logical_width_=sprite->SWidth;glyph_logical_height_=sprite->SHeight;
         glyph_source_=owner.UISource(sprite);text_ok_=glyph_source_.Valid() && text_ok_;
         return true; // Preserve normal Western advance even on source failure.
     }
     bool BeginDbcGlyph(const AsianFont* font,uint32_t codepoint) override {
-        glyph_source_=owner.DbcSource(font,codepoint);text_ok_=glyph_source_.Valid() && text_ok_;
+        glyph_source_=owner.DbcSource(font,codepoint);
+        glyph_logical_width_=glyph_source_.Valid()?glyph_source_.Desc().width:0;glyph_logical_height_=glyph_source_.Valid()?glyph_source_.Desc().height:0;text_ok_=glyph_source_.Valid() && text_ok_;
         return glyph_source_.Valid();
     }
     void Emit(const TextLayoutGlyph& glyph) override {
@@ -45,7 +52,7 @@ class OwnedWorldUI final:public IUIRenderer,private TextLayoutSink {
         }else {
             if(!glyph_source_.Valid())return;
             q.source=glyph_source_;const auto shape=q.source.Desc();
-            q.x1=q.x0+float(shape.width)*float(glyph.units_per_px)/16.0f;q.y1=q.y0+float(shape.height)*float(glyph.units_per_px)/16.0f;
+            q.x1=q.x0+float(glyph_logical_width_)*float(glyph.units_per_px)/16.0f;q.y1=q.y0+float(glyph_logical_height_)*float(glyph.units_per_px)/16.0f;
             q.u0=(1.0f/32.0f)/shape.width;q.v0=(1.0f/32.0f)/shape.height;q.u1=1-q.u0;q.v1=1-q.v0;
             if(glyph.kind==TextLayoutGlyphKind::ColourSprite){q.mode=OwnedQuadMode::Colored;Colour(q,glyph.colour);}
             else {
@@ -104,7 +111,7 @@ class OwnedWorldUI final:public IUIRenderer,private TextLayoutSink {
         TbSpriteSourceIdentity placeholder{};
         if(get_ui_sprite_source_identity(sprite,&placeholder) && (!placeholder.width || !placeholder.height))return Lb_SUCCESS;
         auto source=owner.UISource(sprite);if(!source.Valid())return Lb_FAIL;
-        if(natural){w=int32_t(source.Desc().width);h=int32_t(source.Desc().height);}
+        if(natural){w=sprite->SWidth;h=sprite->SHeight;}
         if(w<=0 || h<=0)return Lb_SUCCESS;
         IRUIClip clip;if(!Window(x,y,clip))return Lb_FAIL;
         OwnedFrameQuad q;q.mode=mode;q.source=source;
@@ -241,12 +248,20 @@ void OwnedWorldDrawSink::Triangle(const WorldDrawTriangle& vertices)
         if(!result) { builder_.Fail(result.status==OwnedAssetStatus::WouldBlock?OwnedFrameStatus::WouldBlock:OwnedFrameStatus::InvalidInput); return; }
         lease=std::move(result.lease);
     }
-    builder_.AddTerrain({vertices,std::move(lease)});
+    // Only the authenticated STANDARD replacement admits the lava response.
+    // A different theme or rejected pack retains the exact native fallback.
+    builder_.AddTerrain({vertices,std::move(lease),EmissivePresentationEnabled()
+        && hd && EmissiveLavaMaterial(uint32_t(tile),uint32_t(variation))});
 }
 void OwnedWorldDrawSink::Sprite(WorldSpriteDispatch mode,BucketKindJontySprite& sprite,Camera* camera)
 {
     if(!dispatch_active_) { builder_.Unsupported(OwnedFramePhase::World); return; }
-    DispatchWorldSprite(mode,sprite,camera);
+    source_animation_=sprite.thing?sprite.thing->anim_sprite:0;
+    source_class_=sprite.thing?sprite.thing->class_id:0;
+    source_model_=sprite.thing?sprite.thing->model:0;
+    try { DispatchWorldSprite(mode,sprite,camera); }
+    catch(...) { source_animation_=source_class_=source_model_=0;throw; }
+    source_animation_=source_class_=source_model_=0;
 }
 void OwnedWorldDrawSink::Shadow(const BucketKindCreatureShadow& shadow)
 {
@@ -376,8 +391,28 @@ void OwnedWorldDrawSink::CaptureKeeperSprite(const SpriteScale* scale,const uint
     draw.source_width=uint32_t(width); draw.source_height=uint32_t(height); draw.content_height=uint32_t(content_height);
     draw.flip=(flags&Lb_SPRITE_FLIP_HORIZ)!=0; draw.z_ndc=sprite_z_; draw.source_alpha=additive?1.0f:draw_flags_source_weight(flags);
     draw.source=source;
+    if(!cursor_capture_ && EmissivePresentationEnabled())
+        draw.colour=EmissiveParameters(ClassifyEmissiveSource(source_animation_,additive,source_class_,source_model_));
     if(!additive) {
-        draw.colour_row=ColourRow((flags&Lb_SPRITE_REMAP)?remap:nullptr);
+        const uint8_t* native_remap=(flags&Lb_SPRITE_REMAP)?remap:nullptr;
+        const uint8_t* material_remap=HeartPresentationRemap(EmissivePresentationEnabled(),
+            cursor_capture_,additive,source_class_,source_model_,native_remap,pixmap.fade_tables);
+        // Bounded diagnostic admission: one record per authenticated source row.
+        // Off during normal play and independent of draw cadence or GPU timing.
+        if(material_remap!=native_remap) {
+            static const bool diagnostic=[] {
+                const char* value=std::getenv("KFX_SCENE_REFERENCE");
+                return value && std::strcmp(value,"1")==0;
+            }();
+            static uint64_t reported_rows=0;
+            const unsigned row=unsigned((native_remap-pixmap.fade_tables)/256);
+            if(diagnostic && !(reported_rows&(uint64_t(1)<<row))) {
+                reported_rows|=uint64_t(1)<<row;
+                SYNCLOG("Heart presentation fade row %u -> %u (source class %u model %u)",row,
+                    unsigned((material_remap-pixmap.fade_tables)/256),source_class_,source_model_);
+            }
+        }
+        draw.colour_row=ColourRow(material_remap);
         if(!draw.colour_row.Valid()) return;
     }
     if(wants_outline && !additive && settings_.outline_mode) {

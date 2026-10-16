@@ -225,7 +225,7 @@ template<class A> void Capture(A& a, SceneCapture& c)
             a.count(w.shadow_sources, w.shadow_sources.size(), 65536, 8);
             for (auto& source : w.shadow_sources) {
                 Fields(a, source.width, source.height);
-                a.count(source.coverage, source.coverage.size(), 65536, 1);
+                a.count(source.coverage, source.coverage.size(), 512 * 512, 1);
                 for (auto& value : source.coverage) a.scalar(value);
             }
             a.count(w.shadows, w.shadows.size(), 65536, 92);

@@ -4147,7 +4147,7 @@ static void create_shadows(struct Thing *thing, struct EngineCoord *ecor, struct
     short dim_th;
     short dim_tw;
     get_keepsprite_unscaled_dimensions(animation_sprite, sprite_angle, current_frame, &dim_ow, &dim_oh, &dim_tw, &dim_th);
-    if (dim_ow <= 0 || dim_oh <= 0 || dim_ow > 512 || dim_oh > 512)
+    if (dim_ow <= 0 || dim_oh <= 0 || dim_ow > 1024 || dim_oh > 1024)
     {
         WARNLOG("[md10 crash investigation] Invalid shadow dimensions dim_ow=%d dim_oh=%d for thing %d (anim=%d frame=%d)",
                 dim_ow, dim_oh, thing->index, animation_sprite, current_frame);
@@ -8667,13 +8667,15 @@ static int draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angle
     {
         int draw_idx, source_w, source_h;
         const unsigned char *data;
-        if (canvas_w > 512 || canvas_h > 512 || !resolve_keepersprite_draw_data(kspr_n,
+        if (canvas_w > 1024 || canvas_h > 1024 || !resolve_keepersprite_draw_data(kspr_n,
             angle, current_frame, &draw_idx, &data, &source_w, &source_h, NULL))
             return 0;
-        unsigned char *mask = calloc(512 * 512, 1);
+        unsigned char *mask = calloc(1024 * 1024, 1);
         if (mask == NULL) return 0;
         int factor = 1 << keeper_sprite_resolution_shift(large_frame->frame_flags);
         if (factor < 2) factor = 2;
+        while ((canvas_w + factor - 1) / factor > 256
+            || (canvas_h + factor - 1) / factor > 256) factor *= 2;
         int offset_x = kspr_arr->Rotable == 2 ? 0 : large_frame->FrameOffsW;
         int offset_y = kspr_arr->Rotable == 2 ? 0 : large_frame->FrameOffsH;
         if (offset_x < 0 || offset_y < 0 || offset_x + source_w > canvas_w
@@ -8683,13 +8685,13 @@ static int draw_keepsprite_unscaled_in_buffer(unsigned short kspr_n, short angle
             return 0;
         }
         if (flip_range)
-            sprite_to_sbuff_xflip((TbSpriteData)data, mask + offset_y * 512
-                + canvas_w - offset_x, source_h, 512);
+            sprite_to_sbuff_xflip((TbSpriteData)data, mask + offset_y * 1024
+                + canvas_w - offset_x, source_h, 1024);
         else
-            sprite_to_sbuff((TbSpriteData)data, mask + offset_y * 512 + offset_x, source_h, 512);
+            sprite_to_sbuff((TbSpriteData)data, mask + offset_y * 1024 + offset_x, source_h, 1024);
         fill_w = (canvas_w + factor - 1) / factor;
         fill_h = (canvas_h + factor - 1) / factor;
-        if (!keeper_shadow_logical_mask(outbuf, mask, canvas_w, canvas_h, 512, factor))
+        if (!keeper_shadow_logical_mask(outbuf, mask, canvas_w, canvas_h, 1024, factor))
         {
             free(mask);
             return 0;

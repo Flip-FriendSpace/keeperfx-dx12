@@ -184,7 +184,7 @@ void frontend_draw_load_game_button(struct GuiButton *gbtn)
     LbTextSetFont(frontend_font[font_idx]);
     RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
     // Set drawing window and draw the text
-    int tx_units_per_px = (gbtn->height * 13 / 11) * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi((gbtn->height * 13 / 11) * 16 / LbTextLineHeight());
     int height = LbTextLineHeight() * tx_units_per_px / 16;
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, height);
     LbTextDrawResized(0, 0, tx_units_per_px, save_game_catalogue[i].textname);

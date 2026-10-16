@@ -16,7 +16,8 @@ class GLResourceMapper;
 
 struct SpriteUV {
     float u0, v0, u1, v1;
-    uint16_t pixel_w, pixel_h;
+    uint16_t pixel_w, pixel_h; // physical texels, used for atlas packing
+    uint16_t logical_w, logical_h; // unchanged UI/font destination metrics
 };
 
 // Packs decoded TbSprite pixel data (palette indices) into a single R8 GL

@@ -4,7 +4,19 @@
 set -euo pipefail
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-workspace_dir="$(dirname -- "$source_dir")"
+# Windows-created worktrees use a drive-qualified .git pointer. Translate only
+# the child build environment; never rewrite Git metadata owned by Windows.
+if [[ -f "$source_dir/.git" ]]; then
+  git_directory="$(sed -n 's/^gitdir: //p' "$source_dir/.git" | tr -d '\r')"
+  if [[ "$git_directory" =~ ^[A-Za-z]:[\\/] ]]; then
+    export GIT_DIR="$(wslpath -u "$git_directory")"
+    export GIT_WORK_TREE="$source_dir"
+  fi
+fi
+workspace_dir="${6:-$(dirname -- "$source_dir")}"
+build_root="${7:-/opt/keeperfx-build}"
+build_root="$(realpath -m -- "$build_root")"
+[[ "$build_root" == /opt/keeperfx-build || "$build_root" == /opt/keeperfx-build/* ]] || { printf 'BuildRoot must be inside /opt/keeperfx-build.\n' >&2; exit 2; }
 configuration="${1:-RelWithDebInfo}"
 target="${2:-keeperfx}"
 jobs="${3:-6}"
@@ -17,7 +29,7 @@ if [[ "$backend" == dx12 && "$architecture" != x64 ]]; then
   printf 'The DX12 developer backend requires Windows x64.\n' >&2
   exit 2
 fi
-build_dir="/opt/keeperfx-build/$configuration"
+build_dir="$build_root/$configuration"
 runtime_dir="$workspace_dir/runtime/keeperfx"
 cache_dir="$workspace_dir/downloads/keeperfx-deps"
 toolchain=mingw32
@@ -25,7 +37,7 @@ triplet=i686-w64-mingw32
 case "$architecture" in
   x86) ;;
   x64)
-    build_dir="/opt/keeperfx-build/x64/$configuration"
+    build_dir="$build_root/x64/$configuration"
     runtime_dir="$workspace_dir/runtime/keeperfx-x64"
     cache_dir+="-x64"
     toolchain=mingw64
@@ -35,8 +47,8 @@ case "$architecture" in
 esac
 dx12_options=(-DKFX_ENABLE_DX12=OFF)
 if [[ "$backend" == dx12 ]]; then
-  build_dir="/opt/keeperfx-build/x64-dx12/$configuration"
-  bash "$source_dir/local-dev/dx12-prepare.sh"
+  build_dir="$build_root/x64-dx12/$configuration"
+  bash "$source_dir/local-dev/dx12-prepare.sh" "$workspace_dir"
   dx12_options=(-DKFX_ENABLE_DX12=ON -DDX12_DEPS=/opt/keeperfx-build/dx12/deps)
 fi
 test -f "$runtime_dir/fxdata/creature.cfg"
@@ -89,7 +101,7 @@ done
 if [[ "$backend" == dx12 ]]; then
   mkdir -p "$runtime_dir/D3D12" "$runtime_dir/shaders" "$runtime_dir/licenses"
   cp "$build_dir/D3D12/"*.dll "$runtime_dir/D3D12/"
-  cp "$build_dir/shaders/"*.dxil "$runtime_dir/shaders/"
+  cp "$build_dir/dx12-runtime/shaders/"*.dxil "$runtime_dir/shaders/"
   cp "$workspace_dir/artifacts/dx12/bin/licenses/"*.txt "$runtime_dir/licenses/"
 fi
 printf 'Built and deployed %s\nSource revision: %s\n' "$runtime_dir/$output.exe" "$(git -C "$source_dir" rev-parse HEAD)"

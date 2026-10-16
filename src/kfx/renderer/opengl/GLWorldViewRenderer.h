@@ -258,7 +258,7 @@ private:
      *  pointer -- see the .cpp file header). Returns -1 when the atlas is
      *  absent/full or sprite_id is unknown (< 0). */
     int resolve_atlas_layer(int32_t sprite_id, const unsigned char* data, size_t data_bytes, int src_w, int src_h,
-                            bool* darkens = nullptr);
+                            bool* darkens = nullptr, int shadow_factor = 1);
     void push_keeper_sprite_instance(const KsprInstance& inst, bool darken);
 
     /** Look up (or lazily build) the CLUT row for a remap table. Returns the
@@ -472,7 +472,7 @@ private:
     // At most 2048 * 8192 bytes: one bit per initialized full-layer texel.
     // Width/height retain the logical artwork dimensions for cache proof.
     std::array<CaptureSpriteCoverage, 2048> m_capture_sprite_coverage;
-    void record_sprite_coverage_for_capture(int layer, int width, int height, const uint8_t* rg) noexcept;
+    void record_sprite_coverage_for_capture(int layer, int width, int height, const uint8_t* rg, int stride_pixels = 1024) noexcept;
 
     GpuResourceHandle m_kspr_inst_shader_handle = kInvalidGpuResource;
     GpuResourceHandle m_kspr_inst_quad_geom_handle = kInvalidGpuResource;

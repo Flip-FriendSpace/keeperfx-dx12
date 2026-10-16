@@ -3,6 +3,7 @@
 // Owned pre-overlay enhanced world inputs. No engine pointers or rendered pixels.
 #pragma once
 #include "OutlinePass.h"
+#include "LightingRemaster.h"
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -27,6 +28,7 @@ struct EnhancedShadowQuad {
     uint32_t mask_x = 0, mask_y = 0, source_width = 0, source_height = 0;
 };
 struct EnhancedWorldPass {
+    uint32_t lighting_remaster = 0; // Explicit frozen-frame comparisons; default off.
     // Diagnostic A/B only. Capture bytes and production GL oracle stay unchanged.
     EnhancedFadeAddressing fade_addressing = EnhancedFadeAddressing::Sampler;
     // The returned resident frame is viewport_width x viewport_height. Native
@@ -52,6 +54,7 @@ inline void ValidateEnhancedWorldPass(const EnhancedWorldPass& pass, uint32_t at
     uint32_t atlas_height, uint64_t atlas_bytes, size_t colour_rows)
 {
     const auto require=[](bool value,const char* reason){if(!value)throw std::invalid_argument(reason);};
+    require(ValidLightingRemaster(pass.lighting_remaster), "Invalid lighting remaster controls");
     require(pass.fade_addressing==EnhancedFadeAddressing::Sampler||pass.fade_addressing==EnhancedFadeAddressing::TexelLoad,
         "Invalid enhanced fade addressing mode");
     require(pass.native_width && pass.native_height && pass.native_width<=16384 && pass.native_height<=16384
@@ -86,7 +89,7 @@ inline void ValidateEnhancedWorldPass(const EnhancedWorldPass& pass, uint32_t at
         }
     }
     for(const auto& shadow:pass.shadows){
-        require(shadow.source_width&&shadow.source_height&&shadow.source_width<=512&&shadow.source_height<=512
+        require(shadow.source_width&&shadow.source_height&&shadow.source_width<=1024&&shadow.source_height<=1024
             &&uint64_t(shadow.mask_x)+shadow.source_width<=atlas_width
             &&uint64_t(shadow.mask_y)+shadow.source_height<=atlas_height
             &&std::isfinite(shadow.z_ndc)&&std::abs(shadow.z_ndc)<=16

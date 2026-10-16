@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+param([string]$WorkspacePath)
 $ErrorActionPreference = 'Stop'
 $source = Split-Path -Parent $PSScriptRoot
-$workspace = Split-Path -Parent $source
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
 $runtime = Join-Path $workspace 'runtime/keeperfx'
-if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog -ErrorAction SilentlyContinue) {
+if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog,keeperfx-dx12,keeperfx-dx12-hvlog -ErrorAction SilentlyContinue) {
   throw 'Close running KeeperFX instances before syncing definitions.'
 }
 if (-not (Test-Path -LiteralPath (Join-Path $runtime 'keeperfx.exe'))) { throw 'Runtime is missing.' }

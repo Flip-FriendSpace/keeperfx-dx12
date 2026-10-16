@@ -211,7 +211,7 @@ struct OwnedWorldBridge::Impl {
         if(p.Lightmap().Valid())out.lightmap=Get(p.Lightmap(),RuntimeAssetKind::LightmapR16);
         out.terrain.reserve(p.Terrain().size());out.shadows.reserve(p.Shadows().size());out.sprites.reserve(p.OutlineSprites().size()+p.Sprites().size());
         for(const auto& d:p.Terrain()) {
-            RuntimeWorldTerrain q;q.tile=Get(d.tile,RuntimeAssetKind::TileR8);
+            RuntimeWorldTerrain q;q.tile=Get(d.tile,RuntimeAssetKind::TileR8);q.emissive_lava=d.emissive_lava;
             for(size_t i=0;i<3;++i) {const auto& v=d.vertices[i];q.vertices[i]={{v.x,v.y,v.z,v.camera_z},v.u,v.v,v.shade,v.stl_x,v.stl_y};}
             out.terrain.push_back(std::move(q));
         }

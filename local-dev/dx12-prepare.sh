@@ -3,7 +3,7 @@
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-workspace="$(dirname -- "$repo")"
+workspace="${1:-$(dirname -- "$repo")}"
 cache="$workspace/downloads/keeperfx-dx12"
 build=/opt/keeperfx-build/dx12
 deps="$build/deps"

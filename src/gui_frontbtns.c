@@ -753,11 +753,12 @@ void frontend_draw_button(struct GuiButton *gbtn, unsigned short btntype, const 
         RendererSetDrawFlags(drw_flags);
         LbTextSetFont(frontend_font[fntidx]);
         spr = get_frontend_sprite(spridx);
-        h = LbTextHeight(text) * units_per_px / 16;
+        int text_units_per_px = LbTextScaleUi(units_per_px);
+        h = LbTextHeight(text) * text_units_per_px / 16;
         x = gbtn->scr_pos_x + ((40*units_per_px/16) >> 1);
         y = gbtn->scr_pos_y + ((spr->SHeight*units_per_px/16 - h) >> 1);
         LbTextSetWindow(x, y, gbtn->width-40*units_per_px/16, h);
-        LbTextDrawResized(0, 0, units_per_px, text);
+        LbTextDrawResized(0, 0, text_units_per_px, text);
     }
 }
 

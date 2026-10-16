@@ -519,7 +519,7 @@ void draw_button_string(struct GuiButton *gbtn, int base_width, const char *text
         LbLocTextStringInsert(dtext, "\x0B", cursor_pos, TEXT_BUFFER_LENGTH);
     }
     int units_per_px = (gbtn->width * 16 + base_width / 2) / base_width;
-    int tx_units_per_px = (units_per_px * 22 / LbTextLineHeight());
+    int tx_units_per_px = LbTextScaleUi((units_per_px * 22 / LbTextLineHeight()));
     unsigned long w = 4 * units_per_px / 16;
     if (low_res)
     {
@@ -537,7 +537,7 @@ void draw_button_string(struct GuiButton *gbtn, int base_width, const char *text
             {
                 h += (13 + (MyScreenWidth / 640));
                 w += 8;
-                tx_units_per_px = scale_value_by_horizontal_resolution(10);
+                tx_units_per_px = LbTextScaleUi(scale_value_by_horizontal_resolution(10));
             }
         }
         else if (gbtn->id_num == BID_DUNGEON_INFO)
@@ -546,7 +546,7 @@ void draw_button_string(struct GuiButton *gbtn, int base_width, const char *text
             {
                 h += (12 + (MyScreenWidth / 640));
                 w += 8;
-                tx_units_per_px = scale_value_by_horizontal_resolution(12);
+                tx_units_per_px = LbTextScaleUi(scale_value_by_horizontal_resolution(12));
             }
         }
         else if (gbtn->tooltip_stridx == GUIStr_ExperienceDesc)
@@ -667,7 +667,7 @@ TbBool draw_text_box(const char *text)
     draw_message_box_at(startx, starty, box_width, box_height, spritesx, spritesy);
     // Draw the text inside box
     RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
-    int tx_units_per_px = ((box_height / 4) * 13 / 11) * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi(((box_height / 4) * 13 / 11) * 16 / LbTextLineHeight());
     LbTextSetWindow(startx, starty, box_width, box_height);
     n = LbTextLineHeight() * tx_units_per_px / 16;
     int line_count = 1;
@@ -710,7 +710,7 @@ TbBool draw_text_box_top(const char* text, ushort drawflags)
     draw_message_box_at(startx, starty, box_width, box_height, spritesx, spritesy);
     // Draw the text inside box
     RendererSetDrawFlags(drawflags);
-    int tx_units_per_px = ((box_height / 4) * 13 / 11) * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi(((box_height / 4) * 13 / 11) * 16 / LbTextLineHeight());
     LbTextSetWindow(startx, starty, box_width, box_height);
     n = LbTextLineHeight() * tx_units_per_px / 16;
     return LbTextDrawResized(tx_units_per_px/2, 0, tx_units_per_px, text);

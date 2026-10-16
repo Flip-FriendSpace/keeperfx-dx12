@@ -2394,7 +2394,8 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
         // Every source was admitted before planning. No throwing lookup or
         // allocation is permitted when regenerating committed CPU shadow bytes.
         const auto* binding = triangle.tile.state ? &bindings[indices.find(triangle.tile.state.get())->second] : nullptr;
-        const uint32_t tile = binding ? TerrainTextureReference(binding->x,binding->y,triangle.tile.Description().width) : MissingEnhancedTile;
+        const uint32_t tile = binding ? TerrainTextureReference(binding->x,binding->y,triangle.tile.Description().width)
+            | (triangle.emissive_lava?0x10000000u:0u) : MissingEnhancedTile;
         std::array<TerrainVertex, 3> vertices{};
         for (size_t i = 0; i < vertices.size(); ++i) {
             const auto& v = triangle.vertices[i];
@@ -2768,6 +2769,7 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
     std::array<float, 16> constants{};
     for (size_t i = 0; i < 9; ++i) constants[i] = packet.shade_settings[i];
     constants[9] = packet.time; constants[10] = float(packet.fade_addressing);
+    constants[11] = float(r.options.lighting_remaster);
     constants[12] = float(packet.viewport_width); constants[13] = float(packet.viewport_height); constants[15] = float(packet.native_height);
     std::array<float, 12> matrix{};
     for (size_t row = 0; row < 3; ++row) for (size_t col = 0; col < 3; ++col) matrix[row * 4 + col] = packet.palette_transform[row * 3 + col];
@@ -3252,6 +3254,8 @@ void Device::Initialize(void* native_window, uint32_t width, uint32_t height, co
     if (impl->device || !native_window || !width || !height || width > 16384 || height > 16384)
         throw std::invalid_argument("Invalid/repeated DX12 initialization");
     auto& r = *impl;
+    if (!ValidLightingRemaster(options.lighting_remaster))
+        throw std::invalid_argument("Invalid lighting remaster controls");
     r.options = options;
     if (options.resize_warning_trace && !options.debug)
         throw std::invalid_argument("Resize warning trace requires validation");
@@ -4696,6 +4700,7 @@ Resource Device::Impl::RenderOutlineSurface(const Image& background, const Image
         for(size_t i=0;i<8;++i)constants[i]=world->shade_settings[i];
         constants[8]=world->shade_settings[8];constants[9]=world->time;
         constants[10]=float(world->fade_addressing);
+        constants[11]=float(world->lighting_remaster | r.options.lighting_remaster);
         constants[12]=float(world->viewport_width);constants[13]=float(world->viewport_height);
         constants[14]=native_origin?0.0f:float(world->viewport_x);
         constants[15]=float(native_origin?world->native_height:world->native_height-uint32_t(world->viewport_y));

@@ -9,6 +9,9 @@
 #include <memory>
 #include <map>
 #include <algorithm>
+#include <fstream>
+#include <cstdlib>
+#include "kfx/renderer/HdUiSpritePack.h"
 #include "post_inc.h"
 
 static TbSpriteSheet* live_sprite_sheets = nullptr;
@@ -26,6 +29,8 @@ struct TbSpriteSheet {
     std::vector<TbSprite> sprites; // needs to be contiguous to avoid crashing some code
     std::vector<std::vector<unsigned char>> data;
     std::vector<uint64_t> source_ids;
+    std::map<size_t, kfx::render::HdUiRecord> hd_overrides;
+    std::map<size_t, uint64_t> hd_source_ids;
     TbSpriteSheet *previous = nullptr, *next = nullptr;
     TbSpriteSheet() : next(live_sprite_sheets) {
         if (next) next->previous = this;
@@ -110,6 +115,51 @@ bool load_data_file(TbSpriteSheet & sheet, offset_list & offsets, const char * f
     return true;
 }
 
+
+// Explicit local opt-in. Validate all records against native bytes before any
+// sidecar becomes visible. Logical sprites and font metrics remain unchanged.
+static bool load_hd_ui_sidecar(TbSpriteSheet& sheet, const char* data_fname)
+{
+    const char* dir = std::getenv("KFX_UI_OVERRIDE_DIR");
+    if (!dir || !*dir) return true;
+    std::string stem(data_fname);
+    const size_t slash = stem.find_last_of("/\\");
+    if (slash != std::string::npos) stem.erase(0, slash + 1);
+    const size_t dot = stem.find_last_of('.');
+    if (dot != std::string::npos) stem.erase(dot);
+    const std::string path = std::string(dir) + "/" + stem + ".kfui";
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) return true;
+    const auto length = file.tellg();
+    if (length < 12 || length > 64 * 1024 * 1024) return false;
+    std::vector<uint8_t> bytes(static_cast<size_t>(length));
+    file.seekg(0);
+    if (!file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) return false;
+    std::vector<kfx::render::HdUiRecord> records;
+    if (!kfx::render::ParseHdUiPack(bytes, records)) return false;
+    for (const auto& r : records) {
+        if (r.index >= sheet.sprites.size()) return false;
+        const auto& native = sheet.sprites[r.index];
+        const auto& data = sheet.data[r.index];
+        size_t extent = 0;
+        if (native.SWidth != r.logical_width || native.SHeight != r.logical_height ||
+            !kfx::render::HdUiRleExtent(data.data(), data.size(), native.SWidth, native.SHeight, extent) ||
+            kfx::render::HdUiFingerprint(data.data(), extent) != r.source_fingerprint) return false;
+    }
+    std::map<size_t, kfx::render::HdUiRecord> overrides;
+    std::map<size_t, uint64_t> ids;
+    for (auto& r : records) {
+        const uint64_t id = next_ui_sprite_publication();
+        if (!id) return false;
+        ids.emplace(r.index, id);
+        overrides.emplace(r.index, std::move(r));
+    }
+    sheet.hd_overrides.swap(overrides);
+    sheet.hd_source_ids.swap(ids);
+    SYNCLOG("HD UI sidecar admitted: %s (%lu records)", path.c_str(), (unsigned long)sheet.hd_overrides.size());
+    return true;
+}
+
 } // local
 
 extern "C" TbSpriteSheet * create_spritesheet()
@@ -129,6 +179,9 @@ extern "C" TbSpriteSheet * load_spritesheet(const char * data_fname, const char 
         offset_list offsets;
         if (!load_index_file(*sheet, offsets, index_fname)) return nullptr;
         if (!load_data_file(*sheet, offsets, data_fname)) return nullptr;
+        if (!load_hd_ui_sidecar(*sheet, data_fname)) {
+            WARNLOG("Refused HD UI sidecar for %s; native art retained", data_fname);
+        }
         return sheet.release();
     } catch (const std::exception & e) {
         ERRORLOG("Failed to load sprite sheet from %s %s: %s", data_fname, index_fname, e.what());
@@ -219,6 +272,14 @@ extern "C" TbBool get_ui_sprite_source_identity(const TbSprite* sprite, TbSprite
         const auto& actual = sheet->sprites[index];
         if (actual.Data != bytes.data() || (bytes.empty() && actual.SWidth && actual.SHeight)
             || !sheet->source_ids[index]) return false;
+        const auto hd = sheet->hd_overrides.find(index);
+        if (hd != sheet->hd_overrides.end()) {
+            const auto id = sheet->hd_source_ids.find(index);
+            if (id == sheet->hd_source_ids.end() || !id->second) return false;
+            const auto& r = hd->second;
+            *output = {r.rle.data(), r.rle.size(), id->second, r.width, r.height};
+            return true;
+        }
         *output = {bytes.data(), bytes.size(), sheet->source_ids[index], actual.SWidth, actual.SHeight};
         return true;
     }

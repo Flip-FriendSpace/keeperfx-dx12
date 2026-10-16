@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+param([string]$WorkspacePath)
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
 $cache = Join-Path $workspace 'downloads/keeperfx-dx12'
 $artifacts = Join-Path $workspace 'artifacts/dx12'
 New-Item -ItemType Directory -Path $cache,$artifacts -Force | Out-Null
@@ -22,7 +24,9 @@ foreach ($dependency in $dependencies) {
 }
 $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'dx12-prepare.sh')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'The keeperfx-dev build environment is unavailable.' }
-& wsl.exe -d keeperfx-dev --exec bash $script
+$linuxWorkspace = (& wsl.exe -d keeperfx-dev --exec wslpath -a $workspace).Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the dependency workspace in keeperfx-dev.' }
+& wsl.exe -d keeperfx-dev --exec bash $script $linuxWorkspace
 if ($LASTEXITCODE -ne 0) { throw 'Pinned DX12 dependency preparation failed.' }
 foreach ($dll in @('D3D12Core.dll', 'd3d12SDKLayers.dll')) {
     $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $artifacts "bin/D3D12/$dll")

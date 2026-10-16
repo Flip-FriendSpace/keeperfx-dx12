@@ -33,6 +33,7 @@
 #include "game_legacy.h"
 #include "replay.h"
 #include "game_loop.h"
+#include "local_camera.h"
 #include "lua_triggers.h"
 
 
@@ -78,6 +79,32 @@ void update_gameplay_delta_time();
 bool use_delta_time();
 
 /******************************************************************************/
+static TbBool local_reference_frame_step_pending;
+
+TbBool request_local_reference_frame_step(void)
+{
+    if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
+        || game.frame_step || local_reference_frame_step_pending)
+        return false;
+    // API commands run after input and packet processing. Defer the unpause so
+    // the next step includes a fresh native input pass, including GUI hit tests.
+    local_reference_frame_step_pending = true;
+    return true;
+}
+
+static TbBool begin_local_reference_frame_step(void)
+{
+    if (!local_reference_frame_step_pending)
+        return false;
+    local_reference_frame_step_pending = false;
+    if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
+        || game.frame_step)
+        return false;
+    game.frame_step = true;
+    clear_flag(game.operation_flags, GOF_Paused);
+    return true;
+}
+
 static short do_draw;
 static long double average_frame_draw_time = 1;
 
@@ -596,10 +623,15 @@ static void gameplay_loop_logic()
         }
     }
 #endif // FUNCTESTING
+    const TbBool reference_step = begin_local_reference_frame_step();
+    const TbBool reference_gui_before = reference_step && game_is_busy_doing_gui();
     do_draw = display_should_be_updated_this_turn() || (!LbIsActive());
     poll_gameplay_inputs();
     input_eastegg();
     input();
+    if (reference_step)
+        SYNCLOG("Reference step input: turn %ld gui_before %d gui_after %d",
+            (long)get_gameturn(), (int)reference_gui_before, (int)game_is_busy_doing_gui());
     if (exchange_packets() == PExR_Wait) {
         return;
     }
@@ -661,7 +693,13 @@ static void gameplay_loop_logic()
     if(game.frame_step)
     {
         game.frame_step = false;
-        set_packet_pause_toggle();
+        // The ordinary pause packet is refused during possession/map fades.
+        // Disposable local reference sessions still need exactly one natural
+        // turn per step; normal play and network pause rules remain unchanged.
+        if (local_camera_reference_enabled())
+            set_flag(game.operation_flags, GOF_Paused);
+        else
+            set_packet_pause_toggle();
     }
 }
 
@@ -729,6 +767,7 @@ static void gameplay_loop_timestep()
 
 static void keeper_gameplay_loop(void)
 {
+    local_reference_frame_step_pending = false;
     struct PlayerInfo *player;
     SYNCDBG(5,"Starting");
     player = get_my_player();
@@ -755,6 +794,7 @@ static void keeper_gameplay_loop(void)
 
         frametime_end_measurement(Frametime_FullFrame);
     } // end while
+    local_reference_frame_step_pending = false;
     SYNCDBG(0,"Gameplay loop finished after %lu turns",(unsigned long)get_gameturn());
 
     // Reset the game kind because we are not in a game anymore at this point
