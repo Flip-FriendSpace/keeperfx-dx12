@@ -662,7 +662,7 @@ void gui_area_big_room_button(struct GuiButton *gbtn)
         draw_gui_panel_sprite_left(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx + 1);
     }
     LbTextUseByteCoding(false);
-    int tx_units_per_px = (24 * units_per_pixel_ui) / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi((24 * units_per_pixel_ui) / LbTextLineHeight());
     draw_string64k(gbtn->scr_pos_x + 44*units_per_px/16, gbtn->scr_pos_y + (8 - 6)*units_per_px/16, tx_units_per_px, gui_textbuf);
 
     long amount = count_player_rooms_of_type(player->id_number, rkind);
@@ -856,7 +856,7 @@ void gui_area_big_spell_button(struct GuiButton *gbtn)
         draw_gui_panel_sprite_left(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx + 1);
     }
     LbTextUseByteCoding(false);
-    int tx_units_per_px = (24 * units_per_pixel_ui) / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi((24 * units_per_pixel_ui) / LbTextLineHeight());
     draw_string64k(gbtn->scr_pos_x + 44*units_per_px/16, gbtn->scr_pos_y + (8 - 6)*units_per_px/16, tx_units_per_px, text);
     LbTextUseByteCoding(true);
     RendererSetDrawFlags(flg_mem);
@@ -1219,7 +1219,7 @@ void gui_area_big_trap_button(struct GuiButton *gbtn)
         } else {
             draw_gui_panel_sprite_left(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx);
         }
-        int tx_units_per_px = (24 * units_per_pixel_ui) / LbTextLineHeight();
+        int tx_units_per_px = LbTextScaleUi((24 * units_per_pixel_ui) / LbTextLineHeight());
         draw_string64k(gbtn->scr_pos_x + 44*units_per_px/16, gbtn->scr_pos_y + (8 - 6)*units_per_px/16, tx_units_per_px, gui_textbuf);
         RendererSetDrawFlags(flg_mem);
     } else
@@ -1463,7 +1463,7 @@ void draw_centred_string64k(const char *text, short x, short y, short base_w, sh
     LbTextSetJustifyWindow((x - (dst_w / 2)), y, dst_w);
     LbTextSetClipWindow( (x - (dst_w / 2)), y, dst_w, 16*dst_w/base_w);
     RendererAddDrawFlags(Lb_TEXT_HALIGN_CENTER);
-    int tx_units_per_px = (22 * units_per_pixel_ui) / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi((22 * units_per_pixel_ui) / LbTextLineHeight());
     int text_x = 0;
     int text_y = -6*dst_w/base_w;
     
@@ -1928,7 +1928,7 @@ void gui_area_instance_button(struct GuiButton *gbtn)
     }
 
     // Calculating text size.
-    int tx_units_per_px = ( (MyScreenHeight < 400) && (dbc_initialized && dbc_enabled) ) ? scale_ui_value(32) : (gbtn->height * 11 / 12) * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi(( (MyScreenHeight < 400) && (dbc_initialized && dbc_enabled) ) ? scale_ui_value(32) : (gbtn->height * 11 / 12) * 16 / LbTextLineHeight());
     char text[16];
     snprintf(text, sizeof(text), "%d", (curbtn_avail_pos + 1) % 10);
     LbTextDrawResized(gbtn->scr_pos_x + 52*units_per_px/16, gbtn->scr_pos_y + 9*units_per_px/16, tx_units_per_px, text);
@@ -2634,7 +2634,11 @@ void draw_whole_status_panel(void)
         LbDrawBox(0, 0, gmnu->pos_x + gmnu->width, MyScreenHeight, colours[0][0][0]);
     LbTiledSpriteDraw(0, 0, fs_units_per_px, &status_panel);
     // Draws gold amount; note that button_sprite[] is used instead of full font
-    draw_gold_total(player->id_number, gmnu->pos_x + gmnu->width/2, gmnu->pos_y + gmnu->height*67/200, fs_units_per_px, dungeon->total_money_owned);
+    int gold_units_per_px = LbTextScaleUi(fs_units_per_px);
+    const struct TbSprite *digit = get_button_sprite(GBS_fontchars_number_dig0);
+    int gold_y = gmnu->pos_y + gmnu->height*67/200;
+    gold_y += digit->SHeight * (fs_units_per_px - gold_units_per_px) / 32;
+    draw_gold_total(player->id_number, gmnu->pos_x + gmnu->width/2, gold_y, gold_units_per_px, dungeon->total_money_owned);
     int32_t basic_zoom = get_local_minimap_zoom();
     if (16/mm_units_per_px < 3)
         mmzoom = basic_zoom / scale_value_for_resolution_with_upp(2,mm_units_per_px);

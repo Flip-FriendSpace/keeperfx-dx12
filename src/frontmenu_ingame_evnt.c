@@ -372,6 +372,36 @@ short zoom_to_fight(PlayerNumber plyr_idx)
     return false;
 }
 
+static void draw_counter_text_scaled(int pos_x, int pos_y, int units_per_px, const char *text, long width)
+{
+    int text_units_per_px = LbTextScaleUi(units_per_px);
+    if (text_units_per_px == units_per_px)
+    {
+        LbTextDrawResized(pos_x, pos_y, units_per_px, text);
+        return;
+    }
+    int text_width = LbTextStringPartWidthM(text, INT_MAX, text_units_per_px);
+    int font_height = LbTextLineHeight();
+    pos_y += (font_height * units_per_px / 16 - font_height * text_units_per_px / 16) / 2;
+    if (text_width > width - pos_x)
+    {
+        LbTextDrawResized(pos_x, pos_y, text_units_per_px, text);
+        return;
+    }
+    unsigned long draw_flags = RendererGetDrawFlags();
+    if ((draw_flags & Lb_TEXT_HALIGN_RIGHT) != 0)
+    {
+        pos_x = width - text_width;
+    }
+    else if ((draw_flags & Lb_TEXT_HALIGN_CENTER) != 0)
+    {
+        pos_x += (width - pos_x - text_width) / 2;
+    }
+    RendererSetDrawFlags((draw_flags & ~(Lb_TEXT_HALIGN_CENTER | Lb_TEXT_HALIGN_RIGHT)) | Lb_TEXT_HALIGN_LEFT);
+    LbTextDrawResized(pos_x, pos_y, text_units_per_px, text);
+    RendererSetDrawFlags(draw_flags);
+}
+
 void draw_bonus_timer(void)
 {
     int nturns = game.bonus_time - get_gameturn();
@@ -440,7 +470,7 @@ void draw_bonus_timer(void)
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
     }
-    LbTextDrawResized(0, y, tx_units_per_px, text);
+    draw_counter_text_scaled(0, y, tx_units_per_px, text, width);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 
@@ -515,7 +545,7 @@ void draw_timer(void)
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
     }
-    LbTextDrawResized(0, y, tx_units_per_px, text);
+    draw_counter_text_scaled(0, y, tx_units_per_px, text, width);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 
@@ -563,7 +593,7 @@ static void draw_bottom_right_text(const char *text, int line)
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
     }
-    LbTextDrawResized(0, y, tx_units_per_px, text);
+    draw_counter_text_scaled(0, y, tx_units_per_px, text, width);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 
@@ -696,7 +726,7 @@ void draw_script_timer(PlayerNumber plyr_idx, unsigned char timer_id, unsigned l
     int y = 0;
 
 
-    LbTextDrawResized(0, y, tx_units_per_px, text);
+    draw_counter_text_scaled(0, y, tx_units_per_px, text, width);
     LbTextUseByteCoding(true);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
@@ -802,10 +832,10 @@ void draw_script_variable_list(void)
 
             if ((icon_idx > -1 && scval.include_icon)) {
                 RendererSetDrawFlags(Lb_TEXT_HALIGN_RIGHT);          
-                LbTextDrawResized(4, y, tx_units_per_px, value_text);
+                draw_counter_text_scaled(4, y, tx_units_per_px, value_text, width);
             } else {                
                 RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);          
-                LbTextDrawResized(0, y, tx_units_per_px, value_text);
+                draw_counter_text_scaled(0, y, tx_units_per_px, value_text, width);
             }
             if(icon_idx > -1 && scval.include_icon){
                 const struct TbSprite* spr;
@@ -895,7 +925,7 @@ void draw_script_variable(PlayerNumber plyr_idx, unsigned char valtype, unsigned
         tx_units_per_px = ( (MyScreenHeight < 400) && (dbc_initialized && dbc_enabled) ) ? scale_ui_value(32) : (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
     }
-    LbTextDrawResized(0, y, tx_units_per_px, text);
+    draw_counter_text_scaled(0, y, tx_units_per_px, text, width);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 

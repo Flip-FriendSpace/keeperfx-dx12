@@ -34,6 +34,7 @@ struct OwnedFrameInfo {
 struct OwnedWorldTerrain {
     WorldDrawTriangle vertices{};
     OwnedAssetLease tile; // Required proven source; no hidden missing-texture fallback.
+    bool emissive_lava=false; // Explicit authenticated material; default unchanged.
 };
 // Resolved neutral draw records; no engine pointer, sprite handle or physical
 // atlas address survives. Coordinates and phases retain producer order.

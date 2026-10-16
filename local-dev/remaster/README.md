@@ -1,0 +1,60 @@
+# Reviewed remaster defaults
+
+This package installs the completed V13 review as the default Windows launcher profile. It combines the reviewed creature and world sprites, hand and pointers, HUD, frontend art and fonts with the existing enhanced terrain and modern English audio packages.
+
+The profile uses 80% western text at 720p and above, smooth light cells, interpolated light palettes, filtered shadows and the reviewed source-aware emissive treatment. Original animation timing, logical sprite dimensions and anchors remain unchanged. The Dungeon Heart highlight clamp and hand masking corrections are included. Low-resolution and double-byte text retain native sizing.
+
+## Install
+
+Use a matching KeeperFX runtime and your legally obtained original Dungeon Keeper data as described in [the developer guide](../README.md). Python 3.11 or newer with the exact reconstruction dependencies is required:
+
+```powershell
+python -m pip install -r local-dev/remaster/requirements.txt
+powershell -NoProfile -File local-dev/remaster/install.ps1 -RuntimePath C:\Games\KeeperFX
+powershell -NoProfile -File local-dev/play.ps1 -RuntimePath C:\Games\KeeperFX
+```
+
+The installer checks original data hashes, reconstructs all selected assets in a separate staging directory, verifies output hashes and installs the profile with recoverable backups. Missing or incompatible original data, encoder output or generated payloads stop installation. No artwork is regenerated during installation. Original frontend files remain in place until a play session activates the replacements.
+
+For the documented sibling workspace layout, use the root `Play KeeperFX.cmd` or `local-dev/play.ps1`. A source worktree can explicitly select its runtime workspace:
+
+```powershell
+./local-dev/play.ps1 -WorkspacePath C:\Projects\DK1
+./local-dev/play.ps1 -WorkspacePath C:\Projects\DK1 -Original
+./local-dev/play.ps1 -WorkspacePath C:\Projects\DK1 -OpenGLFallback
+```
+
+The original comparison disables the remaster sprite/UI/terrain presentation and restores native text size. Modern audio and unrelated user mods remain enabled. Both launches keep the loopback API disabled. DX12 debug/GPU validation is off for normal play and is a separate explicit diagnostic mode.
+
+The launcher verifies the installed files, temporarily applies the frontend overlays and mod order, waits for its game process, and restores those files byte for byte. It never stops an existing game. An interrupted session retains its recovery journal; after closing the game, recover with:
+
+```powershell
+./local-dev/remaster/play-remaster.ps1 -WorkspacePath C:\Projects\DK1 -Recover
+```
+
+`play.ps1 -NativeProfile` selects the direct development launcher without the installed profile. This is intended for diagnostics and existing-backend regression checks.
+
+## Lossless packaging and provenance
+
+Generated replacements use compressed, content-addressed objects and explicit reconstruction recipes. Repeated content is stored once. Original fallback frames, native masks and colour fields are decoded from the user's hash-verified installation. They are not included in the publication payload. The installer checks exact sprite member bytes, source mappings, metadata and final UI package hashes; compression does not downscale, quantize or alter the reviewed pixels.
+
+Runtime ZIPs, combined packages, native game pixels, palettes, extracted reference sheets, screenshots, saves and build output remain outside Git. The original game assets retain their owners' rights. See the asset notices under `assets/remaster-sprites/` and `assets/remaster-ui/`, and the existing terrain/audio notices.
+
+## Validation and limits
+
+The reviewed source is built for both the default and DX12 x64 targets in the dedicated `keeperfx-dev` distribution. Original-campaign simulation checks cover DX12, OpenGL and software. Decoder, raw-index, shadow, lighting and emissive contract tests use sanitizers and the accepted UI sidecars. Run the portable CPU suite inside that distribution:
+
+```bash
+python3 local-dev/remaster/test_contracts.py --output /tmp/keeperfx-remaster-tests
+```
+
+Add `--ui-packs <locally-installed-ui-directory>` for full positive and malformed-package checks. GPU validation and performance measurements are separate from these CPU tests.
+
+The user accepted the combined V13 visual preview on 2026-10-16. This acceptance does not qualify every creature action, localisation, map or GPU. The broader resource-state stress investigation and the integrated-GPU resize warning remain open. Captures and failed evidence are retained locally. No new all-map performance claim is made by this publication.
+
+Installer failure injection uses synthetic temporary files only:
+
+```powershell
+python -B local-dev/remaster/test_install_transactions.py
+powershell -NoProfile -File local-dev/remaster/test_launcher.ps1 -OutputPath C:\Temp\keeperfx-launcher-tests
+```

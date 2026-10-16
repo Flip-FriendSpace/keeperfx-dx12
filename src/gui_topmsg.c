@@ -127,11 +127,11 @@ TbBool draw_onscreen_direct_messages(void)
     int tx_units_per_px;
     if (dbc_initialized && dbc_enabled)
     {
-        tx_units_per_px = scale_value_by_horizontal_resolution((MyScreenWidth >= 640) ? 16 : 32);
+        tx_units_per_px = LbTextScaleUi(scale_value_by_horizontal_resolution((MyScreenWidth >= 640) ? 16 : 32));
     }
     else
     {
-        tx_units_per_px = scale_ui_value_lofi(16);
+        tx_units_per_px = LbTextScaleUi(scale_ui_value_lofi(16));
     }
     // Display in-game message for debug purposes
     RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <cstring>
+#include <cstdlib>
 #include "post_inc.h"
 
 void GLSpriteAtlas::SetLivenessQuery(std::function<bool(SpriteHandle)> is_live)
@@ -63,8 +64,14 @@ void GLSpriteAtlas::PackSprite(SpriteHandle handle, const struct TbSprite* spr)
 
     if (m_entries.find(handle) != m_entries.end()) return; // already packed
 
-    const int w = spr->SWidth;
-    const int h = spr->SHeight;
+    // The complete HD roster exceeds this atlas. Native UI is the default;
+    // physical sources are an explicit opt-in for bounded integration fixtures.
+    TbSpriteSourceIdentity source{};
+    const char* hd_mode = std::getenv("KFX_UI_HD_OPENGL");
+    const bool known = hd_mode && std::strcmp(hd_mode, "1") == 0
+        && get_ui_sprite_source_identity(spr, &source);
+    const int w = known ? int(source.width) : spr->SWidth;
+    const int h = known ? int(source.height) : spr->SHeight;
     if (w <= 0 || h <= 0)
     {
         if (s_logged_bad_size.insert(handle).second)
@@ -76,10 +83,12 @@ void GLSpriteAtlas::PackSprite(SpriteHandle handle, const struct TbSprite* spr)
     if (!alloc_shelf_rect(w, h, &x, &y, "sprite")) return;
 
     uint8_t* dst = m_pixels.data() + (size_t)y * k_atlas_w + x;
-    LbSpriteDecode(dst, k_atlas_w, spr->Data, w, h);
+    LbSpriteDecode(dst, k_atlas_w, known ? source.data : spr->Data, w, h);
 
     AtlasEntry entry;
     entry.uv = make_sprite_uv(x, y, w, h);
+    entry.uv.logical_w = spr->SWidth;
+    entry.uv.logical_h = spr->SHeight;
     entry.x = x;
     entry.y = y;
     m_entries[handle] = entry;
@@ -125,6 +134,8 @@ SpriteUV GLSpriteAtlas::make_sprite_uv(int x, int y, int w, int h)
     uv.v1 = ((float)(y + h) - k_inset) / (float)k_atlas_h;
     uv.pixel_w = (uint16_t)w;
     uv.pixel_h = (uint16_t)h;
+    uv.logical_w = (uint16_t)w;
+    uv.logical_h = (uint16_t)h;
     return uv;
 }
 
@@ -215,6 +226,8 @@ void GLSpriteAtlas::compact()
         }
         AtlasEntry entry;
         entry.uv = make_sprite_uv(x, y, w, h);
+        entry.uv.logical_w = item.entry.uv.logical_w;
+        entry.uv.logical_h = item.entry.uv.logical_h;
         entry.x = x;
         entry.y = y;
         m_entries[item.handle] = entry;

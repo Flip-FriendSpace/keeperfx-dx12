@@ -235,10 +235,12 @@ void frontstats_draw_main_stats(struct GuiButton *gbtn)
     draw_scroll_box(gbtn, fs_units_per_px, 6);
     LbTextSetFont(frontend_font[1]);
     // The GUI item height should be 6 lines of text
-    int tx_units_per_px = gbtn->height * 16 / (6 * (LbTextLineHeight() + 1));
-    int ln_height = LbTextLineHeight() * tx_units_per_px / 16;
+    int native_text_units_per_px = gbtn->height * 16 / (6 * (LbTextLineHeight() + 1));
+    int tx_units_per_px = LbTextScaleUi(native_text_units_per_px);
+    int ln_height = LbTextLineHeight() * native_text_units_per_px / 16;
+    int text_y_offset = (ln_height - LbTextLineHeight() * tx_units_per_px / 16) / 2;
     int pos_x = gbtn->scr_pos_x;
-    int pos_y = gbtn->scr_pos_y + ln_height / 2;
+    int pos_y = gbtn->scr_pos_y + ln_height / 2 + text_y_offset;
     for (struct StatsData* stat = main_stats_data; stat->name_stridx > 0; stat++)
     {
         int border;
@@ -282,14 +284,16 @@ void frontstats_draw_scrolling_stats(struct GuiButton *gbtn)
           gbtn->width - 2 * (spr->SWidth * fs_units_per_px / 16), gbtn->height + 2 * (8 - spr->SHeight) * fs_units_per_px / 16);
     }
     // The GUI item height should be 5 lines of text
-    int tx_units_per_px = gbtn->height * 16 / (5 * (LbTextLineHeight() + 1));
-    int ln_height = LbTextLineHeight() * tx_units_per_px / 16;
+    int native_text_units_per_px = gbtn->height * 16 / (5 * (LbTextLineHeight() + 1));
+    int tx_units_per_px = LbTextScaleUi(native_text_units_per_px);
+    int ln_height = LbTextLineHeight() * native_text_units_per_px / 16;
+    int text_y_offset = (ln_height - LbTextLineHeight() * tx_units_per_px / 16) / 2;
     int pos_x = 0;
-    int pos_y = -scrolling_offset * tx_units_per_px / 16;
+    int pos_y = -scrolling_offset * native_text_units_per_px / 16;
     for (struct StatsData* stat = &scrolling_stats_data[scrolling_index]; pos_y < gbtn->height; pos_y += ln_height + 4 * units_per_pixel / 16)
     {
         RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
-        LbTextDrawResized(pos_x, pos_y, tx_units_per_px, get_string(stat->name_stridx));
+        LbTextDrawResized(pos_x, pos_y + text_y_offset, tx_units_per_px, get_string(stat->name_stridx));
         RendererSetDrawFlags(Lb_TEXT_HALIGN_RIGHT);
         int stat_val;
         if (stat->get_value != NULL)
@@ -300,7 +304,7 @@ void frontstats_draw_scrolling_stats(struct GuiButton *gbtn)
         {
             stat_val = -1;
         }
-        LbTextDrawResizedFmt(pos_x, pos_y, tx_units_per_px, "%d", stat_val);
+        LbTextDrawResizedFmt(pos_x, pos_y + text_y_offset, tx_units_per_px, "%d", stat_val);
         stat++;
         if (!stat->name_stridx)
           stat = scrolling_stats_data;

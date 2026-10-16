@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
-param([ValidateSet('x86', 'x64')][string]$Architecture = 'x64')
+param([string]$WorkspacePath, [ValidateSet('x86', 'x64')][string]$Architecture = 'x64')
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
 $cache = Join-Path $workspace 'downloads/keeperfx-deps'
 if ($Architecture -eq 'x64') { $cache += '-x64' }
 New-Item -ItemType Directory -Path $cache -Force | Out-Null

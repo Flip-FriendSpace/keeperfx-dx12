@@ -44,6 +44,59 @@ bool Covered(PixelInput input, int2 sample_pixel)
     if (any(sample_pixel < 0) || any(sample_pixel >= int2(input.source.zw))) return false;
     return coverage_atlas.Load(int3(input.source.xy + uint2(sample_pixel), 0)).g >= 0.5;
 }
+int2 EmissionSample(PixelInput input,int2 q)
+{
+    int2 j=max(((q+1)<<16)-input.mapping.xy-1,0)/max(input.mapping.zw,1);
+    j=min(j,int2(input.source.z,input.parameters.x)-1);
+    if(input.parameters.y!=0)j.x=int(input.source.z)-1-j.x;
+    return j;
+}
+float3 EncodedPositive(PixelInput input,int2 j)
+{
+    if(any(j<0)||any(j>=int2(input.source.z,input.parameters.x)))return 0;
+    uint index=(uint)round(coverage_atlas.Load(int3(input.source.xy+uint2(j),0)).r*255.0);
+    if(index<1||index>64)return 0;
+    uint code=index-1,family=code/8,strength=code%8;
+    if(family==6||strength==0)return 0;
+    static const float3 steps[8]={
+        float3(16,16,16)/255.0,float3(24,16,0)/255.0,
+        float3(24,4,4)/255.0,float3(8,8,24)/255.0,
+        float3(8,24,8)/255.0,float3(12,0,12)/255.0,
+        float3(8,8,8)/255.0,float3(24,12,4)/255.0
+    };
+    return steps[family]*float(strength);
+}
+float EmissionMask(float3 c,float mode)
+{
+    float mask=smoothstep(0.2,0.75,max(c.r,max(c.g,c.b)));
+    if(mode==0.5)mask*=saturate((c.r-max(c.g,c.b))*3.0);
+    return mask;
+}
+float3 NormalEmission(PixelInput input,int2 j)
+{
+    if(!Covered(input,j))return 0;
+    uint index=(uint)round(coverage_atlas.Load(int3(input.source.xy+uint2(j),0)).r*255.0);
+    float4 c=colour_rows.Load(int3(index,input.lookup.x,0));
+    return c.rgb*EmissionMask(c.rgb,input.colour.z)*(input.lookup.y!=0?1.0:c.a);
+}
+float3 LocalBloom(PixelInput input,int2 q,bool encoded)
+{
+    // Destination-pixel offsets preserve registration at every source resolution.
+    // No sampling outside this immutable source, no temporal feedback, no UI.
+    static const int2 offsets[8]={int2(-2,0),int2(2,0),int2(0,-2),int2(0,2),
+        int2(-4,0),int2(4,0),int2(0,-4),int2(0,4)};
+    float3 sum=0;
+    [unroll]for(uint n=0;n<8;++n) {
+        // Offset in source texels avoids extending the validated signed32
+        // destination mapping beyond its original visible interval.
+        int2 delta=offsets[n]*65536/max(input.mapping.zw,1);
+        if(input.parameters.y!=0)delta.x=-delta.x;
+        int2 j=EmissionSample(input,q)+delta;
+        if(any(j<0)||any(j>=int2(input.source.z,input.parameters.x)))continue;
+        sum+=(encoded?EncodedPositive(input,j):NormalEmission(input,j))*(n<4?0.1875:0.0625);
+    }
+    return sum;
+}
 float4 PSMain(PixelInput input) : SV_Target
 {
     // Same integer sampling as KSPR_SOURCE_TEXEL_GLSL. Bounds validation keeps
@@ -67,6 +120,12 @@ float4 PSMain(PixelInput input) : SV_Target
             float3(8,8,8)/255.0, float3(24,12,4)/255.0
         };
         float3 step = steps[family] * float(strength);
+        [branch]if(!darken && input.colour.w==0.9375) {
+            // Stay on existing positive emission support: zero, subtractive and
+            // transparent exterior pixels cannot acquire an emissive halo.
+            float3 bloom=LocalBloom(input,q,true);
+            step=step*(1.0+input.colour.x)+bloom*input.colour.y*(float(strength)/7.0);
+        }
         float3 delta = saturate(float3(dot(palette_rows[0].xyz, step),
             dot(palette_rows[1].xyz, step), dot(palette_rows[2].xyz, step)));
         return float4(delta, input.parameters.w != 0 || darken ? 0.0 : 1.0);
@@ -75,6 +134,14 @@ float4 PSMain(PixelInput input) : SV_Target
     if (input.parameters.z == 3) {
         uint index = (uint)round(coverage_atlas.Load(int3(input.source.xy + uint2(j), 0)).r * 255.0);
         float4 c = colour_rows.Load(int3(index, input.lookup.x, 0));
+        [branch]if(input.colour.w==0.9375) {
+            float mask=EmissionMask(c.rgb,input.colour.z);
+            float3 bloom=LocalBloom(input,q,false);
+            // Shade/remap lookup precedes response. Existing alpha, coverage,
+            // terrain depth, painter order and subsequent lens remain authoritative.
+            float bloom_energy=max(bloom.r,max(bloom.g,bloom.b));
+            c.rgb=saturate(c.rgb*(1.0+mask*(input.colour.x+bloom_energy*input.colour.y)));
+        }
         float a = (input.lookup.y != 0 ? 1.0 : c.a) * input.source_alpha;
         return float4(input.parameters.w != 0 ? c.rgb * a : c.rgb, a);
     }

@@ -85,7 +85,7 @@ void frontstory_draw(void)
     LbTextSetWindow(70*units_per_pixel/16, 70*units_per_pixel/16, (640-2*70)*units_per_pixel/16, (480-2*70)*units_per_pixel/16);
     LbTextSetFont(frontstory_font);
     RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
-    int tx_units_per_px = (26 * units_per_pixel) / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi((26 * units_per_pixel) / LbTextLineHeight());
     LbTextDrawResized(0, 0, tx_units_per_px, get_string(frontstory_text_no));
 }
 
@@ -103,6 +103,7 @@ void frontcredits_draw(void)
     LbTextSetWindow(0, 0, RendererPhysicalWidth(), lbDisplay.PhysicalScreenHeight);
     int fontid = 1;
     LbTextSetFont(frontend_font[fontid]);
+    const int text_units_per_px = LbTextScaleUi(units_per_pixel);
     long h = credits_offset;
     TbBool did_draw = h > 0;
     for (long i = 0; campaign.credits[i].kind != CIK_None; i++)
@@ -131,7 +132,9 @@ void frontcredits_draw(void)
                 text = "";
                 break;
             }
-            LbTextDrawResized(0, h, units_per_pixel, text);
+            // Keep native row pitch, clipping/end tests and scrolling timing.
+            const int text_height = LbTextLineHeight() * text_units_per_px / 16;
+            LbTextDrawResized(0, h + (ln_height - text_height) / 2, text_units_per_px, text);
             did_draw = 1;
         }
         h += ln_height + 2 * units_per_pixel / 16;

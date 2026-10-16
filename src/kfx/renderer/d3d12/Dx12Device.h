@@ -5,6 +5,7 @@
 #pragma once
 #include "OutlinePass.h"
 #include "EnhancedWorldPass.h"
+#include "LightingRemaster.h"
 #include "../SceneGLCompositionTrace.h"
 #include "LensPass.h"
 #include "WorldOverlayPass.h"
@@ -70,6 +71,7 @@ struct PalettePrimitive {
     PaletteShadowTriangle shadow;
 };
 struct Options {
+    uint32_t lighting_remaster = 0; // LightingRemasterFlags; zero preserves established rendering.
     bool debug = true;
     bool gpu_validation = false;
     bool warp = false;

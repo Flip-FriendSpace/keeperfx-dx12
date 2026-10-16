@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+  [string]$WorkspacePath,
+  [string]$RuntimePath,
+  [switch]$Original,
+  [switch]$NativeProfile,
   [ValidateSet('x86', 'x64')][string]$Architecture = 'x64',
   [switch]$Upstream,
   [switch]$HeavyLog,
@@ -9,10 +13,27 @@ param(
   [switch]$OpenGLFallback,
   [string]$HdTerrainPack,
   [switch]$NativeTerrain,
+  [string]$HdUiOverrideDir,
+  [ValidateRange(50, 100)][int]$UiTextPercent = 100,
+  [switch]$RemasterLighting,
+  [switch]$RemasterEmissive,
+  [switch]$GpuValidation,
   [switch]$PassThru,
   [switch]$Hidden
 )
 $ErrorActionPreference = 'Stop'
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$profileRuntime = if ($RuntimePath) { $RuntimePath } else { Join-Path $WorkspacePath 'runtime/keeperfx-x64' }
+$installedProfile = Join-Path $profileRuntime 'remaster/default.json'
+if (-not $NativeProfile -and -not $Upstream -and -not $HeavyLog -and $Architecture -eq 'x64' -and (Test-Path -LiteralPath $installedProfile)) {
+  if ($PassThru) { throw 'The installed remaster owns its launch/restoration lifecycle. Use -NativeProfile for direct diagnostic launches.' }
+  & (Join-Path $PSScriptRoot 'remaster/play-remaster.ps1') -WorkspacePath $WorkspacePath -RuntimePath $profileRuntime -Original:$Original -QuickStart:$QuickStart -OpenGLFallback:$OpenGLFallback -Hidden:$Hidden -GpuValidation:$GpuValidation
+  return
+}
+if ($Original) { $DX12Preview = $true; $NativeTerrain = $true; $UiTextPercent = 100 }
+
+if ($GpuValidation -and (-not $DX12Preview -or $OpenGLFallback)) { throw 'GPU validation requires DX12.' }
+if (($RemasterLighting -or $RemasterEmissive) -and (-not $DX12Preview -or $OpenGLFallback)) { throw 'Remaster lighting and emissive review require DX12.' }
 # Packaged Windows PowerShell launches may inherit pwsh's module path, leaving Get-FileHash unavailable.
 function Get-PreviewFileSha256([string]$Path) {
   $algorithm = [Security.Cryptography.SHA256]::Create()
@@ -22,7 +43,22 @@ function Get-PreviewFileSha256([string]$Path) {
     finally { $stream.Dispose() }
   } finally { $algorithm.Dispose() }
 }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
+if ($HdUiOverrideDir) {
+  if (-not $DX12Preview) { throw '-HdUiOverrideDir requires the local renderer preview.' }
+  $HdUiOverrideDir = [IO.Path]::GetFullPath($HdUiOverrideDir)
+  if (-not (Test-Path -LiteralPath $HdUiOverrideDir -PathType Container)) { throw 'UI review sidecar directory missing.' }
+  $packs = @(Get-ChildItem -LiteralPath $HdUiOverrideDir -File -Filter '*.kfui')
+  if (-not $packs.Count) { throw 'UI review directory has no sidecars.' }
+  foreach ($pack in $packs) {
+    if ($pack.Length -lt 12 -or $pack.Length -gt 64MB -or ($pack.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'UI review sidecar bounds/link check failed.' }
+    $stream = [IO.File]::OpenRead($pack.FullName)
+    try { $header = New-Object byte[] 12; if ($stream.Read($header,0,12) -ne 12 -or [BitConverter]::ToUInt32($header,0) -ne 0x4955464b -or [BitConverter]::ToUInt16($header,4) -ne 1 -or [BitConverter]::ToUInt16($header,6) -ne 32 -or [BitConverter]::ToUInt32($header,8) -gt 4096) { throw 'UI review sidecar header rejected.' } }
+    finally { $stream.Dispose() }
+  }
+}
+
 if ($OpenGLFallback -and -not $DX12Preview) { throw '-OpenGLFallback requires -DX12Preview.' }
 if ($NativeTerrain -and $HdTerrainPack) { throw '-NativeTerrain cannot be combined with -HdTerrainPack.' }
 if ($HdTerrainPack) {
@@ -51,6 +87,7 @@ $runtime = Join-Path $workspace 'runtime/keeperfx'
 if ($Architecture -eq 'x64') {
   $runtime += '-x64'
 }
+if ($RuntimePath) { $runtime = [IO.Path]::GetFullPath($RuntimePath) }
 if ($DX12Preview) { $name = 'keeperfx-dx12.exe' }
 elseif ($Upstream) { $name = 'keeperfx.exe' }
 elseif ($HeavyLog) { $name = 'keeperfx-local-hvlog.exe' }
@@ -140,8 +177,18 @@ $start.WindowStyle = if ($Hidden) { [Diagnostics.ProcessWindowStyle]::Hidden } e
 foreach ($key in @($start.EnvironmentVariables.Keys)) {
   if ($key -like 'KFX_*') { $start.EnvironmentVariables.Remove($key) }
 }
-# This disables validation only. Benchmark capture requires a separate directory, absent here.
-$start.EnvironmentVariables['KFX_DX12_PERFORMANCE'] = '1'
+# Validation is an explicit diagnostic run; normal play keeps the performance profile.
+if ($GpuValidation) { $start.EnvironmentVariables['KFX_DX12_GPU_VALIDATION'] = '1' }
+else { $start.EnvironmentVariables['KFX_DX12_PERFORMANCE'] = '1' }
+if ($HdUiOverrideDir) { $start.EnvironmentVariables['KFX_UI_OVERRIDE_DIR'] = $HdUiOverrideDir }
+if ($UiTextPercent -ne 100) { $start.EnvironmentVariables['KFX_UI_TEXT_PERCENT'] = [string]$UiTextPercent }
+# Explicit child-only review options survive the inherited-environment scrub.
+if ($RemasterLighting) {
+  $start.EnvironmentVariables['KFX_LIGHTING_SMOOTH_CELLS'] = '1'
+  $start.EnvironmentVariables['KFX_LIGHTING_BLEND_PALETTE'] = '1'
+  $start.EnvironmentVariables['KFX_LIGHTING_FILTER_SHADOWS'] = '1'
+}
+if ($RemasterEmissive) { $start.EnvironmentVariables['KFX_DX12_EMISSIVE'] = 'source-v1' }
 if ($NativeTerrain) { $start.EnvironmentVariables['KFX_HD_TERRAIN_PACK'] = 'off' }
 elseif ($HdTerrainPack) { $start.EnvironmentVariables['KFX_HD_TERRAIN_PACK'] = $HdTerrainPack }
 Write-Host 'Single-player preview. Save regularly; a renderer failure does not recover unsaved progress.'

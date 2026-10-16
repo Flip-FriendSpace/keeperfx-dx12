@@ -4,6 +4,7 @@
 #include "RendererDX12.h"
 #if defined(KFX_ENABLE_DX12)
 #include "OwnedGameWorld.h"
+#include "EmissivePresentation.h"
 #include "DX12LiveBenchmark.h"
 #include "OwnedWorldViewRenderer.h"
 #include "OwnedWorldOverlayCapture.h"
@@ -418,12 +419,19 @@ bool RendererDX12::Init()
 {
     ASSERT_GAME_THREAD();
     try {
+        SYNCLOG("DX12 emissive presentation: %s",EmissivePresentationEnabled()?"source-v1":"off");
         impl_=std::make_unique<Impl>();auto& r=*impl_;
         auto* window=Impl::Window();
         if(!window || !window->GetNativeWindowHandle())throw std::runtime_error("DX12 requires the native Windows game window");
         window->GetDrawableSize(&r.drawable_w,&r.drawable_h);
         dx12::Options options;options.debug=true;options.vsync=vsync_enabled!=0;
         options.gpu_validation=std::getenv("KFX_DX12_GPU_VALIDATION")!=nullptr;
+        const auto lighting_enabled=[](const char* name) {
+            const char* value=std::getenv(name);return value && std::string(value)=="1";
+        };
+        if(lighting_enabled("KFX_LIGHTING_SMOOTH_CELLS"))options.lighting_remaster|=dx12::SmoothLightCells;
+        if(lighting_enabled("KFX_LIGHTING_BLEND_PALETTE"))options.lighting_remaster|=dx12::BlendPaletteRows;
+        if(lighting_enabled("KFX_LIGHTING_FILTER_SHADOWS"))options.lighting_remaster|=dx12::FilterShadowCoverage;
         const char* performance = std::getenv("KFX_DX12_PERFORMANCE");
         if(performance && std::string(performance)=="1") {
             options.debug=false;options.gpu_validation=false;
@@ -440,6 +448,7 @@ bool RendererDX12::Init()
         SYNCLOG("DX12 adapter: %s (vendor %u); debug %d; GPU validation %d",
             device_info.adapter.c_str(), device_info.vendor_id,
             int(device_info.debug_enabled), int(device_info.gpu_validation_enabled));
+        SYNCLOG("DX12 lighting remaster flags: %u", options.lighting_remaster);
         r.device.EnableRuntimeTimingCompletions(r.benchmark.enabled);
         if (local_camera_reference_enabled()) {
             if (const char* value = std::getenv("KFX_DX12_REMOVE_AFTER_SUBMISSIONS")) {

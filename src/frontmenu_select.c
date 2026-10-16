@@ -121,7 +121,7 @@ void frontend_draw_level_select_button(struct GuiButton *gbtn)
     RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
     LbTextSetFont(frontend_font[i]);
     // This text is a bit condensed - button size is smaller than text height
-    int tx_units_per_px = (gbtn->height * 13 / 11) * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi((gbtn->height * 13 / 11) * 16 / LbTextLineHeight());
     i = LbTextLineHeight() * tx_units_per_px / 16;
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, i);
     if (lvinfo->name_stridx > 0)
@@ -204,7 +204,7 @@ void frontend_draw_level_select_mappack(struct GuiButton *gbtn)
     RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
     LbTextSetFont(frontend_font[2]);
     int tx_units_per_px;
-    tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
+    tx_units_per_px = LbTextScaleUi(gbtn->height * 16 / LbTextLineHeight());
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
     LbTextDrawResized(0, 0, tx_units_per_px, text);
 }
@@ -289,7 +289,7 @@ void frontend_draw_campaign_select_button(struct GuiButton *gbtn)
     RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
     LbTextSetFont(frontend_font[i]);
     // This text is a bit condensed - button size is smaller than text height
-    int tx_units_per_px = (gbtn->height * 13 / 11) * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi((gbtn->height * 13 / 11) * 16 / LbTextLineHeight());
     int height = LbTextLineHeight() * tx_units_per_px / 16;
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, height);
     const char *stars = "";
@@ -592,7 +592,7 @@ void frontend_draw_mp_mappack_select_button(struct GuiButton *gbtn)
     LbTextSetFont(frontend_font[i]);
     int tx_units_per_px;
     // This text is a bit condensed - button size is smaller than text height
-    tx_units_per_px = (gbtn->height*13/11) * 16 / LbTextLineHeight();
+    tx_units_per_px = LbTextScaleUi((gbtn->height*13/11) * 16 / LbTextLineHeight());
     i = LbTextLineHeight() * tx_units_per_px / 16;
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, i);
     LbTextDrawResized(0, 0, tx_units_per_px, campgn->display_name);
@@ -621,7 +621,7 @@ void frontend_draw_mappack_select_button(struct GuiButton *gbtn)
     LbTextSetFont(frontend_font[i]);
     int tx_units_per_px;
     // This text is a bit condensed - button size is smaller than text height
-    tx_units_per_px = (gbtn->height*13/11) * 16 / LbTextLineHeight();
+    tx_units_per_px = LbTextScaleUi((gbtn->height*13/11) * 16 / LbTextLineHeight());
     i = LbTextLineHeight() * tx_units_per_px / 16;
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, i);
     LbTextDrawResized(0, 0, tx_units_per_px, campgn->display_name);

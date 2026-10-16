@@ -72,6 +72,8 @@ private:
     OwnedWorldDrawSettings settings_;
     std::unique_ptr<IUIRenderer> ui_;
     float sprite_z_=0;
+    uint32_t source_animation_=0;
+    uint32_t source_class_=0,source_model_=0;
     bool cursor_capture_=false;
     bool parchment_capture_=false,zoom_box_capture_=false;
     bool dispatch_active_=false,external_overlay_=false;

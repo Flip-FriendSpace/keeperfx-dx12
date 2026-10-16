@@ -22,6 +22,7 @@
 extern "C" {
 #endif
 /******************************************************************************/
+TbBool request_local_reference_frame_step(void);
 void process_dungeon_destroy(struct Thing* heartng);
 void initialise_devastate_dungeon_from_heart(PlayerNumber plyr_idx);
 /******************************************************************************/

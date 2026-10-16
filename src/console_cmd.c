@@ -47,6 +47,7 @@
 #include "frontmenu_ingame_evnt.h"
 #include "frontmenu_ingame_tabs.h"
 #include "game_legacy.h"
+#include "game_loop.h"
 #include "game_merge.h"
 #include "gui_boxmenu.h"
 #include "gui_msgs.h"
@@ -1010,6 +1011,8 @@ static TbBool cmd_renderbench(PlayerNumber plyr_idx, char *args)
 
 TbBool cmd_step(PlayerNumber plyr_idx, char * args)
 {
+    if (local_camera_reference_enabled())
+        return request_local_reference_frame_step();
     game.frame_step = true;
     clear_flag(game.operation_flags, GOF_Paused);
     return true;

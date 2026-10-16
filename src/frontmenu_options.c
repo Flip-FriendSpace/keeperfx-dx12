@@ -149,7 +149,7 @@ void frontend_draw_define_key(struct GuiButton *gbtn)
     }
     RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
     // This text is a bit condensed - button size is smaller than text height
-    int tx_units_per_px = ((MyScreenHeight < 400) && (dbc_initialized && dbc_enabled)) ? scale_value_menu(32) : scale_value_menu(16);
+    int tx_units_per_px = LbTextScaleUi(((MyScreenHeight < 400) && (dbc_initialized && dbc_enabled)) ? scale_value_menu(32) : scale_value_menu(16));
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
     int height = LbTextLineHeight() * tx_units_per_px / 14;
     LbTextDrawResized(0, (gbtn->height - height) / 2, tx_units_per_px, get_string(game_key_settings[key_id].string_id));
@@ -357,7 +357,7 @@ void frontend_draw_invert_mouse(struct GuiButton *gbtn)
     int font_idx = frontend_button_caption_font(gbtn, frontend_mouse_over_button);
     LbTextSetFont(frontend_font[font_idx]);
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
-    int tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi(gbtn->height * 16 / LbTextLineHeight());
     const char *text;
     if (settings.first_person_move_invert) {
         text = get_string(GUIStr_On);

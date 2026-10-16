@@ -118,7 +118,7 @@ void OwnedFrameUI::SubmitPointerSprite(const TbSprite* spr,int32_t x,int32_t y,i
     if(!identity.width || !identity.height)return;
     if(units<=0){Fail(OwnedFrameStatus::InvalidInput);return;}
     auto source=sink_->UISource(spr);if(!source.Valid())return;
-    OwnedFrameQuad q;q.phase=OwnedFramePhase::Cursor;q.mode=OwnedQuadMode::Sprite;q.x0=float(x);q.y0=float(y);q.x1=q.x0+float(identity.width)*units/16.0f;q.y1=q.y0+float(identity.height)*units/16.0f;
+    OwnedFrameQuad q;q.phase=OwnedFramePhase::Cursor;q.mode=OwnedQuadMode::Sprite;q.x0=float(x);q.y0=float(y);q.x1=q.x0+float(spr->SWidth)*units/16.0f;q.y1=q.y0+float(spr->SHeight)*units/16.0f;
     q.u0=(1.0f/32)/identity.width;q.v0=(1.0f/32)/identity.height;q.u1=1-q.u0;q.v1=1-q.v0;q.source=std::move(source);q.colour_row=settings_.ui_palette;q.palette_source=OwnedQuadPaletteSource::Display;pointer_=std::move(q);
 }
 void OwnedFrameUI::SubmitKeeperHandSprite(short x,short y,unsigned short base,short angle,unsigned char group,int32_t scale,TbDrawFlagsMask flags){

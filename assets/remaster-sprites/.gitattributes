@@ -1,0 +1,3 @@
+# Preserve compressed objects and provenance/recipe hashes exactly.
+objects/**/*.z binary
+*.json -text whitespace=cr-at-eol

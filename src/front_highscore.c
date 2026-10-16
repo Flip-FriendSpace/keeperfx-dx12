@@ -133,7 +133,7 @@ void frontend_draw_high_score_table(struct GuiButton *gbtn)
     int pos_x = gbtn->scr_pos_x + spr->SWidth * fs_units_per_px / 16;
     spr = get_frontend_sprite(GFS_hugearea_thn_cor_tl);
     int pos_y = gbtn->scr_pos_y + (spr->SHeight + 3) * fs_units_per_px / 16;
-    int tx_units_per_px = scale_value_menu(16);
+    int tx_units_per_px = LbTextScaleUi(scale_value_menu(16));
     // The GUI item height should be 11 lines of text
     long col1_width = LbTextStringWidthM("99", tx_units_per_px);
     long col2_width = LbTextStringWidthM("  999", tx_units_per_px);
@@ -474,7 +474,7 @@ void frontend_draw_high_scores_mappack(struct GuiButton *gbtn)
         text = frontend_button_caption_text(gbtn);
     RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
     LbTextSetFont(frontend_font[2]);
-    int tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
+    int tx_units_per_px = LbTextScaleUi(gbtn->height * 16 / LbTextLineHeight());
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
     LbTextDrawResized((dbc_initialized && dbc_enabled) ? -30 : 0, 0, tx_units_per_px, text);
 }

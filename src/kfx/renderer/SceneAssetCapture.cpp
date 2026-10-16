@@ -938,7 +938,7 @@ void WorldSceneAppendGLShadow(const WorldSceneOutlineSession& session, SceneGLSh
         auto found = session->shadow_sources.find(key);
         if (found != session->shadow_sources.end()) shadow.source = found->second;
         else {
-            Require(source.coverage.size() <= 65536 && session->world_asset_bytes + source.coverage.size() <= 64 * 1024 * 1024,
+            Require(source.coverage.size() <= 512 * 512 && session->world_asset_bytes + source.coverage.size() <= 64 * 1024 * 1024,
                 "GL shadow shared asset budget exceeded");
             shadow.source = uint32_t(w.shadow_sources.size()); w.shadow_sources.push_back(source);
             session->shadow_sources.emplace(std::move(key), shadow.source);

@@ -1225,7 +1225,7 @@ void frontend_draw_text(struct GuiButton *gbtn)
         font_idx = frontend_button_caption_font(gbtn, frontend_mouse_over_button);
     LbTextSetFont(frontend_font[font_idx]);
     int tx_units_per_px;
-    tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
+    tx_units_per_px = LbTextScaleUi(gbtn->height * 16 / LbTextLineHeight());
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
     LbTextDrawResized(0, 0, tx_units_per_px, frontend_button_caption_text(gbtn));
 }
@@ -1262,7 +1262,7 @@ void frontend_draw_enter_text(struct GuiButton *gbtn)
     LbTextSetFont(frontend_font[font_idx]);
     RendererSetDrawFlags(0);
     int tx_units_per_px;
-    tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
+    tx_units_per_px = LbTextScaleUi(gbtn->height * 16 / LbTextLineHeight());
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
     LbTextDrawResized(0, 0, tx_units_per_px, text);
 }
@@ -1297,7 +1297,7 @@ void frontend_draw_computer_players(struct GuiButton *gbtn)
         text = get_string(GUIStr_Off);
     }
     int tx_units_per_px;
-    tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
+    tx_units_per_px = LbTextScaleUi(gbtn->height * 16 / LbTextLineHeight());
     int ln_height;
     ln_height = LbTextLineHeight() * tx_units_per_px / 16;
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, ln_height);
@@ -1320,7 +1320,7 @@ void frontend_draw_mp_mappack(struct GuiButton *gbtn)
     text = campaign.display_name;
     
     int tx_units_per_px;
-    tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
+    tx_units_per_px = LbTextScaleUi(gbtn->height * 16 / LbTextLineHeight());
     int ln_height;
     ln_height = LbTextLineHeight() * tx_units_per_px / 16;
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, ln_height);
@@ -1359,18 +1359,16 @@ void draw_scrolling_text_at(long pos_x, long pos_y, long width, long height, str
   int tx_units_per_px;
   if (dbc_initialized && dbc_enabled)
   {
-      tx_units_per_px = scale_value_by_horizontal_resolution((MyScreenWidth >= 640) ? 16 : 32);
+      tx_units_per_px = LbTextScaleUi(scale_value_by_horizontal_resolution((MyScreenWidth >= 640) ? 16 : 32));
   }
   else
   {
-      tx_units_per_px = scale_ui_value_lofi(16);
+      tx_units_per_px = LbTextScaleUi(scale_ui_value_lofi(16));
   }
-  if (text_height == 0)
-  {
-      text_height = text_string_height(tx_units_per_px, text);
-      SYNCDBG(18,"Computed message height %ld for \"%s\"",text_height,text);
-      scrollwnd->text_height = text_height;
-  }
+  // Font, resolution and text scale may change while this window is open.
+  // Measure against the same scale and clipping width used for this draw.
+  text_height = text_string_height(tx_units_per_px, text);
+  scrollwnd->text_height = text_height;
   SYNCDBG(18,"Message h=%ld Area h=%ld",text_height,area_height);
   // If the text is smaller that the area we have for it - just place it at center
   if (text_height <= area_height)
@@ -1403,7 +1401,6 @@ void draw_scrolling_text_at(long pos_x, long pos_y, long width, long height, str
         scrollwnd->start_y = 0;
       }
     } else
-    if (scrollwnd->action != 0)
     {
       if (scrollwnd->start_y < height-text_height)
       {
@@ -1414,12 +1411,12 @@ void draw_scrolling_text_at(long pos_x, long pos_y, long width, long height, str
         scrollwnd->start_y = 0;
       }
     }
-    scrollwnd->action = 0;
   }
+  scrollwnd->action = 0;
   // Finally, draw the text
   LbTextDrawResized(0, scrollwnd->start_y, tx_units_per_px, text);
   // And restore default drawing options
-  LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenHeight/pixel_size, MyScreenWidth/pixel_size);
+  LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
   RendererSetDrawFlags(flg_mem);
 }
 
@@ -3942,7 +3939,7 @@ void frontend_draw_error_text_box(struct GuiButton *gbtn)
     LbTextSetFont(frontend_font[2]);
     RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
     LbTextSetWindow(gbtn->scr_pos_x + border, gbtn->scr_pos_y + 12 * units_per_px / 16, gbtn->width - 2 * border, window_height);
-    int text_units_per_px = units_per_px;
+    int text_units_per_px = LbTextScaleUi(units_per_px);
     int32_t text_height = text_string_height(text_units_per_px, gbtn->content.str);
     while (text_height > window_height && text_units_per_px > 1) {
         text_units_per_px--;
@@ -3980,10 +3977,12 @@ void frontend_draw_product_version(struct GuiButton *gbtn)
     LbTextSetFont(frontend_font[1]);
     int units_per_px = simple_frontend_sprite_height_units_per_px(gbtn, GFS_hugebutton_a05l, 100);
     int h = LbTextLineHeight() * units_per_px / 16;
+    const int text_units_per_px = LbTextScaleUi(units_per_px);
+    const int text_y_offset = (h - LbTextLineHeight() * text_units_per_px / 16) / 2;
     LbTextSetWindow(0, gbtn->scr_pos_y, gbtn->width, h);
     char text[128];
     snprintf(text, sizeof(text), "%s %s", PRODUCT_NAME, PRODUCT_VERSION);
-    LbTextDrawResized(0, 0, units_per_px, text);
+    LbTextDrawResized(0, text_y_offset, text_units_per_px, text);
 }
 
 /******************************************************************************/
