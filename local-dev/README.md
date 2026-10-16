@@ -2,6 +2,12 @@
 
 This is an unofficial Windows x64 and DirectX 12 single-player preview based on [KeeperFX](https://github.com/dkfans/keeperfx). OpenGL remains available. There are no packaged binaries for this fork yet. The upstream starting revision is `fb0ab7f4d152286d25e73189530ed5536a360478`; see also the upstream [building guide](https://github.com/dkfans/keeperfx/wiki/Building-KeeperFX).
 
+## Reviewed remaster defaults
+
+The [combined remaster installer](remaster/README.md) adds the completed V13 creature, world, hand, HUD, frontend and font review using lossless generated-asset bundles. Installation makes the reviewed profile the default for `play.ps1` and the root `Play KeeperFX.cmd`: western text at 80% above the low-resolution boundary, enhanced art, smooth lighting and the accepted emissive treatment. `-Original` selects the art comparison for one session. Normal play keeps the API and GPU validation disabled.
+
+The installer reconstructs native fallback pixels from your own matching game data, verifies all resulting hashes and retains recoverable installation backups. Frontend overlays and mod order are restored after each game. See the remaster guide for dependencies, arbitrary runtime paths, recovery, coverage and open validation limits.
+
 ## Enhanced original terrain
 
 The DX12 build installs the bundled 601-tile original terrain enhancement and loads it automatically. The 24 relief exceptions and seven solid/debug cells remain native. Use `play.ps1 -DX12Preview -NativeTerrain` to opt out for a session. See the [terrain guide](terrain/README.md) for the installer, actual asset bundle, tests and the open broader GPU stress limitation.
@@ -19,7 +25,7 @@ workspace/
   artifacts/               local build logs and test output
 ```
 
-Run examples from `workspace/`. The sibling directory names are fixed by the wrappers; adjust command paths if your checkout has another name. Keep the workspace path reasonably short: the engine's log path buffer is 144 bytes and the preview launcher checks its full log path before starting.
+Run examples from `workspace/`. The default sibling directory names follow this layout. Build, dependency, play and smoke wrappers also accept `-WorkspacePath` for an isolated source worktree; `play.ps1` additionally accepts `-RuntimePath` for a separately installed runtime. Keep the workspace path reasonably short: the engine's log path buffer is 144 bytes and the preview launcher checks its full log path before starting.
 
 Use Windows with WSL2, PowerShell 7, Git, `curl.exe` and 7-Zip for the runtime archives. Node.js is needed for live test clients; Python 3 is needed for the source/schema tests. Windows 11 and an RX 7900 GRE are the tested DX12 environment. Other hardware and Windows configurations need qualification.
 
@@ -80,7 +86,7 @@ Close KeeperFX before building or switching executables.
 ./keeperfx/local-dev/play.ps1 -DX12Preview -OpenGLFallback
 ```
 
-The default build produces `keeperfx-local.exe`; DX12 produces `keeperfx-dx12.exe` in the x64 runtime. DX12 is opt-in and x64-only. `-Jobs` controls build parallelism and `-Configuration Debug` selects a separate cache. The retained x86 path uses `-Architecture x86` without `-DX12`.
+The default build produces `keeperfx-local.exe`; DX12 produces `keeperfx-dx12.exe` in the x64 runtime. DX12 is x64-only and becomes the default launcher backend after installing the combined remaster profile; without that profile it remains an explicit `-DX12Preview` choice. `-Jobs` controls build parallelism and `-Configuration Debug` selects a separate cache. The retained x86 path uses `-Architecture x86` without `-DX12`.
 
 The preview launcher creates `keeperfx-dx12-preview.cfg` from the normal configuration on first use. It preserves other preview preferences while selecting `DX12` or `OPENGL`, `API_ENABLED=FALSE` and `REPLAY_MAX_SIZE=131072` (128 MiB). It leaves normal `keeperfx.cfg` untouched. Saves, game settings and renderer preferences remain shared user state, not a disposable profile.
 

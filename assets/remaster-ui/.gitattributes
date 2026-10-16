@@ -1,0 +1,3 @@
+# These payloads and their hash-bound manifest must retain exact bytes.
+objects/*.zlib binary
+manifest.json -text whitespace=cr-at-eol

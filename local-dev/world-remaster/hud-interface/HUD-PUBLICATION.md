@@ -1,0 +1,27 @@
+# HUD generated-input reconstruction handoff
+
+The hud_reconstruct.py module reconstructs the four selected V13 HUD banks from generated registered RGBA overlays and the user's installed native DAT/TAB/palette. It performs no filesystem, process, network or runtime operations. The caller writes the returned KFUI bytes only after its own source/output verification and installation authorization.
+
+API: reconstruct_hud_bank(bank_manifest, verified_sources, load_object) returns exact KFUI v1 bytes. verified_sources maps basenames (gui1-64.dat, gui1-64.tab, palette.dat, for example) to bytes. load_object(raw_sha256) returns decompressed raw RGBA bytes. The containing installer should verify compressed object hash/length before bounded decompression; the module verifies uncompressed hash/length. Pin Pillow==12.3.0 and numpy==2.3.5. Unexpected sources, objects, arithmetic results or dependency versions fail before a pack is returned.
+
+The companion asset fragment has schema keeperfx-hud-generated-input-fragment-v1. Bank manifests have schema keeperfx-hud-generated-ops-v1. The fragment names objects/<SHA256>.zlib containing only raw generated RGBA, and hud/banks/<bank>.json containing scalar metrics, source fingerprints, reconstruction operations and expected output hashes. No original DAT/TAB/palette, native mask, native colour field, final composite PNG, target index delta, RLE or KFUI is part of these inputs. Detailed private provenance and replay evidence remain outside the asset staging directory.
+
+The registered RGBA inputs contain generated master crop/resize pixels on transparent canvases. Native logical dimensions and bounding boxes determine their placement, but native RGB and native coverage are never applied to these objects. Each selected object was independently reconstructed from the genuine generated master and checked pixel for pixel. The final output is source-derived: generated-only input provenance does not make a legal or licensing determination about artwork.
+
+## Operations
+
+All records retain original logical dimensions, use physical dimensions multiplied by four, and preserve source FNV64 binding. The native decoder reads six-byte little-endian TAB records (uint32 offset, uint8 width, uint8 height) and signed-eight-bit DAT RLE. Positive runs contain opaque palette indices, negative runs skip transparent pixels, zero ends a row. Palette index zero can be opaque; it is not an alpha sentinel. Palette RGB6 values are multiplied by four. Canonical uncompressed DAT/TAB hashes are required; unpack a compressed installation separately before fingerprint verification.
+
+Direct overlays use Pillow alpha_composite over the native nearest-neighbour four-times RGBA. Ordinary GUI coverage is then replaced with exact native four-times coverage. The seam_texture_pixels field restores that many outer rows/columns from the native baseline. Eight status-frame/crosshair records additionally use native RGB times a luminance gain clamped to 0.65 through 1.4, with float64 arithmetic.
+
+Font contours use native alpha MinFilter(3) OR (generated alpha >=128 AND native alpha MaxFilter(3)), clipped to the native bounding box multiplied by four. This keeps changes within a one-texture-pixel native contour band. All opaque font1 pixels use palette index one. No glyph advances, canvases, baselines or hitboxes are changed.
+
+Derived states resize the parent's PREQUANTIZATION RGBA with Pillow LANCZOS. They compute gain = clip(1 + (luma(parentComposite) - luma(nativeParent)) / (luma(nativeParent) + 32), 0.6, 1.45), and output RGB = nativeTargetRGB * gain, truncated to uint8; alpha is nativeTarget alpha. Luma coefficients are 0.2126, 0.7152, 0.0722. Old v5 records use float32; missing-ui-v1 records use float64. Exact native identity aliases reuse the parent composite. Parent composites must not be quantized early.
+
+Final RGB is integer-divided by four, then mapped to the RGB6 native palette using Manhattan distance, choosing the lowest palette index on ties. Index zero is replaced with one. Signed-eight-bit output RLE uses at most 127 pixels per run and coverage >=64. KFUI records are sorted by index. Every RLE and complete bank must match its expected SHA256. Per-record decoded index and coverage hashes are also supplied, with transparent decoded indices defined as zero.
+
+## Validation and limits
+
+The frozen V13 checkpoint is dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf. Counts are gui1-64:125, gui2-64:427, font1-64:94, font2-64:224 (870 total). All 477 direct input overlays were verified against their generated masters; the graph has 338 native colour transfers and 55 identity aliases. Both the private provenance replay and this portable module reproduce all four selected V13 banks byte for byte, including decoded pixel hashes. The portable module was checked on Python 3.12.14, Pillow 12.3.0 and NumPy 2.3.5 on Windows. Expected output hashes fail closed on any platform-dependent arithmetic difference.
+
+Packaging replay is separate from game runtime validation and user acceptance. This handoff changes no artwork, controls, settings, engine source or installed games. The shared installer, dependency provisioning, licensing review, publication decision and integration tests belong to the integration/frontend owners. No new live game run is required for byte-identical reconstruction; existing V13 runtime evidence remains separate from broad visual and human acceptance.

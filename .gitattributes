@@ -1,4 +1,4 @@
-﻿# Autodetect text files
+# Autodetect text files
 * text=auto
 
 # Detection overriding patterns
@@ -21,3 +21,9 @@
 /assets/terrain/**/*.png binary
 /assets/terrain/**/*.index8 binary
 /assets/terrain/**/*.index8.gz binary
+
+# Lossless remaster objects and hash-bound recipe manifests.
+/assets/remaster-sprites/**/*.json text eol=lf
+/assets/remaster-sprites/**/*.z binary
+/assets/remaster-ui/**/*.json text eol=lf
+/assets/remaster-ui/**/*.zlib binary
