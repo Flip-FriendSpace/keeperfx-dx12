@@ -16,7 +16,7 @@ powershell -NoProfile -File local-dev/play.ps1 -RuntimePath C:\Games\KeeperFX
 
 The installer checks original data hashes, reconstructs all selected assets in a separate staging directory, verifies output hashes and installs the profile with recoverable backups. Missing or incompatible original data, encoder output or generated payloads stop installation. No artwork is regenerated during installation. Original frontend files remain in place until a play session activates the replacements.
 
-For the documented sibling workspace layout, use the root `Play KeeperFX.cmd` or `local-dev/play.ps1`. A source worktree can explicitly select its runtime workspace:
+For the documented sibling workspace layout, use the root `Play KeeperFX Enhanced.cmd` and `Play KeeperFX Original.cmd`, or `local-dev/play.ps1`. A source worktree can explicitly select its runtime workspace:
 
 ```powershell
 ./local-dev/play.ps1 -WorkspacePath C:\Projects\DK1
