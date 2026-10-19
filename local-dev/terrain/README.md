@@ -30,7 +30,7 @@ Direct executable launches can set `KFX_HD_TERRAIN_PACK=off` (or `0`) to opt out
 
 ## Coverage and rendering
 
-The bundle replaces 601 of the 632 populated physical STANDARD A/B cells at 128 by 128. The 24 woman/paired-figure relief cells, six solid cells and debug cell retain their originals. The first accepted 21 replacements are preserved byte for byte. Physical B identities start at 1000; the 61 animated logical aliases follow the native eight-phase table across all 32 variations, rather than freezing a logical tile to one enhanced frame.
+The bundle replaces 601 of the 632 populated physical STANDARD A/B cells at 128 by 128. The 24 woman/paired-figure relief cells, six solid cells and debug cell retain their originals. All replacements, including the first accepted 21, are colour-matched to their originals. Physical B identities start at 1000; the 61 animated logical aliases follow the native eight-phase table across all 32 variations, rather than freezing a logical tile to one enhanced frame.
 
 The producer authenticates each replacement against the actual native 32 by 32 pixels and source generation. World geometry and UV coverage remain unchanged. Runtime atlas references carry resolution independently of tile position; nearest sampling wraps within the tile and bilinear sampling converts palette indices to colours before interpolation. Supported dimensions are 32, 64, 128 and 256. KFHT v1 keeps its existing 64-record/8 MiB contract; v2 uses physical identities with bounds of 1,088 records/80 MiB.
 
@@ -46,7 +46,7 @@ python ./keeperfx/local-dev/terrain/verify_complete_terrain.py --before '<Origin
 
 Native tests use ASan/UBSan in `keeperfx-dev`. Twelve installer tests use synthetic fixtures, including invalid gzip, decoded size bounds and decoded hash mismatches. The live fixture owns a disposable loopback API session, restores settings, and writes local captures/receipts. `compare_captures.py` builds local visual comparison sheets from those runs (Pillow required). Do not publish captures or locally rebuilt packs containing original data.
 
-[validation.json](validation.json) records the reviewed scope: both x64 builds, 32 matching camera/terrain stages, all 601 replacements, 17,568 animation bindings, normal automatic loading and native opt-out with the API disabled. Tracked resource peaks remain within configured budgets. This does not establish whole-campaign performance, distant shimmer, every door gameplay state or full renderer qualification.
+[validation.json](validation.json) records the reviewed scope: both x64 builds, 32 matching camera/terrain stages, all 601 replacements, 17,568 animation bindings, normal automatic loading and native opt-out with the API disabled. Tracked resource peaks remain within configured budgets. That review predates the colour pass, which changed tile colours but not the pack format, tile set or rendering. It does not establish whole-campaign performance, distant shimmer, every door gameplay state or full renderer qualification.
 
 Broader GPU stress qualification remains open: GPU validation error 1358 reports an immutable page SRV in COPY_DEST layout. Same-host controls reproduce it with legacy and current terrain samplers, including unrelated outline/lens draws. The focused terrain runs have zero rejected submissions and zero GPU validation messages; the broader suite is not claimed as passing.
 
@@ -57,5 +57,13 @@ Keep the original pixels, generation masters, prompts and comparison captures in
 ```powershell
 python ./keeperfx/local-dev/terrain/export_enhanced_terrain.py --source '<accepted local terrain artifacts>' --output ./keeperfx/assets/terrain/standard-hd
 ```
+
+The bundle's tiles have been colour-matched to the original STANDARD tiles. To repeat that pass from the accepted RGB masters, run it before exporting:
+
+```powershell
+python ./keeperfx/local-dev/terrain/match_terrain_colour.py --source '<accepted local terrain artifacts>' --original-data ./runtime/keeperfx/data --output '<new local folder>'
+```
+
+Each generated family receives one exposure gain plus a hue rotation and chroma scale about neutral, so neutral stone and highlights stay neutral. Each tile then moves halfway towards its own fit (`--tile-weight`, default 0.5). The grade is fitted after re-quantization so the tiles, box-filtered back to 32 by 32, match the originals' mean L*, a* and b*. Detail and contrast are unchanged. The output folder holds the graded RGB masters, indexed tiles, a replacement pack and `colour-match-report.json`; pass it to the exporter as `--source`.
 
 The exporter requires Pillow, checks the accepted 601-record pack, and verifies every PNG against its runtime INDEX8 pixels. It publishes enhanced pixels and native hashes only, with a gzip payload containing no filename or timestamp. Review tiling joins, multi-cell motifs, palette/light response and temporal consistency before changing a family. Preserve the agreed original relief exceptions unless separately reviewed.
