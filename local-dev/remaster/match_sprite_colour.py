@@ -271,6 +271,14 @@ def is_native(rgba, scale):
     return False
 
 
+def content_key(rgba):
+    """Visible pixels cropped to their bounds, so the same picture on another canvas matches."""
+    ys, xs = np.nonzero(rgba[..., 3])
+    if not len(ys):
+        return None
+    return sha(rgba[ys.min():ys.max() + 1, xs.min():xs.max() + 1].tobytes())
+
+
 def match_anim(sp, entry, view, frames, ids, scale):
     dirs = entry.get(view) or []
     fw0, fh0 = frames[0]['frame_w'], frames[0]['frame_h']
@@ -288,7 +296,7 @@ def match_anim(sp, entry, view, frames, ids, scale):
     return best if best and best[0] <= 5 else None
 
 
-def grade_archive(sp, path, hd_cfg, orig_cfg, per_unit_weight, iterations):
+def grade_archive(sp, path, hd_cfg, orig_cfg, per_unit_weight, iterations, share_identical=False):
     z = zipfile.ZipFile(path)
     sprites = json.loads(z.read('sprites.json'))
     pixels = {}
@@ -328,10 +336,13 @@ def grade_archive(sp, path, hd_cfg, orig_cfg, per_unit_weight, iterations):
                         refs.update([('keeperfx', name, v) for v in (view, 'fp' if view == 'td' else 'td') if frames_of(native, v)][:1])
         if members:
             units.append(dict(names=[entry['name']], members=members, refs=refs))
-    # Entries sharing member files must share one grade.
+    # Entries sharing member files must share one grade; with share_identical, so must entries
+    # showing an identical frame on different canvases (such as a pose's shared endpoint).
+    content = {n: content_key(pixels[n]) if share_identical else n for u in units for n in u['members']}
+    shared = lambda a, b: ({content[n] for n in a['members']} & {content[n] for n in b['members']}) - {None}
     merged = []
     for u in units:
-        for m in [m for m in merged if m['members'] & u['members']]:
+        for m in [m for m in merged if shared(m, u)]:
             merged.remove(m)
             u = dict(names=m['names'] + u['names'], members=m['members'] | u['members'], refs=m['refs'] | u['refs'])
         merged.append(u)
@@ -439,18 +450,21 @@ def main():
     ap.add_argument('--ui', type=Path, help='ui_publication.py output holding the campaign frames')
     ap.add_argument('--game', type=Path, required=True, help='prepared runtime root with original data/ and fxdata/')
     ap.add_argument('--keeperfx', type=Path, default=REPO, help='KeeperFX checkout (original configs and creature_list)')
-    ap.add_argument('--creature-archive', action='append', help='default: the 2026-10-19 creature list')
-    ap.add_argument('--object-archive', action='append', help='default: pickups, trapdoors and combat effects')
-    ap.add_argument('--frame', action='append', help='native frontend output path; default: viframe00-21 when --ui is given')
+    ap.add_argument('--creature-archive', action='append', help='default (nothing selected): the 2026-10-19 creature list')
+    ap.add_argument('--object-archive', action='append', help='default (nothing selected): pickups, trapdoors and combat effects')
+    ap.add_argument('--frame', action='append', help='native frontend output path; default (nothing selected): viframe00-21 with --ui')
     ap.add_argument('--ui-manifest', type=Path, default=REPO / 'assets/remaster-ui/manifest.json')
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--creature-weight', type=float, default=0.5)
     ap.add_argument('--frame-weight', type=float, default=0.5)
     ap.add_argument('--iterations', type=int, default=16)
+    ap.add_argument('--share-identical', action='store_true', help='entries showing an identical frame share one grade')
     args = ap.parse_args()
-    creatures = CREATURE_ARCHIVES if args.creature_archive is None else args.creature_archive
-    objects = OBJECT_ARCHIVES if args.object_archive is None else args.object_archive
-    frames = args.frame if args.frame is not None else (FRAMES if args.ui else [])
+    # The 2026-10-19 lists apply only when nothing is selected explicitly.
+    explicit = any(v is not None for v in (args.creature_archive, args.object_archive, args.frame))
+    creatures = args.creature_archive or ([] if explicit else CREATURE_ARCHIVES)
+    objects = args.object_archive or ([] if explicit else OBJECT_ARCHIVES)
+    frames = args.frame or ([] if explicit or not args.ui else FRAMES)
     if frames and not args.ui:
         raise SystemExit('--frame needs --ui.')
     if args.output.exists() and any(args.output.iterdir()):
@@ -469,8 +483,9 @@ def main():
                   sources={n: sp.bank.hashes[n] for n in sp.bank.hashes}, archives={}, frames=None)
     for name, weight in [(n, args.creature_weight) for n in creatures] + [(n, 1.0) for n in objects]:
         src = args.sprites / 'fxdata' / name
-        z, pixels, grades, r = grade_archive(sp, src, hd_cfg, orig_cfg, weight, args.iterations)
-        r.update(source_sha256=sha(src.read_bytes()), unit_weight=weight, graded_members=len(grades))
+        z, pixels, grades, r = grade_archive(sp, src, hd_cfg, orig_cfg, weight, args.iterations, args.share_identical)
+        r.update(source_sha256=sha(src.read_bytes()), unit_weight=weight, share_identical=args.share_identical,
+                 graded_members=len(grades))
         if grades:
             dest = args.output / 'fxdata' / name
             write_archive(sp, z, pixels, grades, dest)

@@ -51,7 +51,14 @@ python -B local-dev/remaster/match_sprite_colour.py --sprites C:\Temp\remaster-s
 python -B local-dev/remaster/apply_colour_match.py --graded C:\Temp\remaster-graded --before-ui C:\Temp\remaster-ui
 ```
 
-Each HD animation is compared with the original frames it replaces, after the game's own conversion to the palette. KeeperFX-only objects (sentry, ballista, disarmed traps, barrel) are compared with KeeperFX's native sprites. The grade is a linear-light gain per channel (exposure and white balance) followed by a chroma scale about neutral, fitted so the mean L\*a\*b\* and the chroma measured on the original pixel grid match. Each creature receives one grade, and each animation then moves halfway towards its own fit (`--creature-weight`); objects are fitted one by one. Original fallback frames, alpha, `sprites.json` and archive structure are unchanged. In the campaign frames, only generated pixels are graded, and they are re-quantized to palette entries the frame already uses. The patch tool refuses a bundle that already records a colour match, checks that only enhanced members changed, and stores the graded pixels losslessly. Rebuild both bundles afterwards and compare the outputs with the graded files.
+Each HD animation is compared with the original frames it replaces, after the game's own conversion to the palette. KeeperFX-only objects (sentry, ballista, disarmed traps, barrel) are compared with KeeperFX's native sprites. The grade is a linear-light gain per channel (exposure and white balance) followed by a chroma scale about neutral, fitted so the mean L\*a\*b\* and the chroma measured on the original pixel grid match. Each creature receives one grade, and each animation then moves halfway towards its own fit (`--creature-weight`); objects are fitted one by one. Original fallback frames, alpha, `sprites.json` and archive structure are unchanged. In the campaign frames, only generated pixels are graded, and they are re-quantized to palette entries the frame already uses. The patch tool never grades an archive twice: a later pass may only change archives that no earlier pass changed, and it is appended to the bundle's record. It checks that only enhanced members changed and stores the graded pixels losslessly. A UI bundle that already records a colour match is refused. Rebuild both bundles afterwards and compare the outputs with the graded files.
+
+A second pass matched the power hand (`hand-cursors.zip`). Each hand animation is fitted on its own, and Hold shares Pickup's grade because its frame is Pickup's last frame on another canvas (`--share-identical`). Selecting an archive or frame turns off the default lists:
+
+```powershell
+python -B local-dev/remaster/match_sprite_colour.py --sprites C:\Temp\remaster-sprites --game C:\Games\KeeperFX --object-archive hand-cursors.zip --share-identical --output C:\Temp\remaster-hand
+python -B local-dev/remaster/apply_colour_match.py --graded C:\Temp\remaster-hand
+```
 
 ## Validation and limits
 
@@ -63,7 +70,7 @@ python3 local-dev/remaster/test_contracts.py --output /tmp/keeperfx-remaster-tes
 
 Add `--ui-packs <locally-installed-ui-directory>` for full positive and malformed-package checks. GPU validation and performance measurements are separate from these CPU tests.
 
-The user accepted the combined V13 visual preview on 2026-10-16 and the colour-matched sprites and campaign frames on 2026-10-19. This acceptance does not qualify every creature action, localisation, map or GPU. The broader resource-state stress investigation and the integrated-GPU resize warning remain open. Captures and failed evidence are retained locally. No new all-map performance claim is made by this publication.
+The user accepted the combined V13 visual preview on 2026-10-16 and the colour-matched sprites and campaign frames on 2026-10-19. The power-hand pass, made the same day at the user's request, has not yet been checked in game. This acceptance does not qualify every creature action, localisation, map or GPU. The broader resource-state stress investigation and the integrated-GPU resize warning remain open. Captures and failed evidence are retained locally. No new all-map performance claim is made by this publication.
 
 Installer failure injection uses synthetic temporary files only:
 

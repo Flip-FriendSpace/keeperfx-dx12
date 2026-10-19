@@ -5,7 +5,9 @@ The graded files must come from outputs built from the current bundles. Each cha
 PNG member becomes a lossless pixel object in its archive recipe, after checking that
 only enhanced members changed and that alpha is untouched. Each graded campaign frame
 gets a new generated-index layer that reproduces it exactly. Everything else stays byte
-for byte. Rebuild both bundles afterwards and compare the outputs with the graded files.
+for byte. A later sprite pass may only grade archives that no earlier pass changed; it is
+appended to the bundle's colour_match record. Rebuild both bundles afterwards and compare
+the outputs with the graded files.
 """
 from pathlib import Path
 import argparse
@@ -65,15 +67,19 @@ def graded_member(assets, frame, png, published):
 def apply_sprites(assets, graded, report, report_sha):
     raw_manifest = read_regular(assets / 'manifest.json')
     manifest = parse_json(raw_manifest, 'manifest.json')
-    if 'colour_match' in manifest:
-        raise AssetError('The sprite bundle is already colour-matched')
+    earlier = manifest.get('colour_match')
+    matched = set()
+    for previous in [earlier, *earlier.get('later_passes', [])] if earlier else []:
+        matched.update(previous['archives'])
     published = manifest.get('published_pngs', {})
     before_recipes = recipes(assets, manifest)
     before_objects = sprite_objects(manifest, before_recipes)
     files = {record['file'] for record in manifest['archives']}
-    unknown = {'fxdata/' + p.name for p in (graded / 'fxdata').glob('*.zip')} - files
-    if unknown:
-        raise AssetError('Graded archives missing from the bundle: ' + ', '.join(sorted(unknown)))
+    archives = {'fxdata/' + p.name for p in (graded / 'fxdata').glob('*.zip')}
+    if archives - files:
+        raise AssetError('Graded archives missing from the bundle: ' + ', '.join(sorted(archives - files)))
+    if archives & matched:
+        raise AssetError('Archives already colour-matched: ' + ', '.join(sorted(archives & matched)))
     changes, after_recipes = {}, []
     for record, recipe in zip(manifest['archives'], before_recipes):
         path = graded / record['file']
@@ -81,6 +87,7 @@ def apply_sprites(assets, graded, report, report_sha):
             after_recipes.append(recipe)
             continue
         raw = read_regular(path)
+        name = Path(record['file']).name
         changed = 0
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
             if archive.namelist() != [frame['name'] for frame in recipe['members']]:
@@ -92,11 +99,13 @@ def apply_sprites(assets, graded, report, report_sha):
                 source, image = graded_member(assets, frame, png, published)
                 frame.update(sha256=digest(png), bytes=len(png), rgba_sha256=digest(image.tobytes()), source=source)
                 changed += 1
-        name = Path(record['file']).name
         grade = report['archives'][name].get('family')
         changes[record['file']] = {'before_zip_sha256': record['reviewed_zip_sha256'], 'after_zip_sha256': digest(raw),
                                    'changed_members': changed,
-                                   'grade': grade and {'gains': grade['gains'], 'chroma_scale': grade['chroma_scale']}}
+                                   'grade': grade and {'gains': grade['gains'], 'chroma_scale': grade['chroma_scale']},
+                                   'unit_grades': [{'sprites': unit['sprites'], 'gains': unit['applied']['gains'],
+                                                    'chroma_scale': unit['applied']['chroma_scale']}
+                                                   for unit in report['archives'][name]['units'] if unit.get('applied')]}
         recipe['reviewed_zip_sha256'] = digest(raw)
         record.update(recipe=store_object(assets, encode_json(recipe)), reviewed_zip_sha256=digest(raw))
         after_recipes.append(recipe)
@@ -104,10 +113,14 @@ def apply_sprites(assets, graded, report, report_sha):
     used = {frame['source']['published']['file'] for recipe in after_recipes for frame in recipe['members']
             if 'published' in frame['source']}
     manifest['published_pngs'] = {name: value for name, value in published.items() if name in used}
-    manifest['colour_match'] = {
+    colour_pass = {
         'tool': 'local-dev/remaster/match_sprite_colour.py', 'tool_sha256': report['tool_sha256'],
         'report_sha256': report_sha, 'previous_manifest_sha256': digest(raw_manifest), 'archives': changes,
         'note': 'Colour-matched archives record the graded archive as reviewed_zip_sha256; member bytes are authoritative.'}
+    if earlier:
+        earlier.setdefault('later_passes', []).append(colour_pass)
+    else:
+        manifest['colour_match'] = colour_pass
     after_objects = sprite_objects(manifest, after_recipes)
     (assets / 'manifest.json').write_bytes(encode_json(manifest))
     for sha in sorted(before_objects - after_objects):
@@ -117,11 +130,15 @@ def apply_sprites(assets, graded, report, report_sha):
         raise AssetError('Sprite object store differs from the manifest references')
     provenance_path = assets / 'provenance.json'
     provenance = parse_json(read_regular(provenance_path), 'provenance.json')
-    provenance['colour_match'] = {
+    summary = {
         'previous_publication_manifest_sha256': digest(raw_manifest), 'report_sha256': report_sha,
         'archives': len(changes), 'members': sum(c['changed_members'] for c in changes.values()),
         'published_pngs_still_reused': len(manifest['published_pngs']),
         'scope': 'Enhanced PNG colour only; original fallback members, alpha, sprites.json, configuration and member order unchanged.'}
+    if earlier:
+        provenance['colour_match'].setdefault('later_passes', []).append(summary)
+    else:
+        provenance['colour_match'] = summary
     provenance['publication_manifest_sha256'] = digest(encode_json(manifest))
     provenance_path.write_bytes(encode_json(provenance).replace(b'\n', b'\r\n'))
     return {'archives': len(changes), 'members': sum(c['changed_members'] for c in changes.values()),
