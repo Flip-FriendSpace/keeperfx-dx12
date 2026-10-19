@@ -1,6 +1,6 @@
 # Reviewed remaster defaults
 
-This package installs the completed V13 review as the default Windows launcher profile. It combines the reviewed creature and world sprites, hand and pointers, HUD, frontend art and fonts with the existing enhanced terrain and modern English audio packages.
+This package installs the completed V13 review as the default Windows launcher profile. It combines the reviewed creature and world sprites, hand and pointers, HUD, frontend art and fonts with the existing enhanced terrain and modern English audio packages. Sprite and campaign-frame colours are matched to the original art (see [Colour match](#colour-match)).
 
 The profile uses 80% western text at 720p and above, smooth light cells, interpolated light palettes, filtered shadows and the reviewed source-aware emissive treatment. Original animation timing, logical sprite dimensions and anchors remain unchanged. The Dungeon Heart highlight clamp and hand masking corrections are included. Low-resolution and double-byte text retain native sizing.
 
@@ -40,6 +40,19 @@ Generated replacements use compressed, content-addressed objects and explicit re
 
 Runtime ZIPs, combined packages, native game pixels, palettes, extracted reference sheets, screenshots, saves and build output remain outside Git. The original game assets retain their owners' rights. See the asset notices under `assets/remaster-sprites/` and `assets/remaster-ui/`, and the existing terrain/audio notices.
 
+## Colour match
+
+The enhanced pixels of 28 sprite archives (25 creatures and heroes, pickups, traps and doors, combat effects) and the 22 campaign-map frames have been colour-matched to the original art. To repeat that pass, build both bundles as they were before it, grade them and store the result:
+
+```powershell
+python -B tools/import_remaster_sprites.py --assets assets/remaster-sprites --data C:\Games\KeeperFX\data --output C:\Temp\remaster-sprites
+python -B local-dev/world-remaster/frontend-art/ui_publication.py --assets assets/remaster-ui --game-root C:\Games\KeeperFX --output C:\Temp\remaster-ui
+python -B local-dev/remaster/match_sprite_colour.py --sprites C:\Temp\remaster-sprites --ui C:\Temp\remaster-ui --game C:\Games\KeeperFX --output C:\Temp\remaster-graded
+python -B local-dev/remaster/apply_colour_match.py --graded C:\Temp\remaster-graded --before-ui C:\Temp\remaster-ui
+```
+
+Each HD animation is compared with the original frames it replaces, after the game's own conversion to the palette. KeeperFX-only objects (sentry, ballista, disarmed traps, barrel) are compared with KeeperFX's native sprites. The grade is a linear-light gain per channel (exposure and white balance) followed by a chroma scale about neutral, fitted so the mean L\*a\*b\* and the chroma measured on the original pixel grid match. Each creature receives one grade, and each animation then moves halfway towards its own fit (`--creature-weight`); objects are fitted one by one. Original fallback frames, alpha, `sprites.json` and archive structure are unchanged. In the campaign frames, only generated pixels are graded, and they are re-quantized to palette entries the frame already uses. The patch tool refuses a bundle that already records a colour match, checks that only enhanced members changed, and stores the graded pixels losslessly. Rebuild both bundles afterwards and compare the outputs with the graded files.
+
 ## Validation and limits
 
 The reviewed source is built for both the default and DX12 x64 targets in the dedicated `keeperfx-dev` distribution. Original-campaign simulation checks cover DX12, OpenGL and software. Decoder, raw-index, shadow, lighting and emissive contract tests use sanitizers and the accepted UI sidecars. Run the portable CPU suite inside that distribution:
@@ -50,7 +63,7 @@ python3 local-dev/remaster/test_contracts.py --output /tmp/keeperfx-remaster-tes
 
 Add `--ui-packs <locally-installed-ui-directory>` for full positive and malformed-package checks. GPU validation and performance measurements are separate from these CPU tests.
 
-The user accepted the combined V13 visual preview on 2026-10-16. This acceptance does not qualify every creature action, localisation, map or GPU. The broader resource-state stress investigation and the integrated-GPU resize warning remain open. Captures and failed evidence are retained locally. No new all-map performance claim is made by this publication.
+The user accepted the combined V13 visual preview on 2026-10-16 and the colour-matched sprites and campaign frames on 2026-10-19. This acceptance does not qualify every creature action, localisation, map or GPU. The broader resource-state stress investigation and the integrated-GPU resize warning remain open. Captures and failed evidence are retained locally. No new all-map performance claim is made by this publication.
 
 Installer failure injection uses synthetic temporary files only:
 

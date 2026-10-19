@@ -1,8 +1,8 @@
 # Reviewed sprite bundle
 
-This bundle preserves the V13 sprite selection `dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf`. It covers all 41 selected creature, hero, hand, world-object and effect archives, plus their 32 exact configuration files. The standalone mod basename is `keeper_remaster_default`.
+This bundle preserves the V13 sprite selection `dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf`. It covers all 41 selected creature, hero, hand, world-object and effect archives, plus their 32 exact configuration files. The standalone mod basename is `keeper_remaster_default`. The enhanced pixels of 28 archives (25 creatures and heroes, pickups, traps and doors, combat effects) are colour-matched to the original sprites; member names, alpha, `sprites.json`, original fallback frames and configuration are unchanged by that pass.
 
-Enhanced pixels and metadata are stored once as SHA256-addressed zlib objects. Exact RGB palette indices and the original alpha mask reconstruct the accepted RGBA pixels; the pinned PNG encoder must then reproduce every accepted PNG byte. This is lossless compression, not colour reduction. The 262 unchanged enhanced PNGs are reused through a hash-checked allowlist under assets/creatures/, verified against public/main at `2ef76fe54`; they are not stored again as new objects. No original fallback or reference pixels, runtime ZIPs, captures, saves or build output are included. Installation reconstructs those original members from the player's prepared local KeeperFX data and base `fxdata` archives.
+Enhanced pixels and metadata are stored once as SHA256-addressed zlib objects. Exact RGB palette indices and the original alpha mask reconstruct the accepted RGBA pixels; the pinned PNG encoder must then reproduce every accepted PNG byte. This is lossless compression, not colour reduction. Enhanced PNGs that already exist unchanged in the repository (65 after the colour match) are reused through a hash-checked allowlist under assets/creatures/, verified against public/main at `2ef76fe54`; they are not stored again as new objects. No original fallback or reference pixels, runtime ZIPs, captures, saves or build output are included. Installation reconstructs those original members from the player's prepared local KeeperFX data and base `fxdata` archives.
 
 ## Reconstruct locally
 
@@ -23,6 +23,8 @@ The output must be a new directory or an existing installation with a matching r
 ## Format and API
 
 `manifest.json` has schema 2 and id `remaster-v13-sprites`. It records the reviewed selection, original-source hashes, 41 archive recipes, 32 configuration objects, counts and the output basename. An object descriptor records SHA256 and byte length before and after zlib compression. Its path is derived as `objects/XX/SHA256.z`; timestamps are absent.
+
+`colour_match` records the colour pass: the previous manifest hash, the tool and report hashes, and for each changed archive its hashes before and after and its grade. For those archives `reviewed_zip_sha256` identifies the graded archive. The pass is reproduced and stored with `local-dev/remaster/match_sprite_colour.py` and `apply_colour_match.py`; see the [remaster guide](../../local-dev/remaster/README.md#colour-match).
 
 Indexed stream `KFXPX1` stores exact RGB colours, an 8-bit colour-index plane, and the unchanged binary 1-bit or 8-bit alpha plane. Hidden RGB under transparent pixels is retained. `KFXRGBA1` supports exact full RGBA where more than 256 RGB colours exist. No quantization, filtering or resampling is used for enhanced artwork. The decoder checks dimensions, palette bounds, stream length, RGBA hash and final PNG hash.
 
@@ -45,7 +47,7 @@ It returns a receipt binding the manifest, original sources and all output hashe
 
 The local exporter accepts `--selection`, `--data`, `--destination` and `--report`. It verifies the exact V13 selection, identifies originals by an exhaustive local pixel comparison, and fails on an unreconstructable known fallback. Source-bank/reference pixels and local validation reports do not belong in the publication directory.
 
-UI banks, native frontend overlays, terrain, audio and engine binaries are separate installer inputs. Existing older creature assets and installers remain compatible and unchanged. The 262 allowlisted PNGs must be present at their existing repository paths; release packaging should retain them and their notice. The compact importer requires only Pillow; optional NumPy speeds the offline repacker but is not used to decode or install.
+UI banks, native frontend overlays, terrain, audio and engine binaries are separate installer inputs. Existing older creature assets and installers remain compatible and unchanged. The allowlisted PNGs must be present at their existing repository paths; release packaging should retain them and their notice. The compact importer requires only Pillow; optional NumPy speeds the offline repacker but is not used to decode or install.
 
 
 To reproduce compaction from the complete PNG-object publication:
