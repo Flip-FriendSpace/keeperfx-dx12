@@ -27,7 +27,8 @@ the decoded source hash in either case. The receipt contains `schema`, `selectio
 `manifest_sha256`, `verify_only` and `files`. Each file has `path`, `bytes`, `sha256`
 and `pixel_sha256`. Native image pixel hashes cover zeroed transparent indices
 followed by binary coverage. A UI bank's pixel hash covers its ordered record
-pixel digests. Every full output file must also match the selected V13 hash.
+pixel digests. Every full output file must also match its manifest hash: the
+V13 output, or the colour-matched V13 output for the 22 campaign frames.
 
 Output paths are `ui/{font1-64,font2-64,gui1-64,gui2-64,frontbit,frontft1,frontft2,
 frontft3,frontft4,netfont,pointer64,maphand}.kfui`, `ldata/front.raw`,

@@ -1,6 +1,6 @@
 # Original terrain, enhanced at 4x
 
-The bundle contains the 601 accepted 128 by 128 replacements for the original STANDARD A/B terrain: floors, walls, rooms, doors, gems, gold, water and lava. It preserves the original palette and world dimensions. Animated aliases resolve to their physical source frames.
+The bundle contains the 601 accepted 128 by 128 replacements for the original STANDARD A/B terrain: floors, walls, rooms, doors, gems, gold, water and lava. It preserves the original palette and world dimensions. Each tile is colour-matched to its original's average lightness and colour. Animated aliases resolve to their physical source frames.
 
 ![Selected enhanced tiles](preview.jpg)
 

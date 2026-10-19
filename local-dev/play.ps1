@@ -194,7 +194,7 @@ elseif ($HdTerrainPack) { $start.EnvironmentVariables['KFX_HD_TERRAIN_PACK'] = $
 Write-Host 'Single-player preview. Save regularly; a renderer failure does not recover unsaved progress.'
 Write-Host "Preview diagnostic log: $previewLog"
 if ($preservedLog) { Write-Host "Previous default log preserved: $preservedLog" }
-Write-Host 'For a manual OpenGL restart: Play KeeperFX DX12 Preview OpenGL.cmd'
+Write-Host 'For a manual OpenGL restart, run play.ps1 again with -DX12Preview -OpenGLFallback.'
 $process = [Diagnostics.Process]::Start($start)
 if ($null -eq $process) { throw 'KeeperFX preview did not start.' }
 if ($PassThru) { return $process }
