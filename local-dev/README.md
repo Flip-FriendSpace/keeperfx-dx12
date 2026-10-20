@@ -125,7 +125,7 @@ KeeperFX source is GPL version 2 or, at your option, any later version; see [LIC
 
 ## Modern original English audio
 
-[Modern original English audio](audio/README.md) is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).
+[Modern original English audio](audio/README.md) v2.1 is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).
 
 ## Enhanced creature sprite pipeline
 

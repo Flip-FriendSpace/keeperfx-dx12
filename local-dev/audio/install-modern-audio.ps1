@@ -54,7 +54,7 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.package -ne $modName -or $manifest.status -ne 'complete' -or $manifest.files.Count -ne 734 -or
     $manifest.coverage.speech -ne 125 -or $manifest.coverage.effect -ne 569 -or $manifest.coverage.campaign -ne 40) {
-    throw 'The complete original English Modern audio v1 package is required.'
+    throw 'The complete original English Modern audio package is required.'
 }
 $seen = @{}
 foreach ($entry in $manifest.files) {

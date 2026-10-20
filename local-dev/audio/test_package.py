@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Validate the bundled audio without game banks or third-party Python modules."""
+import argparse
 from collections import Counter
 import configparser
 import hashlib
@@ -10,7 +11,9 @@ import wave
 
 def main():
     repo = Path(__file__).resolve().parents[2]
-    package = repo / "config/mods/dk_modern_audio"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package-directory", type=Path, default=repo / "config/mods/dk_modern_audio")
+    package = parser.parse_args().package_directory
     manifest = json.loads((package / "local-audio-mod.json").read_text())
     expected = {"speech": 125, "effect": 569, "campaign": 40}
     assert manifest["package"] == "dk_modern_audio"
