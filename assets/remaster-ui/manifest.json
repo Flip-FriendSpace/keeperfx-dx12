@@ -8788,12 +8788,6 @@
       "compressed_sha256": "816197af756e215df75edff9764b9b9ab340b5de06c7a95fae953c031b6356b5",
       "role": "generated registered hand/cursor RGBA only; native gain/fallback excluded"
     },
-    "d38183a0b0c53ab8685882e0816a08c78ce3f4a4ec4aaf62a471963a505d8ee7": {
-      "bytes": 133120,
-      "compressed_bytes": 24432,
-      "compressed_sha256": "939a33896bdbcb05095d87fd1c9e46cda55937afe22b71b6ea44e233460186bf",
-      "role": "generated registered hand/cursor RGBA only; native gain/fallback excluded"
-    },
     "6b135f79c88fd8f606d19bb8ce0022e96413986dd4f76bd4236724f7a842d6b5": {
       "bytes": 233856,
       "compressed_bytes": 40397,
@@ -8918,12 +8912,6 @@
       "bytes": 282799,
       "compressed_bytes": 37446,
       "compressed_sha256": "237d1c0c323c8ca08361857451de006f263b5a1f2078df95dfce8b84e9b9b967",
-      "role": "hand/cursor generated/native operator graph metadata only"
-    },
-    "a38361dff769393624f2520efc6bc4e948a30980003b6b503f26c22895281e94": {
-      "bytes": 1462,
-      "compressed_bytes": 585,
-      "compressed_sha256": "3557fce88c762c8822dadf78b269c22c0c39681bb133dc5240c8e0236da8378c",
       "role": "hand/cursor generated/native operator graph metadata only"
     },
     "ff71cf438282eabc75a9886b537e047f3a2cf0fb0d4b1402dc352360802fd6f1": {
@@ -10554,13 +10542,14 @@
     },
     {
       "output": "ui/frontbit.kfui",
-      "bytes": 2925020,
-      "sha256": "f793d5df98583780b2f81011cd5dadc03753539b37907b2235fc4a50f734a8ce",
+      "bytes": 2924977,
+      "sha256": "fd730a56e0967a9a7a9e6393e4d67564a1dcbe521410a5dc981db9d9b8b89cc7",
       "records": [
         {
           "index": 1,
-          "pixel_sha256": "dd286b354fe799c21dc487c1d44197b3333331b23e59a790fbefc80f6e39af00",
-          "operator": "hand"
+          "pixel_sha256": "5410c5ed4f7c6b15dabd39f6ddea85e0a7a2c7e5f5587c831fc31389e3c5d792",
+          "operator": "faithful",
+          "method": "oriented-4x-v1"
         },
         {
           "index": 2,
@@ -11461,8 +11450,7 @@
       "data": "ldata/frontbit.dat",
       "table": "ldata/frontbit.tab",
       "palette": "ldata/front.pal",
-      "operator": "mixed",
-      "hand_recipe": "a38361dff769393624f2520efc6bc4e948a30980003b6b503f26c22895281e94"
+      "operator": "frontend"
     },
     {
       "output": "ui/frontft1.kfui",
@@ -25796,5 +25784,21 @@
       "chroma_scale": 0.8128434288931936
     },
     "note": "Generated pixels only, re-quantized to palette entries each frame already used; native pixels and coverage unchanged."
-  }
+  },
+  "record_updates": [
+    {
+      "bank": "frontbit",
+      "index": 1,
+      "previous_manifest_sha256": "96f1d4cd43025586245e94fa01f4b74d1cf029f1aebb4e7c1614ff0f1b0bea78",
+      "before_pixel_sha256": "dd286b354fe799c21dc487c1d44197b3333331b23e59a790fbefc80f6e39af00",
+      "after_pixel_sha256": "5410c5ed4f7c6b15dabd39f6ddea85e0a7a2c7e5f5587c831fc31389e3c5d792",
+      "operator": "faithful",
+      "method": "oriented-4x-v1",
+      "removed_objects": [
+        "a38361dff769393624f2520efc6bc4e948a30980003b6b503f26c22895281e94",
+        "d38183a0b0c53ab8685882e0816a08c78ce3f4a4ec4aaf62a471963a505d8ee7"
+      ],
+      "note": "The generated main-menu cursor (Horned Reaper head) is replaced by a 4x upscale computed only from the native sprite and palette; no generated pixels are stored. User-approved 2026-10-19."
+    }
+  ]
 }

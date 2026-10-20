@@ -28,7 +28,8 @@ the decoded source hash in either case. The receipt contains `schema`, `selectio
 and `pixel_sha256`. Native image pixel hashes cover zeroed transparent indices
 followed by binary coverage. A UI bank's pixel hash covers its ordered record
 pixel digests. Every full output file must also match its manifest hash: the
-V13 output, or the colour-matched V13 output for the 22 campaign frames.
+V13 output, the colour-matched V13 output for the 22 campaign frames, or for `frontbit`
+the V13 bank with the faithful main-menu cursor.
 
 Output paths are `ui/{font1-64,font2-64,gui1-64,gui2-64,frontbit,frontft1,frontft2,
 frontft3,frontft4,netfont,pointer64,maphand}.kfui`, `ldata/front.raw`,
@@ -50,7 +51,10 @@ decorative frame pixels, metrics and source fingerprints are reconstructed from
 the installed data. Palette value 64 and each pipeline's historical colour
 conversion remain explicit operations. The HUD and hand modules reproduce their
 native compositing and aliases using the pinned image arithmetic. Frontend fonts
-store generated alpha without the native RGB field. Frontend button/panel material
+store generated alpha without the native RGB field. The `faithful` operator (frontbit
+sprite 1, the main-menu cursor) stores nothing: it computes a 4x upscale from the native
+sprite and palette with edge-oriented kernel regression, smooth back-projection and nearest
+CIELAB palette entries, in explicit float64 arithmetic without BLAS. Frontend button/panel material
 fields contain no native colour transfer. Huge frames retain native coverage and
 joining edges; parchment maps restore the two native flame-backdrop corners.
 

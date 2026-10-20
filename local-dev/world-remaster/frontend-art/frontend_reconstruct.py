@@ -167,6 +167,118 @@ def reconstruct_material(bank, record, sources, load_object):
     return indices.tobytes(), repeat4(mask).tobytes()
 
 
+def srgb_linear(c8):
+    c = c8 / 255.0
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def cielab(c8):
+    # Explicit products in a fixed order keep BLAS kernels out of the arithmetic.
+    r = srgb_linear(np.asarray(c8, float))
+    m = ((0.4124, 0.2126, 0.0193), (0.3576, 0.7152, 0.1192), (0.1805, 0.0722, 0.9505))
+    xyz = np.stack([r[..., 0] * m[0][j] + r[..., 1] * m[1][j] + r[..., 2] * m[2][j] for j in range(3)], -1)
+    xyz = xyz / np.array([0.95047, 1.0, 1.08883])
+    f = np.where(xyz > 216 / 24389, np.cbrt(xyz), (24389 / 27 * xyz + 16) / 116)
+    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
+
+
+def catmull_rom4(x):
+    """Separable Catmull-Rom 4x at physical pixel centres, edges clamped."""
+    def weights(t, a=-0.5):
+        t = np.abs(t)
+        return np.where(t < 1, (a + 2) * t ** 3 - (a + 3) * t ** 2 + 1,
+                        np.where(t < 2, a * t ** 3 - 5 * a * t ** 2 + 8 * a * t - 4 * a, 0))
+
+    def axis(v, ax):
+        n = v.shape[ax]
+        src = (np.arange(n * 4) + 0.5) / 4 - 0.5
+        base = np.floor(src).astype(int)
+        acc = 0
+        for k in range(-1, 3):
+            shape = [1] * v.ndim
+            shape[ax] = -1
+            acc = acc + np.take(v, np.clip(base + k, 0, n - 1), axis=ax) * weights(src - (base + k)).reshape(shape)
+        return acc
+    return axis(axis(x, 0), 1)
+
+
+def box4(x):
+    h, w = x.shape[0] // 4, x.shape[1] // 4
+    return x.reshape(h, 4, w, 4, *x.shape[2:]).mean((1, 3))
+
+
+def gaussian(x, sigma):
+    r = int(np.ceil(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    p = np.pad(x, r, mode='edge')
+    p = sum(k[i] * p[i:i + x.shape[0], :] for i in range(2 * r + 1))
+    return sum(k[i] * p[:, i:i + x.shape[1]] for i in range(2 * r + 1))
+
+
+def steer4(v, a, luma, along=1.6, across=0.45, iso=0.6, radius=3):
+    """Anisotropic kernel regression at 4x: each native sample spreads along its local edge
+    (structure tensor of coverage and luma), not across it. v is premultiplied (h, w, c)."""
+    h, w = a.shape
+    ay, ax = np.gradient(a)
+    ly, lx = np.gradient(luma)
+    jxx = gaussian(ax * ax + 0.5 * lx * lx, 1.0)
+    jyy = gaussian(ay * ay + 0.5 * ly * ly, 1.0)
+    jxy = gaussian(ax * ay + 0.5 * lx * ly, 1.0)
+    tr, det = jxx + jyy, jxx * jyy - jxy ** 2
+    l1 = tr / 2 + np.sqrt(np.maximum(tr ** 2 / 4 - det, 0))
+    l2 = tr - l1
+    coh = np.where(tr > 1e-6, (l1 - l2) / np.maximum(l1 + l2, 1e-6), 0)
+    theta = 0.5 * np.arctan2(2 * jxy, jxx - jyy)
+    gx, gy = np.cos(theta), np.sin(theta)
+    s_across, s_along = iso + (across - iso) * coh, iso + (along - iso) * coh
+    oy, ox = np.meshgrid((np.arange(h * 4) + 0.5) / 4 - 0.5, (np.arange(w * 4) + 0.5) / 4 - 0.5, indexing='ij')
+    num, den = np.zeros(oy.shape + (v.shape[2],)), np.zeros(oy.shape)
+    by, bx = np.round(oy).astype(int), np.round(ox).astype(int)
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            sy, sx = by + dy, bx + dx
+            inside = (sy >= 0) & (sy < h) & (sx >= 0) & (sx < w)
+            sy, sx = np.clip(sy, 0, h - 1), np.clip(sx, 0, w - 1)
+            ry, rx = oy - sy, ox - sx
+            u = rx * gx[sy, sx] + ry * gy[sy, sx]
+            t = -rx * gy[sy, sx] + ry * gx[sy, sx]
+            weight = np.exp(-0.5 * ((u / s_across[sy, sx]) ** 2 + (t / s_along[sy, sx]) ** 2)) * inside
+            num += weight[..., None] * v[sy, sx]
+            den += weight
+    return num / np.maximum(den, 1e-9)[..., None]
+
+
+def reconstruct_faithful(bank, record, sources, load_object):
+    """4x upscale computed only from the native sprite and palette; nothing generated is stored.
+
+    Edge-oriented kernel regression smooths the silhouette and colour, three smooth
+    back-projection passes pull each 4x4 block's mean towards its native pixel, and each
+    pixel takes the nearest palette entry in CIELAB (index 0 excluded).
+    """
+    preflight()
+    require(record.get('method') == 'oriented-4x-v1' and bank['scale'] == 4, 'Unsupported faithful upscale')
+    original, mask = native(sources, bank['name'], record['index'])
+    pal = np.frombuffer(sources[bank['palette']], np.uint8).reshape(256, 3).astype(np.int16)
+    a = (mask > 0).astype(float)
+    target = srgb_linear(pal[original] * 4.0)
+    col = target * a[..., None]
+    luma = (col[..., 0] * 0.2126 + col[..., 1] * 0.7152 + col[..., 2] * 0.0722) ** (1 / 2.2)
+    upscaled = steer4(np.dstack([col, a]), a, luma)
+    coverage = upscaled[..., 3] >= 0.5
+    colour = np.clip(upscaled[..., :3] / np.maximum(upscaled[..., 3], 1e-3)[..., None], 0, 1)
+    covered = coverage[..., None].astype(float)
+    for _ in range(3):
+        blocks = box4(covered)
+        mean = box4(colour * covered) / np.maximum(blocks, 1e-6)
+        error = np.where((blocks > 0) & (a[..., None] > 0), target - mean, 0)
+        colour = np.clip(colour + np.stack([catmull_rom4(error[..., c]) for c in range(3)], -1), 0, 1)
+    encoded = np.where(colour <= 0.0031308, colour * 12.92, 1.055 * colour ** (1 / 2.4) - 0.055) * 255
+    distance = ((cielab(encoded)[..., None, :] - cielab(pal[1:] * 4.0)[None, None]) ** 2).sum(-1)
+    indices = np.where(coverage, distance.argmin(-1) + 1, 0).astype(np.uint8)
+    return indices.tobytes(), np.where(coverage, 255, 0).astype(np.uint8).tobytes()
+
+
 def reconstruct_native(entry, original, mask, load_object):
     """Apply only generated indexed colour; native frame masks/corners stay local."""
     preflight()

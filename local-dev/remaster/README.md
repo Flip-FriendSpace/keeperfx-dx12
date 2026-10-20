@@ -1,6 +1,6 @@
 # Reviewed remaster defaults
 
-This package installs the completed V13 review as the default Windows launcher profile. It combines the reviewed creature and world sprites, hand and pointers, HUD, frontend art and fonts with the existing enhanced terrain and modern English audio packages. Sprite and campaign-frame colours are matched to the original art (see [Colour match](#colour-match)). The power hand, Troll, Bile Demon, Imp and Dark Mistress use their later corrected art (see [Archive updates](#archive-updates)).
+This package installs the completed V13 review as the default Windows launcher profile. It combines the reviewed creature and world sprites, hand and pointers, HUD, frontend art and fonts with the existing enhanced terrain and modern English audio packages. Sprite and campaign-frame colours are matched to the original art (see [Colour match](#colour-match)). The power hand, Troll, Bile Demon, Imp and Dark Mistress use their later corrected art (see [Archive updates](#archive-updates)), and the main-menu cursor is a faithful 4x upscale of the original (see [Main-menu cursor](#main-menu-cursor)).
 
 The profile uses 80% western text at 720p and above, smooth light cells, interpolated light palettes, filtered shadows and the reviewed source-aware emissive treatment. Original animation timing, logical sprite dimensions and anchors remain unchanged. The Dungeon Heart highlight clamp and hand masking corrections are included. Low-resolution and double-byte text retain native sizing.
 
@@ -75,6 +75,10 @@ python -B local-dev/remaster/test_archive_update.py
 
 On 2026-10-19 this replaced the power hand, Troll, Bile Demon, Imp and Dark Mistress archives and `creatrs/troll.cfg` with the corrected art from the local default package. The hand, Bile Demon, Imp and Dark Mistress had been colour-matched there by the method above; the corrected Troll already measured 1.2 ΔE from the original. The Dark Mistress slap frame `slap/td/d2-01.png` is new art where V13 used the original sprite. The rebuilt archives match the local package member for member.
 
+## Main-menu cursor
+
+The generated main-menu cursor (frontbit sprite 1, the Horned Reaper head) had a different face from the original. It is replaced by a 4x upscale computed only from the native sprite and palette: edge-oriented kernel regression, three smooth back-projection passes towards the original pixel colours, then the nearest palette entry in CIELAB. No generated pixels are stored. The UI manifest's `faithful` operator recomputes the cursor from the player's data, and the record's pixel hash must match. Its coverage and colour decisions clear their thresholds by at least 1.5e-5, far above floating-point rounding, and NumPy's AVX-512, AVX2 and baseline SSE code paths and two BLAS kernels all produced the same cursor.
+
 ## Validation and limits
 
 The reviewed source is built for both the default and DX12 x64 targets in the dedicated `keeperfx-dev` distribution. Original-campaign simulation checks cover DX12, OpenGL and software. Decoder, raw-index, shadow, lighting and emissive contract tests use sanitizers and the accepted UI sidecars. Run the portable CPU suite inside that distribution:
@@ -85,7 +89,7 @@ python3 local-dev/remaster/test_contracts.py --output /tmp/keeperfx-remaster-tes
 
 Add `--ui-packs <locally-installed-ui-directory>` for full positive and malformed-package checks. GPU validation and performance measurements are separate from these CPU tests.
 
-The user accepted the combined V13 visual preview on 2026-10-16. On 2026-10-19 the user accepted the corrected Troll, Hand, Bile Demon and Dark Mistress art and the colour-matched sprites and campaign frames. The corrected Imp frames, which fix the Imp held by the hand, come from the same accepted package. The final hand colour pass, made the same day at the user's request, has not yet been checked in game. This acceptance does not qualify every creature action, localisation, map or GPU. The broader resource-state stress investigation and the integrated-GPU resize warning remain open. Captures and failed evidence are retained locally. No new all-map performance claim is made by this publication.
+The user accepted the combined V13 visual preview on 2026-10-16. On 2026-10-19 the user accepted the corrected Troll, Hand, Bile Demon and Dark Mistress art, the colour-matched sprites and campaign frames, and the faithful main-menu cursor (from a comparison sheet). The corrected Imp frames, which fix the Imp held by the hand, come from the same accepted package. The final hand colour pass, made the same day at the user's request, and the menu cursor have not yet been checked in game. This acceptance does not qualify every creature action, localisation, map or GPU. The broader resource-state stress investigation and the integrated-GPU resize warning remain open. Captures and failed evidence are retained locally. No new all-map performance claim is made by this publication.
 
 Installer failure injection uses synthetic temporary files only:
 

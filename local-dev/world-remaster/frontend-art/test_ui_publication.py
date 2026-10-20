@@ -118,6 +118,25 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(ui.pixel_digest(decoded, coverage), ui.pixel_digest(indices, mask))
         self.assertEqual(extent, len(encoded))
 
+    def test_faithful_upscale_is_derived_from_native_pixels_only(self):
+        from frontend_reconstruct import reconstruct_faithful
+        indices = bytes([0, 5, 5, 0, 5, 9, 9, 5, 5, 9, 9, 5, 0, 5, 5, 0])
+        mask = bytes(255 if value else 0 for value in indices)
+        palette = bytearray(768)
+        palette[15:18], palette[27:30] = bytes((40, 10, 5)), bytes((60, 50, 20))
+        sources = {'ldata/frontbit.tab': struct.pack('<IBB', 0, 4, 4),
+                   'ldata/frontbit.dat': ui.encode_sprite(indices, mask, 4, 4), 'ldata/front.pal': bytes(palette)}
+        bank, record = {'name': 'frontbit', 'palette': 'ldata/front.pal', 'scale': 4}, {'index': 0, 'method': 'oriented-4x-v1'}
+        upscaled, coverage = reconstruct_faithful(bank, record, sources, None)
+        self.assertEqual((upscaled, coverage), reconstruct_faithful(bank, record, sources, None))
+        self.assertEqual((len(upscaled), len(coverage)), (256, 256))
+        self.assertTrue(all(value > 0 for value, alpha in zip(upscaled, coverage) if alpha))
+        self.assertTrue(all(value == 0 for value, alpha in zip(upscaled, coverage) if not alpha))
+        self.assertEqual(set(upscaled[16 * 7 + 6:16 * 7 + 10]), {9})
+        self.assertEqual(coverage[0], 0)
+        with self.assertRaises(ValueError):
+            reconstruct_faithful(bank, dict(record, method='other'), sources, None)
+
     def test_sprite_overrun_and_truncation(self):
         for encoded in (b'\x02\x07', b'\x03\x01\x02\x03\x00', b'\xfe\x00'):
             with self.subTest(encoded=encoded), self.assertRaises(ValueError):
