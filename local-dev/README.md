@@ -4,7 +4,7 @@ This is an unofficial Windows x64 and DirectX 12 single-player preview based on 
 
 ## Reviewed remaster defaults
 
-The [combined remaster installer](remaster/README.md) adds the completed V13 creature, world, hand, HUD, frontend and font review using lossless generated-asset bundles. Installation makes the reviewed profile the default for `play.ps1` and the root `Play KeeperFX Enhanced.cmd`: western text at 80% above the low-resolution boundary, enhanced art, smooth lighting and the accepted emissive treatment. `Play KeeperFX Original.cmd`, or `-Original`, selects the art comparison for one session. Normal play keeps the API and GPU validation disabled.
+The [combined remaster installer](remaster/README.md) adds the completed V13 creature, world, hand, HUD, frontend and font review using lossless generated-asset bundles. The power hand, Troll, Bile Demon, Imp and Dark Mistress use their later corrected art, and the main-menu cursor is a faithful upscale of the original. Installation makes the reviewed profile the default for `play.ps1` and the root `Play KeeperFX Enhanced.cmd`: western text at 80% above the low-resolution boundary, enhanced art, smooth lighting and the accepted emissive treatment. `Play KeeperFX Original.cmd`, or `-Original`, selects the art comparison for one session. Normal play keeps the API and GPU validation disabled.
 
 The installer reconstructs native fallback pixels from your own matching game data, verifies all resulting hashes and retains recoverable installation backups. Frontend overlays and mod order are restored after each game. See the remaster guide for dependencies, arbitrary runtime paths, recovery, coverage and open validation limits.
 
@@ -125,7 +125,9 @@ KeeperFX source is GPL version 2 or, at your option, any later version; see [LIC
 
 ## Modern original English audio
 
-[Modern original English audio](audio/README.md) is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).
+[Modern original English audio](audio/README.md) v2.1 is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).
+
+The bundled OpenAL Soft 1.25.1 is built with only the DirectSound backend. Its default 512 × 3 frame buffer (32 ms) is too short for DirectSound on modern Windows, which then replays stale audio as crackle or tearing in busy scenes, whatever the sound files. `prepare-x64-runtime.ps1`, run by every x64 build, installs [`alsoft.ini`](alsoft.ini) beside the executables in `runtime/keeperfx-x64`; it sets 1024 × 4 frames (85 ms). Edit the source copy, not the installed one. The x86 runtime is unchanged. Rebuilding OpenAL Soft with the WASAPI backend would be the fuller fix.
 
 ## Enhanced creature sprite pipeline
 

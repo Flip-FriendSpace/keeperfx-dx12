@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 // Sealed producer commands and immutable source leases. No capture or GPU image input.
 #pragma once
 #include "RuntimeAssets.h"
@@ -83,8 +84,8 @@ struct RuntimeWorldFrame {
     std::vector<RuntimeWorldSprite> cursor_sprites;
 };
 // TileR8 is square32,64,128 or256, at unchanged32-texel world UV extent.
-// SpriteRGBA8 owns every declared texel (R=index, G=binary
-// coverage), including initialized padding; keeper slots adapt to 256/512/1024.
+// SpriteRG8 (or legacy SpriteRGBA8) owns every declared texel (R=index, G=binary
+// coverage), including initialized padding; live keeper images use their exact extent.
 // ColourRowRGBA8 is 256x1, retaining actual uploaded alpha. FadeR8 is 256x64;
 // LightmapR16 is 511x511 tightly packed little-endian uint16. Source coordinates
 // in draws are lease-local, and their declared rectangle must fit that lease.

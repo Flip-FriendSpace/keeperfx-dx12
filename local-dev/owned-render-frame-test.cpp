@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "kfx/renderer/OwnedRenderFrame.h"
 #include "kfx/renderer/PaletteIndexTable.h"
 #include <cassert>
@@ -208,6 +209,48 @@ int main()
         auto bad=invalid.Seal();assert(bad->Status()==OwnedFrameStatus::InvalidInput);bad.reset();
         invalid=box.Begin(Info(44));map.transition_id=0;assert(!invalid.SetMapFade(map));
         assert(invalid.Seal()->Status()==OwnedFrameStatus::InvalidInput);
+    }
+    // Compare pixel coverage and blend order for 32,768 input strips. The
+    // original one-command-per-strip path exhausts the budget for this case.
+    {
+        OwnedFrameMailbox box({0,0,0,10000,0,16*1024*1024});auto b=box.Begin(Info(50));
+        std::vector<OwnedFrameQuad> reference;
+        for(int y=0;y<8;++y)for(int x=0;x<4096;++x) {
+            OwnedFrameQuad q;q.mode=OwnedQuadMode::Solid;q.palette_source=OwnedQuadPaletteSource::DisplayIndex;
+            q.palette_index=uint8_t((x/4)%2);q.colour={float(q.palette_index),0,0,0.5f};
+            const int px=(y%2)?4095-x:x;q.x0=float(px);q.x1=q.x0+1;q.y0=float(y);q.y1=q.y0+1;
+            reference.push_back(q);assert(b.AddQuad(q));
+        }
+        auto overlap=reference.back();assert(b.AddQuad(overlap));reference.push_back(overlap);
+        Finish(b);auto packet=b.Seal();assert(packet->Complete() && packet->Quads().size()<10000);
+        auto raster=[](std::span<const OwnedFrameQuad> quads) {
+            std::vector<float> pixels(4096*8,0.25f);
+            for(const auto& q:quads)for(int y=int(q.y0);y<int(q.y1);++y)for(int x=int(q.x0);x<int(q.x1);++x)
+                pixels[y*4096+x]=q.colour[0]*q.colour[3]+pixels[y*4096+x]*(1-q.colour[3]);
+            return pixels;
+        };
+        assert(raster(reference)==raster(packet->Quads()));
+    }
+    {
+        OwnedFrameQuad q;q.mode=OwnedQuadMode::Solid;q.palette_source=OwnedQuadPaletteSource::DisplayIndex;q.x1=q.y1=1;
+        for(int change=0;change<8;++change) {
+            OwnedFrameMailbox box({0,0,0,2,0,65536});auto b=box.Begin(Info(60+change));assert(b.AddQuad(q));
+            auto next=q;next.x0=1;next.x1=2;
+            switch(change) {
+            case 0:next.palette_index=1;break;
+            case 1:next.colour[3]=0.5f;break;
+            case 2:next.phase=OwnedFramePhase::WorldSprites;break;
+            case 3:next.depth_test=true;break;
+            case 4:next.z_ndc=0.5f;break;
+            case 5:next.scissor_enabled=true;next.scissor_w=next.scissor_h=64;break;
+            case 6:next.parchment_capture=true;break;
+            case 7:next.palette_source=OwnedQuadPaletteSource::Fixed;break;
+            }
+            assert(b.AddQuad(next));Finish(b);assert(b.Seal()->Quads().size()==2);
+        }
+        OwnedFrameMailbox box({0,0,0,1,0,65536});auto b=box.Begin(Info(80));assert(b.AddQuad(q));
+        auto next=q;next.y0=1;next.y1=2;assert(b.AddQuad(next));next.y0=-1;next.y1=0;assert(b.AddQuad(next));
+        Finish(b);auto p=b.Seal();assert(p->Complete() && p->Quads().size()==1 && p->Quads()[0].y0==-1 && p->Quads()[0].y1==2);
     }
     bool refused=false;try {OwnedFrameMailbox impossible({1000,0,0,0,0,1});}catch(const std::invalid_argument&){refused=true;}assert(refused);
     std::cout<<"Owned frame ownership, backpressure, re-present, phase and capacity tests passed\n";

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "pre_inc.h"
 #include "RendererDX12.h"
 #if defined(KFX_ENABLE_DX12)
@@ -240,7 +241,24 @@ struct RendererDX12::Impl {
         auto packet=builder.Seal();finishing=false;
         if(!packet->Complete()) {
             if(rejected++<12) {
-                ERRORLOG("DX12 incomplete development frame: status %u",unsigned(packet->Status()));
+                ERRORLOG("DX12 incomplete development frame: status %u; terrain %lu, sprites %lu, outlines %lu, shadows %lu, quads %lu, images %lu", unsigned(packet->Status()),
+                    (unsigned long)packet->Terrain().size(), (unsigned long)packet->Sprites().size(),
+                    (unsigned long)packet->OutlineSprites().size(), (unsigned long)packet->Shadows().size(),
+                    (unsigned long)packet->Quads().size(), (unsigned long)packet->Images().size());
+                const auto memory=assets.Stats();
+                ERRORLOG("DX12 producer resource pressure: bytes %llu, peak %llu, versions %llu, identities %llu, evictions %llu",
+                    (unsigned long long)(memory.payload_bytes+memory.temporary_bytes),
+                    (unsigned long long)memory.peak_owned_bytes,(unsigned long long)memory.live_versions,
+                    (unsigned long long)memory.identities,(unsigned long long)memory.evictions);
+                std::array<size_t,size_t(OwnedFramePhase::Count)> solid{},textured{},pixels{};
+                for(const auto& q:packet->Quads()) {
+                    const auto phase=size_t(q.phase);
+                    if(q.mode==OwnedQuadMode::Solid)++solid[phase];else ++textured[phase];
+                    if(q.x1-q.x0==1 && q.y1-q.y0==1)++pixels[phase];
+                }
+                for(size_t i=0;i<solid.size();++i)if(solid[i] || textured[i])
+                    ERRORLOG("DX12 quad phase %u: solid %lu, textured %lu, single pixels %lu",unsigned(i),
+                        (unsigned long)solid[i],(unsigned long)textured[i],(unsigned long)pixels[i]);
                 for(size_t i=0;i<size_t(OwnedFramePhase::Count);++i)
                     if(packet->Phase(OwnedFramePhase(i))==OwnedPhaseState::Unsupported)
                         ERRORLOG("DX12 unsupported frame phase %u",unsigned(i));

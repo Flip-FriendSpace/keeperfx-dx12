@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "RuntimeWorldTests.h"
 #include "kfx/renderer/d3d12/OwnedWorldBridge.h"
 #include "EnhancedWorldGLOracle.h"
@@ -209,6 +210,40 @@ RuntimeWorldTestResult RunRuntimeWorldTests(Device& device,const Options& option
         device.Resize(80,64);r.Validation("after-resize80x64");
         auto fixture=synthetic;auto p=Packet(device,fixture);r.Validation("after-cpu-publication");
         r.Case("native-origin-terrain-shadow-painter-order-analytic",[&]{auto t=r.Submit(p,true);r.result.preview=r.Compare(t,reference,"analytic-native");});
+        r.Case("compact-sprites-exact-rgba-pixels-all-passes",[&]{
+            auto compact=p;std::vector<RuntimeAssetLease> sources;
+            const auto before=device.GetRuntimeResourceDiagnostics();size_t payload=0;
+            for(size_t i=0;i<fixture.sources.size();++i) {
+                const auto& src=fixture.sources[i];std::vector<uint8_t> rg;
+                for(size_t at=0;at<src.rgba.size();at+=4){rg.push_back(src.rgba[at]);rg.push_back(src.rgba[at+1]);}
+                payload+=rg.size();sources.push_back(Publish(device,RuntimeAssetKind::SpriteRG8,800000+i,src.width,src.height,rg));
+            }
+            r.Check(device.GetRuntimeResourceDiagnostics().cpu_bytes==before.cpu_bytes+payload,"Compact sprite CPU storage is not two bytes per texel");
+            for(size_t i=0;i<compact.shadows.size();++i)compact.shadows[i].source=sources[fixture.shadow_sources[i]];
+            for(size_t i=0;i<compact.sprites.size();++i)compact.sprites[i].source=sources[fixture.sprite_sources[i]];
+            auto first=r.Submit(compact,true);r.Compare(first,analytic,"compact-normal-shadow");
+            r.Check(device.GetRuntimeResourceDiagnostics().world_upload_bytes==before.world_upload_bytes+payload,"Compact sprite uploads are not two bytes per texel");
+            auto effect=fixture.sources[0].rgba;effect[0]=50;
+            std::vector<uint8_t> effect_rg;for(size_t i=0;i<effect.size();i+=4){effect_rg.push_back(effect[i]);effect_rg.push_back(effect[i+1]);}
+            auto old_effect=Publish(device,RuntimeAssetKind::SpriteRGBA8,810000,4,4,effect);
+            auto new_effect=Publish(device,RuntimeAssetKind::SpriteRG8,810000,4,4,effect_rg);
+            for(unsigned pass=0;pass<=5;++pass)for(bool flip:{false,true}) {
+                auto original=p,packed=compact;
+                original.sprites[0].source=old_effect;packed.sprites[0].source=new_effect;
+                for(auto* packet:{&original,&packed})for(auto& sprite:packet->sprites) {
+                    sprite.draw.kind=OutlinePassKind(pass);sprite.draw.flip=flip;
+                    sprite.draw.colour={0.2f,0.4f,0.6f,0.8f};
+                    const bool normal=sprite.draw.kind==OutlinePassKind::NormalSprite;
+                    sprite.draw.lookup_row=normal?0:NoSpriteColourRow;sprite.draw.source_alpha=normal?0.6f:1;
+                    if(!normal)sprite.colour_row.Reset();
+                }
+                auto old=r.Submit(original,true);Image expected;
+                const auto deadline=Clock::now()+std::chrono::seconds(25);
+                while(!device.TryReadbackRuntimeFrame(old,expected)){Require(Clock::now()<deadline,"Compact reference timeout");Pump();}
+                old.Reset();device.CollectRuntimeResources();
+                auto now=r.Submit(packed,true);r.Compare(now,expected,"compact-pass-"+std::to_string(pass)+"-flip-"+std::to_string(flip));
+            }
+        });
         r.Case("immutable-sprite-publication-alias",[&]{auto bytes=std::make_shared<std::vector<uint8_t>>(fixture.sources[0].rgba);auto lease=device.PublishRuntimeAsset(Key(RuntimeAssetKind::SpriteRGBA8,900000),{4,4},bytes);(*bytes)[0]=22;bytes.reset();auto probe=p;probe.sprites[0].source=lease;auto t=r.Submit(probe,true);r.Compare(t,analytic,"sealed-source");});
         r.Case("unchanged-1000-no-asset-upload-allocation-idle-readback",[&]{for(unsigned i=0;i<6;++i){auto t=r.Submit(p,false);}r.loop_before=device.GetRuntimeResourceDiagnostics();const auto graphics=device.GetDiagnostics();for(unsigned i=0;i<1000;++i){auto t=r.Submit(p,false);}r.loop_after=device.GetRuntimeResourceDiagnostics();r.loop_done=true;const auto& a=r.loop_before;const auto& b=r.loop_after;
             r.Check(b.world_upload_bytes==a.world_upload_bytes&&b.source_upload_bytes==a.source_upload_bytes&&b.palette_upload_bytes==a.palette_upload_bytes&&b.aligned_upload_bytes==a.aligned_upload_bytes,"Unchanged world retransmitted assets");
@@ -987,6 +1022,25 @@ RuntimeWorldTestResult RunRuntimeWorldTests(Device& device,const Options& option
                 r.comparisons.insert(r.comparisons.end(),local.comparisons.begin(),local.comparisons.end());
             } catch(...) {DestroyWindow(window);throw;}
             DestroyWindow(window);
+        });
+        r.Case("cpu-pressure-evicts-one-keeps-warm-frame-resources",[&]{
+            RuntimeResourceBudgets limits;limits.cpu_bytes=541842+4*65536;
+            r.Configure(limits);device.Resize(80,64);auto packet=Packet(device,synthetic);
+            for(unsigned i=0;i<6;++i){auto t=r.Submit(packet,true);r.Compare(t,Analytic(synthetic),"pressure-warm");}
+            const std::vector<uint8_t> rg(65536,0);
+            for(unsigned i=0;i<4;++i)Publish(device,RuntimeAssetKind::SpriteRG8,700000+i,256,128,rg);
+            const auto before=device.GetRuntimeResourceDiagnostics();
+            auto held=Publish(device,RuntimeAssetKind::SpriteRG8,700004,256,128,rg);
+            const auto after=device.GetRuntimeResourceDiagnostics();
+            r.Check(after.evictions==before.evictions+1 && after.asset_count==before.asset_count,"CPU pressure flushed more than one required entry");
+            r.Check(after.default_bytes==before.default_bytes && after.upload_bytes==before.upload_bytes
+                && after.terrain_default_bytes==before.terrain_default_bytes,"CPU pressure destroyed warm GPU resources");
+            auto t=r.Submit(packet,false);
+            const auto rendered=device.GetRuntimeResourceDiagnostics();
+            r.Check(rendered.resource_allocations==before.resource_allocations
+                && rendered.world_upload_bytes==before.world_upload_bytes,"CPU pressure forced unrelated GPU reallocation/upload");
+            t.Reset();auto pixels=r.Submit(packet,true);r.Compare(pixels,Analytic(synthetic),"pressure-preserved-pixels");
+            r.Check(held.Valid(),"CPU pressure damaged external sprite lease");r.Bound();
         });
         r.Case("foreign-world-lease-owner-rejected",[&]{r.Configure();auto packet=Packet(device,synthetic);HWND window=CreateWindowExW(0,L"STATIC",L"Foreign runtime world owner",WS_POPUP,0,0,80,64,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);Require(window!=nullptr,"Cannot create foreign owner window");try{Device foreign;foreign.Initialize(window,80,64,options);auto lease=Publish(foreign,RuntimeAssetKind::PaletteRGBA8,1,256,1,synthetic.world.palette_rgba);auto invalid=packet;invalid.palette=lease;r.Reject([&]{device.TrySubmitRuntimeWorldFrame(invalid);},"World accepted foreign Device palette");foreign.ClearRuntimeResources();}catch(...){DestroyWindow(window);throw;}DestroyWindow(window);});
         r.Case("world-after-execute-quarantine-fail-closed",[&]{r.Configure();auto packet=Packet(device,synthetic);device.SetRuntimeFailureInjection(RuntimeFailurePoint::AfterExecute);r.Reject<std::runtime_error>([&]{device.TrySubmitRuntimeWorldFrame(packet,true);},"World post-execute injection not observed");const auto failed=device.GetRuntimeResourceDiagnostics();r.Check(failed.failed&&failed.quarantined&&failed.default_bytes>0&&failed.upload_bytes>0,"Failed world execution did not retain submitted owners");r.Reject<std::logic_error>([&]{device.TrySubmitRuntimeWorldFrame(packet);},"World accepted frame after quarantine");});

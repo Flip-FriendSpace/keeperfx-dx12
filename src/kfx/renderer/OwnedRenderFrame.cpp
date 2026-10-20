@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "OwnedRenderFrame.h"
 #include "PaletteIndexTable.h"
 #include "TerrainTextureResolution.h"
@@ -27,6 +28,29 @@ bool ValidInfo(const OwnedFrameInfo& info) noexcept
 bool Asset(const OwnedAssetLease& lease, uint64_t epoch, OwnedAssetFormat format,uint32_t w,uint32_t h) noexcept
 { return lease.Valid() && lease.Key().epoch==epoch && lease.Desc()==OwnedAssetDesc{format,w,h}; }
 bool PhaseValid(OwnedFramePhase phase) noexcept { return size_t(phase)<size_t(OwnedFramePhase::Count); }
+// Selection lines arrive as adjacent strips. Preserve exact coverage and painter
+// order, without retaining one command per pixel. Overlaps must stay separate
+// because blending them once would change their colour.
+bool JoinSolidQuad(OwnedFrameQuad& a,const OwnedFrameQuad& b) noexcept
+{
+    if(a.mode!=OwnedQuadMode::Solid || b.mode!=OwnedQuadMode::Solid
+        || a.phase!=b.phase || a.parchment_capture!=b.parchment_capture
+        || a.depth_test!=b.depth_test || a.z_ndc!=b.z_ndc
+        || a.scissor_enabled!=b.scissor_enabled || a.scissor_x!=b.scissor_x
+        || a.scissor_y!=b.scissor_y || a.scissor_w!=b.scissor_w || a.scissor_h!=b.scissor_h
+        || a.colour!=b.colour || a.palette_source!=b.palette_source || a.palette_index!=b.palette_index
+        || a.x1<=a.x0 || a.y1<=a.y0 || b.x1<=b.x0 || b.y1<=b.y0)return false;
+    if(a.y0==b.y0 && a.y1==b.y1) {
+        if(a.x1==b.x0){a.x1=b.x1;return true;}
+        if(b.x1==a.x0){a.x0=b.x0;return true;}
+    }
+    if(a.x0==b.x0 && a.x1==b.x1) {
+        if(a.y1==b.y0){a.y1=b.y1;return true;}
+        if(b.y1==a.y0){a.y0=b.y0;return true;}
+    }
+    return false;
+}
+
 }
 OwnedRenderFrame::OwnedRenderFrame(const OwnedFrameLimits& limits)
 {
@@ -371,7 +395,7 @@ bool OwnedFrameBuilder::AddSprite(OwnedWorldSprite draw) noexcept
     const bool normal=draw.pass==OwnedSpritePass::Normal;
     if((draw.phase!=OwnedFramePhase::WorldSprites && draw.phase!=OwnedFramePhase::Cursor)
         || (draw.phase==OwnedFramePhase::Cursor && outline) || unsigned(draw.pass)>unsigned(OwnedSpritePass::GlowDarken) || !draw.source.Valid()
-        || draw.source.Key().epoch!=frame_->info_.epoch || draw.source.Desc().format!=OwnedAssetFormat::RGBA8
+        || draw.source.Key().epoch!=frame_->info_.epoch || (draw.source.Desc().format!=OwnedAssetFormat::RGBA8 && draw.source.Desc().format!=OwnedAssetFormat::RG8)
         || !draw.source_width || !draw.source_height || draw.source_width>1024 || draw.source_height>1024
         || draw.source_width>draw.source.Desc().width || draw.source_height>draw.source.Desc().height
         || !draw.content_height || draw.content_height>draw.source_height || draw.width<=0 || draw.height<=0
@@ -389,7 +413,7 @@ bool OwnedFrameBuilder::AddShadow(OwnedWorldShadow draw) noexcept
 {
     if(!frame_) return false;
     if(!draw.source.Valid() || draw.source.Key().epoch!=frame_->info_.epoch
-        || draw.source.Desc().format!=OwnedAssetFormat::RGBA8 || !draw.source_width || !draw.source_height
+        || (draw.source.Desc().format!=OwnedAssetFormat::RGBA8 && draw.source.Desc().format!=OwnedAssetFormat::RG8) || !draw.source_width || !draw.source_height
         || draw.source_width>draw.source.Desc().width || draw.source_height>draw.source.Desc().height
         || !std::isfinite(draw.z_ndc) || !std::isfinite(draw.darken) || draw.darken<0 || draw.darken>1) {
         Fail(OwnedFrameStatus::InvalidInput); return false;
@@ -424,6 +448,7 @@ bool OwnedFrameBuilder::AddQuad(OwnedFrameQuad draw) noexcept
     if(draw.parchment_capture && draw.phase!=OwnedFramePhase::WorldSprites && draw.phase!=OwnedFramePhase::WorldFlatOverlay
         && draw.phase!=OwnedFramePhase::GameUI && draw.phase!=OwnedFramePhase::FrontOverlay){Fail(OwnedFrameStatus::InvalidInput);return false;}
     RecordPhase(draw.parchment_capture?OwnedFramePhase::ResolveMapFade:draw.phase);
+    if(solid && !frame_->quads_.empty() && JoinSolidQuad(frame_->quads_.back(),draw))return true;
     if(frame_->quads_.size()==owner_->limits.quads) { Fail(OwnedFrameStatus::CommandLimit); return false; }
     frame_->quads_.push_back(std::move(draw)); return true;
 }

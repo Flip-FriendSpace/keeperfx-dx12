@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "OwnedRenderAssets.h"
 #include "KeeperSpriteDecode.h"
 #include <atomic>
@@ -111,6 +112,8 @@ struct Blob {
     ~Blob() { accounting->bytes.fetch_sub(size); accounting->contents.fetch_sub(1); }
 };
 struct State {
+    // Touched only by the catalog producer, never by cross-thread lease readers.
+    mutable bool recently_used = true;
     OwnedAssetKey key;
     OwnedAssetDesc desc;
     std::shared_ptr<const Blob> blob;
@@ -146,6 +149,7 @@ struct OwnedRenderAssets::Impl {
     Table<uint64_t, uint64_t> banks;
     Table<Identity, Current> identities;
     Table<OwnedAssetKey, std::weak_ptr<const owned_detail::State>> versions;
+    size_t eviction_cursor = 0;
     uint64_t publications = 0, reuses = 0, rehydrations = 0, evictions = 0;
     Impl(uint64_t e, OwnedAssetLimits l) : epoch(e), limits(l), banks(l.banks), identities(l.identities), versions(l.versions)
     { if (!epoch || !limits.bytes || !limits.contents) throw std::invalid_argument("Invalid catalog limits/epoch"); }
@@ -160,7 +164,9 @@ OwnedRenderAssets::~OwnedRenderAssets() = default;
 OwnedAssetLease OwnedRenderAssets::Find(OwnedAssetKey key) const noexcept
 {
     const auto* found = impl_->versions.Find(key);
-    return OwnedAssetLease(found ? found->lock() : nullptr);
+    auto state = found ? found->lock() : nullptr;
+    if (state) state->recently_used = true;
+    return OwnedAssetLease(std::move(state));
 }
 void OwnedRenderAssets::Collect(bool pressure) noexcept
 {
@@ -171,6 +177,30 @@ void OwnedRenderAssets::Collect(bool pressure) noexcept
     }
     for (auto& slot : impl_->versions.slots)
         if (slot.mark == 1 && slot.value.expired()) impl_->versions.Erase(slot);
+}
+void OwnedRenderAssets::MakeRoom(size_t bytes, bool version, bool content) noexcept
+{
+    auto& c = *impl_;
+    const auto fits = [&]() {
+        return c.Fits(bytes) && (!version || (c.accounting->versions.load() < c.limits.versions
+            && c.versions.count < c.limits.versions))
+            && (!content || c.accounting->contents.load() < c.limits.contents);
+    };
+    if (fits()) return;
+    Collect();
+    // Bounded second chance: preserve recently used entries and all external
+    // leases. Stop once this publication fits, retaining the rest of the cache.
+    for (size_t probes = 0; !fits() && probes < c.identities.slots.size() * 2; ++probes) {
+        auto& slot = c.identities.slots[c.eviction_cursor];
+        c.eviction_cursor = (c.eviction_cursor + 1) & (c.identities.slots.size() - 1);
+        if (slot.mark != 1 || !slot.value.cached || slot.value.cached.use_count() != 1) continue;
+        if (slot.value.cached->recently_used) { slot.value.cached->recently_used = false; continue; }
+        const auto key = slot.value.key;
+        slot.value.cached.reset(); ++c.evictions;
+        const auto at = c.versions.Locate(key);
+        if (at < c.versions.slots.size() && c.versions.slots[at].mark == 1
+            && c.versions.slots[at].value.expired()) c.versions.Erase(c.versions.slots[at]);
+    }
 }
 bool OwnedRenderAssets::AdvanceEpoch(uint64_t epoch) noexcept
 {
@@ -254,7 +284,7 @@ OwnedAssetResult OwnedRenderAssets::PublishImpl(OwnedAssetKey key, OwnedAssetVie
         return OwnedAssetPressure::None;
     };
     auto reason = pressure();
-    if (reason != OwnedAssetPressure::None) { Collect(true); reason = pressure(); }
+    if (reason != OwnedAssetPressure::None) { MakeRoom(equal ? 0 : bytes, true, !equal); reason = pressure(); }
     if (reason != OwnedAssetPressure::None) return reject(Status::WouldBlock, reason);
     try {
         std::shared_ptr<const owned_detail::Blob> blob;
@@ -284,15 +314,16 @@ OwnedAssetResult OwnedRenderAssets::PublishImpl(OwnedAssetKey key, OwnedAssetVie
     } catch (const std::bad_alloc&) { return reject(Status::AllocationFailed); }
 }
 OwnedAssetResult OwnedRenderAssets::PublishKeeperSprite(OwnedAssetKey key, std::span<const uint8_t> encoded,
-    uint32_t width, uint32_t height, uint32_t target_width, uint32_t target_height) noexcept
+    uint32_t width, uint32_t height, uint32_t target_width, uint32_t target_height, OwnedAssetFormat format) noexcept
 {
     size_t row = 0, bytes = 0;
-    const OwnedAssetDesc desc{OwnedAssetFormat::RGBA8, target_width, target_height};
-    if (!width || !height || !encoded.data() || encoded.empty()
+    const OwnedAssetDesc desc{format, target_width, target_height};
+    if ((format != OwnedAssetFormat::RG8 && format != OwnedAssetFormat::RGBA8)
+        || !width || !height || !encoded.data() || encoded.empty()
         || width > target_width || height > target_height || !Shape(desc, row, bytes)
         || !key.generation || !key.content_revision)
         return {OwnedAssetStatus::InvalidSource, OwnedAssetPressure::None, {}};
-    row /= 2; bytes /= 2; // RG decode scratch; final RGBA size was checked above.
+    if (format == OwnedAssetFormat::RGBA8) { row /= 2; bytes /= 2; } // RG decode scratch.
     if (key.epoch != impl_->epoch) return {OwnedAssetStatus::WrongEpoch, OwnedAssetPressure::None, {}};
     const auto* generation = impl_->banks.Find(key.domain);
     if (generation && key.generation != *generation)
@@ -305,14 +336,13 @@ OwnedAssetResult OwnedRenderAssets::PublishKeeperSprite(OwnedAssetKey key, std::
     if (current && desc != current->desc)
         return {OwnedAssetStatus::ContentConflict, OwnedAssetPressure::None, {}};
     const auto previous = current ? Find(current->key) : OwnedAssetLease{};
-    if (!impl_->Fits(bytes)) Collect(true);
+    if (!impl_->Fits(bytes)) MakeRoom(bytes);
     if (!impl_->Fits(bytes)) return {OwnedAssetStatus::WouldBlock, OwnedAssetPressure::Bytes, {}};
     try {
         owned_detail::Scratch scratch(impl_->accounting, bytes);
         if (!DecodeKeeperSpriteRG({{scratch.data.get(), bytes}, target_width, target_height, row}, encoded, width, height))
             return {OwnedAssetStatus::InvalidSource, OwnedAssetPressure::None, {}};
-        return PublishImpl(key, {{OwnedAssetFormat::RGBA8, target_width, target_height},
-            {scratch.data.get(), bytes}, row}, true);
+        return PublishImpl(key, {desc, {scratch.data.get(), bytes}, row}, format == OwnedAssetFormat::RGBA8);
     } catch (const std::bad_alloc&) { return {OwnedAssetStatus::AllocationFailed, OwnedAssetPressure::None, {}}; }
 }
 OwnedAssetResult OwnedRenderAssets::PublishUISprite(OwnedAssetKey key,std::span<const uint8_t> encoded,
@@ -330,7 +360,7 @@ OwnedAssetResult OwnedRenderAssets::PublishUISprite(OwnedAssetKey key,std::span<
     if(current && key.content_revision<current->key.content_revision) return {OwnedAssetStatus::StaleKey,OwnedAssetPressure::None,{}};
     if(current && desc!=current->desc) return {OwnedAssetStatus::ContentConflict,OwnedAssetPressure::None,{}};
     const auto previous=current?Find(current->key):OwnedAssetLease{};
-    if(!impl_->Fits(bytes)) Collect(true);
+    if(!impl_->Fits(bytes)) MakeRoom(bytes);
     if(!impl_->Fits(bytes)) return {OwnedAssetStatus::WouldBlock,OwnedAssetPressure::Bytes,{}};
     try {
         owned_detail::Scratch scratch(impl_->accounting,bytes);
@@ -359,7 +389,7 @@ OwnedAssetResult OwnedRenderAssets::PublishBitMask(OwnedAssetKey key,std::span<c
     if(current && key.content_revision<current->key.content_revision) return {OwnedAssetStatus::StaleKey,OwnedAssetPressure::None,{}};
     if(current && desc!=current->desc) return {OwnedAssetStatus::ContentConflict,OwnedAssetPressure::None,{}};
     const auto previous=current?Find(current->key):OwnedAssetLease{};
-    if(!impl_->Fits(bytes)) Collect(true);
+    if(!impl_->Fits(bytes)) MakeRoom(bytes);
     if(!impl_->Fits(bytes)) return {OwnedAssetStatus::WouldBlock,OwnedAssetPressure::Bytes,{}};
     try {
         owned_detail::Scratch scratch(impl_->accounting,bytes);

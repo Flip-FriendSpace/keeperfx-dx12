@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "OwnedWorldBridge.h"
 #include "Dx12Device.h"
 #include "RuntimeWorldValidation.h"
@@ -63,16 +64,20 @@ bool Covered(const OwnedRenderFrame& p,OwnedFramePhase phase) {
 bool Lineage(const OwnedAssetKey& a,const OwnedAssetKey& b) {
     return a.epoch==b.epoch && a.domain==b.domain && a.logical_id==b.logical_id && a.generation==b.generation;
 }
+RuntimeAssetKind SpriteKind(const OwnedAssetLease& source) {
+    return source.Desc().format==OwnedAssetFormat::RG8?RuntimeAssetKind::SpriteRG8:RuntimeAssetKind::SpriteRGBA8;
+}
 OwnedAssetFormat Format(RuntimeAssetKind kind) {
     switch(kind) {
     case RuntimeAssetKind::PaletteRGBA8: case RuntimeAssetKind::ColourRowRGBA8: case RuntimeAssetKind::SpriteRGBA8: return OwnedAssetFormat::RGBA8;
+    case RuntimeAssetKind::SpriteRG8: return OwnedAssetFormat::RG8;
     case RuntimeAssetKind::LightmapR16: return OwnedAssetFormat::R16LE;
     case RuntimeAssetKind::RemapRG16UInt: return OwnedAssetFormat::RG16SIntLE; // Raw XY bits, no signed conversion.
     default: return OwnedAssetFormat::R8;
     }
 }
 uint32_t PixelBytes(OwnedAssetFormat f) {
-    return f==OwnedAssetFormat::RGBA8 || f==OwnedAssetFormat::RG16SIntLE ? 4 : f==OwnedAssetFormat::R16LE ? 2 : 1;
+    return f==OwnedAssetFormat::RGBA8 || f==OwnedAssetFormat::RG16SIntLE ? 4 : (f==OwnedAssetFormat::R16LE || f==OwnedAssetFormat::RG8) ? 2 : 1;
 }
 }
 struct OwnedWorldBridge::Impl {
@@ -142,8 +147,8 @@ struct OwnedWorldBridge::Impl {
         if(world||fade||p.Fade().Valid())Add(p.Fade(),RuntimeAssetKind::FadeR8);
         if(world||p.Lightmap().Valid())Add(p.Lightmap(),RuntimeAssetKind::LightmapR16);
         for(const auto& d:p.Terrain()) Add(d.tile,RuntimeAssetKind::TileR8);
-        for(const auto& d:p.Shadows()) Add(d.source,RuntimeAssetKind::SpriteRGBA8);
-        const auto sprites=[&](auto draws){for(const auto& d:draws){ if((d.phase==OwnedFramePhase::Cursor&&!full_frame)||!VisibleSprite(d,p.Info()))continue; Add(d.source,RuntimeAssetKind::SpriteRGBA8); if(d.pass==OwnedSpritePass::Normal) Add(d.colour_row,RuntimeAssetKind::ColourRowRGBA8); }};
+        for(const auto& d:p.Shadows()) Add(d.source,SpriteKind(d.source));
+        const auto sprites=[&](auto draws){for(const auto& d:draws){ if((d.phase==OwnedFramePhase::Cursor&&!full_frame)||!VisibleSprite(d,p.Info()))continue; Add(d.source,SpriteKind(d.source)); if(d.pass==OwnedSpritePass::Normal) Add(d.colour_row,RuntimeAssetKind::ColourRowRGBA8); }};
         sprites(p.OutlineSprites()); sprites(p.Sprites());
         for(const auto& d:p.Quads()) if((!d.parchment_capture&&WorldQuad(d.phase))||(full_frame&&(d.parchment_capture||PostQuad(d.phase)))) {
             if(d.mode!=OwnedQuadMode::Solid) Add(d.source,RuntimeAssetKind::Indexed8);
@@ -216,7 +221,7 @@ struct OwnedWorldBridge::Impl {
             out.terrain.push_back(std::move(q));
         }
         for(const auto& d:p.Shadows()) {
-            RuntimeWorldShadow q;q.source=Get(d.source,RuntimeAssetKind::SpriteRGBA8);q.draw.z_ndc=d.z_ndc;q.draw.darken=d.darken;q.draw.source_width=d.source_width;q.draw.source_height=d.source_height;
+            RuntimeWorldShadow q;q.source=Get(d.source,SpriteKind(d.source));q.draw.z_ndc=d.z_ndc;q.draw.darken=d.darken;q.draw.source_width=d.source_width;q.draw.source_height=d.source_height;
             for(size_t i=0;i<4;++i) {const auto& v=d.vertices[i];q.draw.vertices[i]={v.x,v.y,v.u,v.v};}out.shadows.push_back(std::move(q));
         }
         const auto sprites=[&](auto draws){for(const auto& d:draws) {
@@ -225,7 +230,7 @@ struct OwnedWorldBridge::Impl {
             v.x=d.x;v.y=d.y;v.width=d.width;v.height=d.height;v.phase_x=d.phase_x;v.phase_y=d.phase_y;v.step_x=d.step_x;v.step_y=d.step_y;
             v.source_width=d.source_width;v.source_height=d.source_height;v.content_height=d.content_height;v.flip=d.flip;v.premultiplied=d.premultiplied;
             v.z_ndc=d.z_ndc;v.colour=d.colour;v.source_alpha=d.source_alpha;v.texture_fallback=d.texture_fallback;
-            q.source=Get(d.source,RuntimeAssetKind::SpriteRGBA8);
+            q.source=Get(d.source,SpriteKind(d.source));
             if(d.pass==OwnedSpritePass::Normal){q.colour_row=Get(d.colour_row,RuntimeAssetKind::ColourRowRGBA8);v.lookup_row=0;}
             if(d.phase==OwnedFramePhase::Cursor)out.cursor_sprites.push_back(std::move(q));else out.sprites.push_back(std::move(q));
         }};

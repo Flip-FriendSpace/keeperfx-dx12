@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "pre_inc.h"
 #include "kfx/renderer/OwnedWorldDrawSink.h"
 #include "kfx/renderer/TileSource.h"
@@ -363,8 +364,10 @@ OwnedAssetLease OwnedWorldDrawSink::KeeperSource(const uint8_t* data,int width,i
     const OwnedAssetKey key{builder_.Info().epoch,settings_.sprite_domain,uint64_t(resolved),1,stamp};
     auto source=assets_.Find(key);
     if(!source.Valid()) {
-        const uint32_t dimension = width > 512 || height > 512 ? 1024 : (width > 256 || height > 256 ? 512 : 256);
-        auto result=assets_.PublishKeeperSprite(key,{data,extent},uint32_t(width),uint32_t(height),dimension,dimension);
+        // Runtime atlas regions accept rectangular images. Keeping the original
+        // extent avoids charging transparent square padding to every CPU lease,
+        // decode scratch buffer, GPU allocation and upload during crowded battles.
+        auto result=assets_.PublishKeeperSprite(key,{data,extent},uint32_t(width),uint32_t(height),uint32_t(width),uint32_t(height),OwnedAssetFormat::RG8);
         if(!result) { builder_.Fail(result.status==OwnedAssetStatus::WouldBlock?OwnedFrameStatus::WouldBlock:OwnedFrameStatus::InvalidInput); return {}; }
         source=std::move(result.lease);
     }
@@ -430,13 +433,8 @@ void OwnedWorldDrawSink::CaptureKeeperSprite(const SpriteScale* scale,const uint
         builder_.AddSprite(std::move(outline));
     }
     builder_.AddSprite(draw);
-    if(additive) {
-        const auto pixels=source.Bytes(); bool darkens=false;
-        for(int row=0;!darkens && row<height;++row) for(int col=0;col<width;++col) {
-            const size_t at=(size_t(row)*source.Desc().width+size_t(col))*4;
-            if(pixels[at+1] && pixels[at]>=50 && pixels[at]<=56) { darkens=true; break; }
-        }
-        if(darkens) { draw.pass=OwnedSpritePass::GlowDarken; builder_.AddSprite(std::move(draw)); }
+    if(additive && sources_.darken_.Darkens(source,uint32_t(width),uint32_t(height))) {
+        draw.pass=OwnedSpritePass::GlowDarken; builder_.AddSprite(std::move(draw));
     }
 }
 }

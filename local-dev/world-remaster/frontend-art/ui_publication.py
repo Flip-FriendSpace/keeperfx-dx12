@@ -358,7 +358,8 @@ def build_ui_assets(asset_root, game_root, output_root, *, source_decoder=None, 
         files.append({'path': relative, 'bytes': len(data), 'sha256': digest(data), 'pixel_sha256': pixels})
 
     objects = manifest['objects']
-    from frontend_reconstruct import preflight, reconstruct_font, reconstruct_material, reconstruct_native
+    from frontend_reconstruct import (preflight, reconstruct_font, reconstruct_material, reconstruct_faithful,
+                                      reconstruct_native)
     preflight()
     object_loader = lambda key: load_object(asset_root, objects, key)
     for bank in manifest['banks']:
@@ -392,9 +393,10 @@ def build_ui_assets(asset_root, game_root, output_root, *, source_decoder=None, 
                 ow, oh, os, of, indices, mask = owner_records.pop(index)
                 require((ow, oh, os, of) == (width, height, scale, fingerprint),
                         'Owner reconstruction changed native metrics/fingerprint')
-            elif record.get('operator') in ('font', 'material'):
+            elif record.get('operator') in ('font', 'material', 'faithful'):
                 inputs = {relative: source(relative) for relative in manifest['sources']}
-                operation = reconstruct_font if record['operator'] == 'font' else reconstruct_material
+                operation = {'font': reconstruct_font, 'material': reconstruct_material,
+                             'faithful': reconstruct_faithful}[record['operator']]
                 indices, mask = operation(bank, record, inputs, object_loader)
             else:
                 raise ValueError('Unimplemented UI record operation')
