@@ -127,6 +127,8 @@ KeeperFX source is GPL version 2 or, at your option, any later version; see [LIC
 
 [Modern original English audio](audio/README.md) v2.1 is included as 734 remastered WAVs and enabled by the default mod order. Development builds deploy the bundled package; the installer merges it into existing mod choices without replacing original sound banks. It combines with texture and creature mods, while later campaign/map overrides retain priority. See the separate [recording provenance notice](../config/mods/dk_modern_audio/NOTICE.md).
 
+The bundled OpenAL Soft 1.25.1 is built with only the DirectSound backend. Its default 512 × 3 frame buffer (32 ms) is too short for DirectSound on modern Windows, which then replays stale audio as crackle or tearing in busy scenes, whatever the sound files. `prepare-x64-runtime.ps1`, run by every x64 build, installs [`alsoft.ini`](alsoft.ini) beside the executables in `runtime/keeperfx-x64`; it sets 1024 × 4 frames (85 ms). Edit the source copy, not the installed one. The x86 runtime is unchanged. Rebuilding OpenAL Soft with the WASAPI backend would be the fuller fix.
+
 ## Enhanced creature sprite pipeline
 
 [Creature sprite tools](art-prototype/README.md) include the approved enhanced PNG frames and assembly metadata under `assets/creatures/`. The installer combines them with original fallback frames from your prepared compatible runtime; original pixels, extracted references, source sheets, runtime ZIPs and local reports stay outside Git. No image generation or pre-existing art artifacts are needed to install.

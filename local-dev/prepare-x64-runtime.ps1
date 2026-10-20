@@ -19,6 +19,8 @@ foreach ($folder in @('campgns', 'creatrs', 'data', 'fxdata', 'ldata', 'levels',
 foreach ($folder in @('save', 'replays', 'scrshots')) {
   New-Item -ItemType Directory -Path (Join-Path $runtime $folder) -Force | Out-Null
 }
+# OpenAL Soft reads alsoft.ini beside the executable; it enlarges the audio buffer.
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'alsoft.ini') -Destination (Join-Path $runtime 'alsoft.ini') -Force
 foreach ($file in @('keeperfx.cfg', 'save/settings.toml', 'keeperfx_readme.txt')) {
   $destination = Join-Path $runtime $file
   if (-not (Test-Path -LiteralPath $destination) -and (Test-Path -LiteralPath (Join-Path $original $file))) {
