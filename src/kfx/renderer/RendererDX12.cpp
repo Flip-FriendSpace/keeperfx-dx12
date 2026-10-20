@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 // KeeperFX renderer performance changes: 2026-10-19.
+// KeeperFX renderer capacity changes: 2026-10-20.
 #include "pre_inc.h"
 #include "RendererDX12.h"
 #if defined(KFX_ENABLE_DX12)
@@ -47,12 +48,20 @@
 using namespace kfx::render;
 namespace dx12 = kfx::render::dx12;
 
+// A 4K Armageddon crowd filled the 128 MiB default; tools and tests keep it.
+static OwnedAssetLimits ProducerLimits()
+{
+    OwnedAssetLimits limits;
+    limits.bytes = 512u * 1024u * 1024u;
+    return limits;
+}
+
 struct RendererDX12::Impl {
     dx12::Device device;
     DX12LiveBenchmark benchmark;
     uint64_t diagnostic_fail_after = 0;
     uint64_t diagnostic_remove_after = 0;
-    OwnedRenderAssets assets{1};
+    OwnedRenderAssets assets{1,ProducerLimits()};
     OwnedFramePaletteReplay palette_replay{assets};
     OwnedFrameMailbox mailbox;
     OwnedGameWorld producer{assets};
@@ -305,10 +314,11 @@ struct RendererDX12::Impl {
             return Backpressure(unsigned(prepared),dx12::RuntimePressureReason::None);
         }
         if(prepared!=dx12::OwnedWorldPrepareStatus::Ready) {
-            ERRORLOG("DX12 composition rejected frame: status %u, terrain %llu, sprites %llu, quads %llu, images %llu",
+            const auto mapping=bridge.Stats();
+            ERRORLOG("DX12 composition rejected frame: status %u, terrain %llu, sprites %llu, quads %llu, images %llu, sources high water %u/%u",
                 unsigned(prepared),static_cast<unsigned long long>(pending->Terrain().size()),
                 static_cast<unsigned long long>(pending->Sprites().size()),static_cast<unsigned long long>(pending->Quads().size()),
-                static_cast<unsigned long long>(pending->Images().size()));
+                static_cast<unsigned long long>(pending->Images().size()),mapping.source_high_water,mapping.source_limit);
             throw std::runtime_error("Owned frame was rejected by DX12 composition");
         }
         const bool capture=screenshot && !screenshot->ticket.Valid();
@@ -631,7 +641,7 @@ bool RendererDX12::WriteDiagnostics(const char* path)
         const auto terrain=TerrainColumnPlanGetStats();
         const auto front_terrain=FrontTerrainPlanGetStats();
         const dx12::RuntimeResourceBudgets budgets;
-        const OwnedAssetLimits producer_limits;
+        const OwnedAssetLimits producer_limits=ProducerLimits();
         const auto window_flags=Impl::Window()->GetWindowFlags();
         int window_w=0,window_h=0,pixel_w=0,pixel_h=0,present_x=0,present_y=0,present_w=0,present_h=0;
         Impl::Window()->GetWindowSize(&window_w,&window_h);
@@ -684,7 +694,8 @@ bool RendererDX12::WriteDiagnostics(const char* path)
             << ",\"wholeImageReuses\":" << runtime.whole_image_reuses << "},\n"
             << "\"assets\":{\"runtime\":" << runtime.asset_count << ",\"producerVersions\":" << producer.live_versions
             << ",\"producerRecords\":" << producer.version_records << ",\"producerIdentities\":" << producer.identities
-            << ",\"mappingSlots\":" << mapping.occupied_slots << ",\"mappingLimit\":512"
+            << ",\"mappingSlots\":" << mapping.occupied_slots << ",\"mappingLimit\":" << mapping.source_limit
+            << ",\"mappingHighWater\":" << mapping.source_high_water
             << ",\"wholeImages\":" << runtime.whole_images << ",\"wholeImagesIdle\":" << runtime.whole_image_idle << "},\n"
             << "\"terrainCache\":{\"requests\":" << terrain.requests << ",\"hits\":" << terrain.hits
             << ",\"builds\":" << terrain.builds << ",\"evictions\":" << terrain.evictions

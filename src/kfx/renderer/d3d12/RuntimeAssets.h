@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 // KeeperFX renderer performance changes: 2026-10-19.
+// KeeperFX renderer capacity changes: 2026-10-20.
 #pragma once
 #include <cstdint>
 #include <memory>
@@ -97,12 +98,14 @@ struct RuntimeResourceBudgets {
     // histories, pending uploads and stale leased versions. GPU caps count
     // D3D12MA allocation sizes (not just
     // logical texels), including accepted/retired readers. Swapchain and other
-    // Device APIs are separate existing allocations.
-    uint64_t cpu_bytes = 128ull * 1024 * 1024;
-    uint64_t default_bytes = 512ull * 1024 * 1024;
-    uint64_t upload_bytes = 128ull * 1024 * 1024;
+    // Device APIs are separate existing allocations. A 4K Armageddon crowd
+    // filled the former 128 MiB CPU cap and 97% of the 128 MiB upload cap.
+    uint64_t cpu_bytes = 512ull * 1024 * 1024;
+    uint64_t default_bytes = 1024ull * 1024 * 1024;
+    uint64_t upload_bytes = 256ull * 1024 * 1024;
     uint64_t readback_bytes = 128ull * 1024 * 1024;
-    uint32_t assets = 4096, descriptors = 131072, diagnostic_tickets = 8;
+    // Assets cover the owned world bridge's lifetime tombstones (8 kinds * 2048 slots).
+    uint32_t assets = 16384, descriptors = 131072, diagnostic_tickets = 8;
     // Retained terrain CPU shadows, including old+new growth overlap. Separate
     // from immutable asset snapshots; no reads from write-combined UPLOAD memory.
     uint64_t geometry_cpu_bytes = 128ull * 1024 * 1024;
