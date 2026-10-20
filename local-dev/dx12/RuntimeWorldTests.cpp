@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 // KeeperFX renderer performance changes: 2026-10-19.
+// KeeperFX renderer capacity changes: 2026-10-20.
 #include "RuntimeWorldTests.h"
 #include "kfx/renderer/d3d12/OwnedWorldBridge.h"
 #include "EnhancedWorldGLOracle.h"
@@ -672,6 +673,55 @@ RuntimeWorldTestResult RunRuntimeWorldTests(Device& device,const Options& option
                 }
             }
             device.Resize(80,64);
+        });
+        r.Case("owned-world-bridge-armageddon-crowd-default-capacity",[&] {
+            // A 4K Armageddon battle gathered more than 512 distinct sources in one
+            // packet. The default bridge must admit a crowd well beyond that former cap.
+            r.Configure();OwnedRenderAssets catalog(1);OwnedFrameMailbox mailbox;
+            constexpr unsigned crowd=1200,columns=40;
+            std::array<uint8_t,1024> palette{};
+            for(unsigned i=0;i<256;++i){palette[i*4]=uint8_t(i*3);palette[i*4+1]=uint8_t(255-i);palette[i*4+2]=uint8_t(i*7);palette[i*4+3]=255;}
+            const auto publish=[&](uint64_t id,OwnedAssetFormat format,uint32_t w,uint32_t h,const auto& bytes,size_t stride) {
+                auto result=catalog.Publish({1,73,id,1,1},{{format,w,h},bytes,stride});
+                r.Check(bool(result),"Crowd fixture publication failed");return result.lease;
+            };
+            const auto row=publish(1,OwnedAssetFormat::RGBA8,256,1,palette,1024);
+            const auto fade=publish(2,OwnedAssetFormat::R8,256,64,std::vector<uint8_t>(256*64),256);
+            const auto lightmap=publish(3,OwnedAssetFormat::R16LE,511,511,std::vector<uint8_t>(511*511*2),511*2);
+            std::vector<OwnedAssetLease> sources;sources.reserve(crowd);
+            for(unsigned i=0;i<crowd;++i) {
+                const uint8_t index=uint8_t(i%255+1);
+                sources.push_back(publish(16+i,OwnedAssetFormat::RGBA8,2,2,std::array<uint8_t,16>{index,255,0,0,index,255,0,0,index,255,0,0,index,255,0,0},8));
+            }
+            OwnedFrameInfo info;info.epoch=info.sequence=1;info.native_width=80;info.native_height=64;
+            info.viewport_width=80;info.viewport_height=64;info.clear_rgba={0,0,0,1};
+            auto builder=mailbox.Begin(info);
+            r.Check(builder.SetWorldAssets(row,fade,lightmap),"Crowd globals rejected");
+            Image expected{80,64,std::vector<uint8_t>(80*64*4)};
+            for(size_t at=3;at<expected.rgba.size();at+=4)expected.rgba[at]=255;
+            for(unsigned i=0;i<crowd;++i) {
+                OwnedWorldSprite sprite;sprite.x=int32_t(i%columns)*2;sprite.y=int32_t(i/columns)*2;sprite.width=sprite.height=2;
+                sprite.source_width=sprite.source_height=sprite.content_height=2;sprite.source=sources[i];sprite.colour_row=row;
+                r.Check(builder.AddSprite(sprite),"Crowd sprite rejected by owned producer");
+                const uint8_t index=uint8_t(i%255+1);
+                for(int y=0;y<2;++y)for(int x=0;x<2;++x)std::copy_n(palette.begin()+index*4,4,expected.rgba.begin()+((sprite.y+y)*80+sprite.x+x)*4);
+            }
+            for(unsigned i=0;i<unsigned(OwnedFramePhase::Count);++i)builder.FinishPhase(OwnedFramePhase(i));
+            auto packet=builder.Seal();r.Check(packet&&packet->Complete(),"Crowd packet incomplete");
+            OwnedWorldBridge former(device,{512,0x500000000ull});
+            r.Check(former.PrepareFrame(packet)==OwnedWorldPrepareStatus::InvalidInput&&former.Stats().source_high_water==512,"Crowd fixture fits the former 512-source cap");
+            OwnedWorldBridge bridge(device);
+            r.Check(bridge.PrepareFrame(packet)==OwnedWorldPrepareStatus::Ready,"Default bridge rejected the crowd");
+            const auto stats=bridge.Stats();
+            // Palette, fade, lightmap and the shared colour row join every crowd source.
+            r.Check(stats.source_limit==2048&&stats.source_high_water==crowd+4,"Crowd source accounting mismatch");
+            const auto* prepared=bridge.PreparedFrame();r.Check(prepared&&prepared->sprites.size()==crowd,"Crowd sprites lost in lowering");
+            const auto deadline=Clock::now()+std::chrono::seconds(25);
+            for(;;){auto result=bridge.TrySubmitPreparedFrame(true);r.Bound();
+                if(result.status==RuntimeSubmitStatus::Submitted){++r.result.submitted_frames;r.Compare(result.ticket,expected,"armageddon-crowd-default-capacity");break;}
+                r.Check(result.status==RuntimeSubmitStatus::WouldBlock&&bridge.Stats().pending,"Crowd retry lost packet");
+                Require(Clock::now()<deadline,"Crowd submit remained blocked");device.CollectRuntimeResources();Pump();
+            }
         });
         r.Case("owned-landview-zoom-and-palette-replay",[&] {
             r.Configure();OwnedRenderAssets catalog(1);OwnedFrameMailbox mailbox;OwnedFramePaletteReplay replay(catalog);

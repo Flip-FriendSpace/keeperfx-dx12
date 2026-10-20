@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 // KeeperFX renderer performance changes: 2026-10-19.
+// KeeperFX renderer capacity changes: 2026-10-20.
 #include "OwnedWorldBridge.h"
 #include "Dx12Device.h"
 #include "RuntimeWorldValidation.h"
@@ -139,6 +140,7 @@ struct OwnedWorldBridge::Impl {
         if(needs.size()==limits.mapping_slots)throw std::length_error("Owned packet exceeds bridge source capacity");
         const auto index=needs.size();needs.push_back({asset,kind,SIZE_MAX});
         Insert(need_lookup,asset.Key(),kind,index);
+        counters.source_high_water=std::max(counters.source_high_water,uint32_t(needs.size()));
     }
     void Gather(const OwnedRenderFrame& p) {
         const bool world=!p.Terrain().empty()||!p.Shadows().empty();
@@ -295,7 +297,8 @@ struct OwnedWorldBridge::Impl {
     }
 };
 OwnedWorldBridge::OwnedWorldBridge(Device& d,OwnedWorldBridgeLimits l) {
-    if(!l.mapping_slots||l.mapping_slots>512||!l.first_logical_id||l.first_logical_id>=UINT64_MAX-l.mapping_slots)
+    const OwnedWorldBridgeLimits maximum;
+    if(!l.mapping_slots||l.mapping_slots>maximum.mapping_slots||!l.first_logical_id||l.first_logical_id>=UINT64_MAX-l.mapping_slots)
         throw std::invalid_argument("Invalid owned world bridge namespace or capacity");
     impl_=std::make_unique<Impl>(d,l);
 }
@@ -365,7 +368,7 @@ RuntimeSubmitResult OwnedWorldBridge::Submit(bool readback,bool full_frame) {
 RuntimeSubmitResult OwnedWorldBridge::TrySubmitPreparedWorldFragment(bool readback){return Submit(readback,false);}
 RuntimeSubmitResult OwnedWorldBridge::TrySubmitPreparedFrame(bool readback){return Submit(readback,true);}
 OwnedWorldBridgeStats OwnedWorldBridge::Stats() const noexcept {
-    const auto& r=*impl_;auto s=r.counters;s.pending=bool(r.pending);s.prepared=r.prepared;
+    const auto& r=*impl_;auto s=r.counters;s.pending=bool(r.pending);s.prepared=r.prepared;s.source_limit=uint32_t(r.slots.size());
     for(const auto& slot:r.slots){s.occupied_slots+=slot.has_content;s.selected_slots+=slot.selected;}return s;
 }
 }
