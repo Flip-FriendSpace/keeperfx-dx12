@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #pragma once
 #include "OwnedRenderFrame.h"
+#include "KeeperSpriteDarkenCache.h"
 #include "WorldDrawProducer.h"
 #include "WorldSubmissionCapture.h"
 #include <array>
@@ -34,6 +36,7 @@ private:
         std::array<std::array<uint8_t,256>,MaxColourRows> remap_{};
     };
     Rows sprite_,ui_;
+    KeeperSpriteDarkenCache darken_;
     uint64_t font_epoch_=0;
     std::array<uint64_t,16> font_stamps_{};
     friend class OwnedWorldDrawSink;

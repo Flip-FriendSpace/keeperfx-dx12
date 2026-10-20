@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -73,9 +74,11 @@ public:
     OwnedRenderAssets& operator=(const OwnedRenderAssets&) = delete;
     OwnedAssetResult Publish(OwnedAssetKey key, OwnedAssetView source) noexcept;
     // Decode initialized encoded bytes, preserve opaque palette index zero, and
-    // initialize the entire target including padding to RGBA(index,coverage,0,0).
+    // initialize the target including padding to RG(index,coverage), optionally
+    // expanded to legacy RGBA(index,coverage,0,0). No palette/coverage loss.
     OwnedAssetResult PublishKeeperSprite(OwnedAssetKey key, std::span<const uint8_t> encoded,
-        uint32_t width, uint32_t height, uint32_t target_width, uint32_t target_height) noexcept;
+        uint32_t width, uint32_t height, uint32_t target_width, uint32_t target_height,
+        OwnedAssetFormat format = OwnedAssetFormat::RGBA8) noexcept;
     // Normal UI INDEX8 semantics: zero is transparent; an encoded opaque zero
     // becomes index one, matching LbSpriteDecode. Conversion scratch is charged.
     OwnedAssetResult PublishUISprite(OwnedAssetKey key,std::span<const uint8_t> encoded,
@@ -94,6 +97,7 @@ public:
     void Collect(bool pressure = false) noexcept;
     OwnedAssetStats Stats() const noexcept;
 private:
+    void MakeRoom(size_t bytes, bool version = false, bool content = false) noexcept;
     struct Impl;
     std::unique_ptr<Impl> impl_;
     OwnedAssetResult PublishImpl(OwnedAssetKey key, OwnedAssetView source, bool expand_rg) noexcept;

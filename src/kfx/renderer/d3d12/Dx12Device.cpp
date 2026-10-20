@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #include "Dx12Device.h"
 #include "kfx/renderer/TerrainTextureResolution.h"
 #include "RuntimeWorldValidation.h"
@@ -284,6 +285,7 @@ struct RuntimeWorldPage {
     DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
     RuntimeAssetKey lightmap_key{};
     std::shared_ptr<const std::vector<uint8_t>> lightmap_baseline;
+    bool has_current_asset = false; // Recomputed by RuntimeStats on the device thread.
     bool LightmapLineage(const RuntimeAssetKey& key) const noexcept
     {
         return kind == RuntimeAssetKind::LightmapR16 && lightmap_key.epoch == key.epoch
@@ -298,7 +300,7 @@ struct RuntimeAssetLease::State {
     Resource texture;
     std::shared_ptr<RuntimeWorldPage> world_page;
     RuntimePageRegion world_region;
-    bool current = true, resident = false;
+    bool current = true, resident = false, recently_used = true;
 };
 bool RuntimeAssetLease::Valid() const noexcept { return state && state->current && !state->owner.expired(); }
 RuntimeAssetKey RuntimeAssetLease::Key() const noexcept { return state ? state->key : RuntimeAssetKey{}; }
@@ -631,6 +633,8 @@ struct Device::Impl {
         }
     }
     void RuntimeCollect(bool evict_unused, bool process_trim = false);
+    void RuntimeMakeRoom(uint64_t bytes);
+    size_t runtime_eviction_cursor = 0;
     void RuntimeStats();
     void RuntimeClearOwners();
     RuntimeSubmitResult TrySubmitRuntimeWorldFrame(const RuntimeWorldFrame&, bool diagnostic_readback);
@@ -1524,7 +1528,11 @@ void Device::Impl::RuntimeStats()
     // Lock/sum does not allocate: RuntimeStats also runs after ownership commit.
     // The ledger includes idle image histories even after their State retires.
     for (const auto& weak : runtime_snapshots) if (const auto snapshot = weak.lock()) s.cpu_bytes += snapshot->size();
+    // Mark page liveness once. Searching every asset for every page makes
+    // diagnostics quadratic and turns a larger warm cache into a CPU bottleneck.
+    for (const auto& page : runtime_world_pages) page->has_current_asset = false;
     for (const auto& asset : runtime_assets) {
+        if (asset->current && asset->world_page) asset->world_page->has_current_asset = true;
         s.default_bytes += bytes(asset->texture);
         if (!asset->current) s.retired_default_bytes += bytes(asset->texture);
         if (!asset->resident && !asset->world_page) s.pending_upload_bytes += asset->bytes->size();
@@ -1545,9 +1553,7 @@ void Device::Impl::RuntimeStats()
             ++s.whole_images;
             if (!page->regions.AllocationCount()) ++s.whole_image_idle;
         }
-        const bool current = std::any_of(runtime_assets.begin(), runtime_assets.end(),
-            [&](const auto& asset) { return asset->current && asset->world_page == page; });
-        if (!current) s.retired_default_bytes += bytes(page->texture);
+        if (!page->has_current_asset) s.retired_default_bytes += bytes(page->texture);
     }
     for(const auto& capture:map_fade_captures)if(capture)
         s.default_bytes+=bytes(capture->world)+bytes(capture->parchment);
@@ -1640,6 +1646,42 @@ void Device::Impl::RuntimeCollect(bool evict_unused, bool process_trim)
         }), runtime_world_pages.end());
     runtime_snapshots.erase(std::remove_if(runtime_snapshots.begin(), runtime_snapshots.end(),
         [](const auto& weak) { return weak.expired(); }), runtime_snapshots.end());
+    RuntimeStats();
+}
+void Device::Impl::RuntimeMakeRoom(uint64_t bytes)
+{
+    uint64_t used = runtime_stats.cpu_bytes;
+    const auto fits = [&]() {
+        return bytes <= runtime_budgets.cpu_bytes && used <= runtime_budgets.cpu_bytes - bytes
+            && runtime_assets.size() < runtime_budgets.assets;
+    };
+    // RuntimeCollect(false) already retired completed GPU readers. Only evict
+    // cache-only versions; keep frame buffers, upload pools and atlas pages warm.
+    const size_t probes = runtime_assets.size() * 2;
+    for (size_t n = 0; !fits() && n < probes && !runtime_assets.empty(); ++n) {
+        runtime_eviction_cursor %= runtime_assets.size();
+        const auto& asset = runtime_assets[runtime_eviction_cursor];
+        if (asset.use_count() != 1) { ++runtime_eviction_cursor; continue; }
+        if (asset->recently_used) { asset->recently_used = false; ++runtime_eviction_cursor; continue; }
+        if (asset->world_page) {
+            if (!asset->world_page->regions.Release(asset->world_region))
+                throw std::logic_error("Runtime page lost an owned region");
+            asset->world_page.reset(); asset->world_region = {};
+            ++runtime_stats.world_regions_reclaimed;
+        }
+        if (asset->bytes.use_count() == 1) used -= asset->bytes->size();
+        runtime_assets.erase(runtime_assets.begin() + runtime_eviction_cursor);
+        ++runtime_stats.evictions;
+    }
+    // Idle lightmap histories also own CPU snapshots. Drop only unshared
+    // histories if still needed; the reusable GPU page remains allocated.
+    for (auto& page : runtime_world_pages) {
+        if (fits()) break;
+        if (!page->regions.AllocationCount() && page->lightmap_baseline
+            && page->lightmap_baseline.use_count() == 1) {
+            used -= page->lightmap_baseline->size(); page->lightmap_baseline.reset();
+        }
+    }
     RuntimeStats();
 }
 void Device::Impl::RuntimeClearOwners()
@@ -1884,9 +1926,9 @@ RuntimeAssetLease Device::PublishRuntimeAsset(const RuntimeAssetKey& key, const 
     } else if (key.kind == RuntimeAssetKind::TileR8) {
         if (!TerrainTextureDimension(desc.width) || desc.width != desc.height)
             throw std::invalid_argument("Runtime tile must be square with dimension32,64,128 or256");
-    } else if (key.kind == RuntimeAssetKind::SpriteRGBA8) {
+    } else if (IsRuntimeSprite(key.kind)) {
         if (desc.width > 1024 || desc.height > 1024) throw std::invalid_argument("Runtime sprite exceeds1024x1024");
-        length *= 4;
+        length *= key.kind == RuntimeAssetKind::SpriteRG8 ? 2 : 4;
     } else if (key.kind == RuntimeAssetKind::FadeR8) {
         if (desc.width != 256 || desc.height != 64) throw std::invalid_argument("Runtime fade must be256x64");
     } else if (key.kind == RuntimeAssetKind::LightmapR16) {
@@ -1901,8 +1943,8 @@ RuntimeAssetLease Device::PublishRuntimeAsset(const RuntimeAssetKey& key, const 
     if (key.kind == RuntimeAssetKind::PaletteRGBA8)
         for (size_t i = 3; i < input.size(); i += 4)
             if (input[i] != 255) throw std::invalid_argument("Runtime palette must be opaque");
-    if (key.kind == RuntimeAssetKind::SpriteRGBA8)
-        for (size_t i = 1; i < input.size(); i += 4)
+    if (IsRuntimeSprite(key.kind))
+        for (size_t i = 1; i < input.size(); i += key.kind == RuntimeAssetKind::SpriteRG8 ? 2 : 4)
             if (input[i] != 0 && input[i] != 255)
                 throw std::invalid_argument("Runtime sprite coverage must be binary");
     auto version = std::find_if(r.runtime_versions.begin(), r.runtime_versions.end(), [&](const auto& current) {
@@ -1914,6 +1956,7 @@ RuntimeAssetLease Device::PublishRuntimeAsset(const RuntimeAssetKey& key, const 
     for (const auto& asset : r.runtime_assets) if (asset->key == key) {
         if (!asset->current || !(asset->desc == desc) || !std::equal(asset->bytes->begin(), asset->bytes->end(), input.begin(), input.end()))
             throw std::invalid_argument("Conflicting runtime asset publication");
+        asset->recently_used = true;
         ++r.runtime_stats.publication_reuses;
         RuntimeAssetLease lease; lease.state = asset; return lease;
     }
@@ -1923,7 +1966,7 @@ RuntimeAssetLease Device::PublishRuntimeAsset(const RuntimeAssetKey& key, const 
     // cannot release a caller lease or any accepted frame's version.
     r.RuntimeCollect(false);
     if (r.runtime_stats.cpu_bytes + length > r.runtime_budgets.cpu_bytes
-        || r.runtime_assets.size() >= r.runtime_budgets.assets) r.RuntimeCollect(true);
+        || r.runtime_assets.size() >= r.runtime_budgets.assets) r.RuntimeMakeRoom(length);
     if (r.runtime_stats.cpu_bytes + length > r.runtime_budgets.cpu_bytes
         || r.runtime_assets.size() >= r.runtime_budgets.assets
         || (version == r.runtime_versions.end() && r.runtime_versions.size() >= r.runtime_budgets.assets))
@@ -2112,9 +2155,14 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
         if (!lease.Valid() || lease.state->owner.lock() != r.runtime_owner || lease.Key().kind != kind
             || lease.Key().epoch != r.runtime_stats.epoch)
             throw std::invalid_argument("Invalid, foreign or stale runtime world lease");
+        lease.state->recently_used = true;
         if (indices.emplace(lease.state.get(), bindings.size()).second)
             bindings.push_back({lease.state, lease.state->world_page, lease.state->world_region.x,
                 lease.state->world_region.y, lease.state->world_region});
+    };
+    const auto admit_sprite = [&](const RuntimeAssetLease& lease) {
+        if (!IsRuntimeSprite(lease.Key().kind)) throw std::invalid_argument("Invalid runtime sprite format");
+        admit(lease, lease.Key().kind);
     };
     const bool needs_world = !packet.terrain.empty() || !packet.shadows.empty();
     const bool needs_fade = needs_world
@@ -2124,9 +2172,9 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
     if (needs_fade || packet.fade.state) admit(packet.fade, RuntimeAssetKind::FadeR8);
     if (needs_world || packet.lightmap.state) admit(packet.lightmap, RuntimeAssetKind::LightmapR16);
     for (const auto& item : packet.terrain) if (item.tile.state) admit(item.tile, RuntimeAssetKind::TileR8);
-    for (const auto& item : packet.shadows) admit(item.source, RuntimeAssetKind::SpriteRGBA8);
+    for (const auto& item : packet.shadows) admit_sprite(item.source);
     for (const auto* list : {&packet.sprites,&packet.cursor_sprites}) for (const auto& item : *list) {
-        admit(item.source, RuntimeAssetKind::SpriteRGBA8);
+        admit_sprite(item.source);
         if (item.draw.kind == OutlinePassKind::NormalSprite) admit(item.colour_row, RuntimeAssetKind::ColourRowRGBA8);
         else if (item.colour_row.state) throw std::invalid_argument("Unexpected runtime sprite colour row");
     }
@@ -2234,6 +2282,7 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
     uint64_t lightmap_copy_rectangles = 0, lightmap_upload_bytes = 0, lightmap_bbox_fallbacks = 0;
     const auto format = [](RuntimeAssetKind kind) {
         if (kind == RuntimeAssetKind::TileR8 || kind == RuntimeAssetKind::FadeR8 || kind == RuntimeAssetKind::Indexed8) return DXGI_FORMAT_R8_UNORM;
+        if (kind == RuntimeAssetKind::SpriteRG8) return DXGI_FORMAT_R8G8_UNORM;
         if (kind == RuntimeAssetKind::LightmapR16) return DXGI_FORMAT_R16_UINT;
         if (kind == RuntimeAssetKind::RemapRG16UInt) return DXGI_FORMAT_R16G16_UINT;
         return color_format;
@@ -2255,7 +2304,7 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
         const auto& asset = *binding.asset;
         const auto kind = asset.key.kind;
         const bool lightmap = kind == RuntimeAssetKind::LightmapR16;
-        const bool pooled = kind == RuntimeAssetKind::TileR8 || kind == RuntimeAssetKind::SpriteRGBA8
+        const bool pooled = kind == RuntimeAssetKind::TileR8 || IsRuntimeSprite(kind)
             || kind == RuntimeAssetKind::ColourRowRGBA8;
         PagePlan* selected = nullptr;
         RuntimePageRegion region;
@@ -2294,7 +2343,7 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
             auto page = std::make_shared<RuntimeWorldPage>(); page->kind = kind; page->format = format(kind);
             page->width = asset.desc.width; page->height = asset.desc.height;
             if (kind == RuntimeAssetKind::TileR8) { page->width = 4096; page->height = 256; }
-            if (kind == RuntimeAssetKind::SpriteRGBA8) { page->width = 1024; page->height = 1024; }
+            if (IsRuntimeSprite(kind)) { page->width = 1024; page->height = 1024; }
             if (kind == RuntimeAssetKind::ColourRowRGBA8) { page->width = 256; page->height = 256; }
             if (lightmap) page->lightmap_key = asset.key;
             default_needed += r.AllocationSize(TextureDesc(page->width, page->height, page->format));

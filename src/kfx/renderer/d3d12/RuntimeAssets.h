@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+// KeeperFX renderer performance changes: 2026-10-19.
 #pragma once
 #include <cstdint>
 #include <memory>
@@ -7,8 +8,11 @@
 
 namespace kfx::render::dx12 {
 enum class RuntimeAssetKind : uint8_t {
-    Indexed8, PaletteRGBA8, TileR8, SpriteRGBA8, ColourRowRGBA8, FadeR8, LightmapR16, RemapRG16UInt
+    Indexed8, PaletteRGBA8, TileR8, SpriteRGBA8, ColourRowRGBA8, FadeR8, LightmapR16, RemapRG16UInt, SpriteRG8
 };
+inline bool IsRuntimeSprite(RuntimeAssetKind kind) noexcept {
+    return kind == RuntimeAssetKind::SpriteRGBA8 || kind == RuntimeAssetKind::SpriteRG8;
+}
 struct RuntimeAssetKey {
     uint64_t epoch = 0, logical_id = 0, generation = 0, revision = 0;
     RuntimeAssetKind kind = RuntimeAssetKind::Indexed8;
@@ -16,7 +20,7 @@ struct RuntimeAssetKey {
 };
 struct RuntimeAssetDesc {
     uint32_t width = 0, height = 0;
-    // Tightly packed R8, or exactly256 opaque RGBA entries (256x1).
+    // Tightly packed texels; SpriteRG8 stores palette index and binary coverage.
     bool operator==(const RuntimeAssetDesc&) const = default;
 };
 class RuntimeAssetLease {
