@@ -4,7 +4,7 @@ This is an unofficial Windows x64 and DirectX 12 single-player preview based on 
 
 ## Reviewed remaster defaults
 
-The [combined remaster installer](remaster/README.md) adds the completed V13 creature, world, hand, HUD, frontend and font review using lossless generated-asset bundles. Installation makes the reviewed profile the default for `play.ps1` and the root `Play KeeperFX Enhanced.cmd`: western text at 80% above the low-resolution boundary, enhanced art, smooth lighting and the accepted emissive treatment. `Play KeeperFX Original.cmd`, or `-Original`, selects the art comparison for one session. Normal play keeps the API and GPU validation disabled.
+The [combined remaster installer](remaster/README.md) adds the completed V13 creature, world, hand, HUD, frontend and font review using lossless generated-asset bundles. The power hand, Troll, Bile Demon, Imp and Dark Mistress use their later corrected art. Installation makes the reviewed profile the default for `play.ps1` and the root `Play KeeperFX Enhanced.cmd`: western text at 80% above the low-resolution boundary, enhanced art, smooth lighting and the accepted emissive treatment. `Play KeeperFX Original.cmd`, or `-Original`, selects the art comparison for one session. Normal play keeps the API and GPU validation disabled.
 
 The installer reconstructs native fallback pixels from your own matching game data, verifies all resulting hashes and retains recoverable installation backups. Frontend overlays and mod order are restored after each game. See the remaster guide for dependencies, arbitrary runtime paths, recovery, coverage and open validation limits.
 
