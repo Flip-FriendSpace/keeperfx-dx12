@@ -39,6 +39,7 @@ $apiListenerProcessId = $null
 $smokePhase = 'listener-readiness'
 $smokePassed = $false
 $dx12Validation = $null
+$audioValidation = $null
 try {
   # Inspect the actual listening socket without creating a probe connection.
   # This also prevents attaching to an unrelated/stale listener during startup.
@@ -83,6 +84,18 @@ try {
   $smokePhase = 'game-exit'
   if (-not $game.WaitForExit(10000)) { throw 'KeeperFX did not exit after the check.' }
   if ($game.ExitCode -ne 0) { throw "KeeperFX exited with code $($game.ExitCode)." }
+  if ($Sound -and -not $Upstream) {
+    $smokePhase = 'audio-validation'
+    $gameLog = Get-Content -LiteralPath (Join-Path $runtime 'keeperfx.log') -Raw
+    $audioValidation = [ordered]@{
+      nativeBanksLoaded = $gameLog -match '(?m)^Loaded .+sound\.dat \([1-9][0-9]* samples\), .+speech(?:_[a-z]+)?\.dat \([1-9][0-9]* samples\)'
+      mixerReady = $gameLog.Contains('SDL audio ready: music and speech tracks initialized')
+      soundDisabled = $gameLog.Contains('Sound system disabled.')
+    }
+    if (-not $audioValidation.nativeBanksLoaded -or -not $audioValidation.mixerReady -or $audioValidation.soundDisabled) {
+      throw 'Sound-enabled smoke did not initialize both native sound banks and SDL music/speech tracks.'
+    }
+  }
   if ($Renderer -eq 'DX12') {
     $smokePhase = 'renderer-validation'
     $gameLog = Get-Content -LiteralPath (Join-Path $runtime 'keeperfx.log') -Raw
@@ -122,10 +135,11 @@ try {
     clientExitCode = if ($client -and $client.HasExited) { $client.ExitCode } else { $null }
   }
   if ($dx12Validation) { $lifecycle.dx12Validation = $dx12Validation }
+  if ($audioValidation) { $lifecycle.audioValidation = $audioValidation }
   $lifecycle | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $workspace "artifacts/smoke-$label-$Architecture-$Renderer-lifecycle.json") -Encoding utf8
   if ($client -and -not $client.HasExited) { Stop-Process -Id $client.Id -ErrorAction SilentlyContinue }
-  if (Test-Path -LiteralPath $clientStdout) { Get-Content -LiteralPath $clientStdout }
-  if (Test-Path -LiteralPath $clientStderr) { Get-Content -LiteralPath $clientStderr | Write-Host }
+  if ($client -and (Test-Path -LiteralPath $clientStdout)) { Get-Content -LiteralPath $clientStdout }
+  if ($client -and (Test-Path -LiteralPath $clientStderr)) { Get-Content -LiteralPath $clientStderr | Write-Host }
   if (-not $game.HasExited) { Stop-Process -Id $game.Id }
   Copy-Item -LiteralPath (Join-Path $runtime 'keeperfx.log') -Destination (Join-Path $workspace "artifacts/smoke-$label-$Architecture-$Renderer.log") -Force
 }

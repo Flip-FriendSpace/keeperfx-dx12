@@ -118,6 +118,14 @@ Live campaign checks require your prepared runtime and original assets. They tem
 
 Read each runner before use. Live wrappers refuse an existing game/API listener and reserved save-slot conflicts, preserve their declared configuration/settings/save scope and write to sibling `artifacts/`. Keep the API loopback-only and disabled for normal play. Local codec/resync tests do not qualify multiplayer sessions.
 
+On Windows, OpenGL render-thread waits service synchronous native window messages
+without consuming posted gameplay input. This prevents a driver waiting on the
+window owner from deadlocking that owner's render wait during startup, rendering
+or shutdown. The [render-thread regression](render-thread-test.md) exercises the
+actual manager on x86/x64, including restart and input preservation. Sound-enabled
+local smoke checks additionally require native sound banks and SDL music/speech
+tracks to initialize; a disabled-audio fallback cannot pass.
+
 GPU validation needs Windows Graphics Tools. `dx12-install-tools.ps1` explicitly installs that development prerequisite with administrator privileges; ordinary preview play does not enable validation. Procedural GPU/CPU fixtures and source tests are in `local-dev/`. Reference workflows must generate their captured inputs locally; no historical capture corpus or test report is supplied.
 
 `render-benchmark.ps1` supports live DX12 workloads, separate warm-up/measurement windows and bounded cycles/reloads. It disables debug/GPU validation and restores its declared test state. VSync-on runs require eligible display-power endpoint checks. Application Present-return intervals are not displayed FPS; independently measure display events before making a pacing claim.
