@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 param(
   [string]$WorkspacePath,[string]$RuntimePath,
-  [switch]$Original,[switch]$QuickStart,[switch]$OpenGLFallback,[switch]$Hidden,
+  [switch]$Original,[switch]$NativeAudio,[switch]$QuickStart,[switch]$OpenGLFallback,[switch]$Hidden,
   [switch]$GpuValidation,[switch]$VerifyOnly,[switch]$Recover
 )
 $ErrorActionPreference='Stop'
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'audio/session-audio.ps1')
 if(-not $RuntimePath){if(-not $WorkspacePath){throw 'Select -WorkspacePath or -RuntimePath.'};$RuntimePath=Join-Path $WorkspacePath 'runtime/keeperfx-x64'}
 $runtime=[IO.Path]::GetFullPath($RuntimePath).TrimEnd('\','/')
 $control=Join-Path $runtime 'remaster'
@@ -19,7 +20,7 @@ function Path-InRuntime([string]$Relative) {
   for($i=1;$i -lt $parts.Count;$i++){$current=Join-Path $current $parts[$i];if((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw "Linked remaster descendant: $Relative"}}
   return $path
 }
-function Get-SessionModOrder([string]$Order,[bool]$UseOriginal,[string]$Mod) {
+function Get-SessionModOrder([string]$Order,[bool]$UseOriginal,[string]$Mod,[bool]$UseNativeAudio=$false) {
   if(-not $Order.EndsWith("`n")){$Order+="`r`n"}
   $known='(?:keeper_remaster_default|keeper_enhanced_default|keeper_hd_terrain|enhanced_creatures|imp_art_prototype|heroes_art_prototype|hero_[a-z_]+_art_prototype|remaster_core_[a-f0-9]{12}(?:_original)?|remaster_heart_001_(?:original|hd))'
   $order=[regex]::Replace($order,'(?im)^[\t ]*'+$known+'[\t ]*(?=\r?$)\r?\n?','')
@@ -27,7 +28,9 @@ function Get-SessionModOrder([string]$Order,[bool]$UseOriginal,[string]$Mod) {
     if($order -notmatch '(?im)^\[after_map\]\s*$'){$order+="`r`n[after_map]`r`n"}
     $order=[regex]::Replace($order,'(?ims)(^\[after_map\][\t ]*\r?\n)(.*?)(?=^\[|\z)',('$1$2'+"`r`n"+$Mod+"`r`n"))
   }
-  if($order -notmatch '(?im)^\s*dk_modern_audio\s*$'){
+  if($UseNativeAudio){
+    $order=Remove-ModernAudioFromOrder $order
+  }elseif($order -notmatch '(?im)^\s*dk_modern_audio\s*$'){
     if($order -notmatch '(?im)^\[after_base\]\s*$'){$order="[after_base]`r`n"+$order}
     $order=[regex]::Replace($order,'(?im)^(\[after_base\][\t ]*\r?$)',('$1'+"`r`ndk_modern_audio"))
   }
@@ -112,7 +115,7 @@ if(@(Compare-Object $expectedMod $actualMod).Count){throw 'The installed remaste
 foreach($entry in $profile.overlays){if((Hash (Path-InRuntime $entry.file)) -ne $entry.original_sha256){throw "Original frontend source changed: $($entry.file)"}}
 if($VerifyOnly){Write-Output "Verified installed remaster $($profile.selection).";return}
 $session=Path-InRuntime ('remaster/sessions/'+[DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
-$journal=@{schema=1;state='prepared';directory=$session;entries=@();selection=$profile.selection;original=[bool]$Original}
+$journal=@{schema=1;state='prepared';directory=$session;entries=@();selection=$profile.selection;original=[bool]$Original;native_audio=[bool]$NativeAudio}
 $game=$null;$restored=$false
 $lock=[IO.File]::Open($lockPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
 try{
@@ -120,7 +123,7 @@ try{
   $journalPath=Join-Path $session 'journal.json'
   $bytes=[Text.Encoding]::UTF8.GetBytes($journalPath);$lock.Write($bytes,0,$bytes.Length);$lock.Flush()
   $orderPath=Path-InRuntime 'mods/load_order.cfg';$order=[IO.File]::ReadAllText($orderPath)
-  $order=Get-SessionModOrder $order ([bool]$Original) $profile.mod
+  $order=Get-SessionModOrder $order ([bool]$Original) $profile.mod ([bool]$NativeAudio)
   $orderStage=Join-Path $session 'load_order.cfg';[IO.File]::WriteAllText($orderStage,$order,[Text.UTF8Encoding]::new($false))
   $changes=@(@{file='mods/load_order.cfg';source=$orderStage;sha256=(Hash $orderStage)})
   if(-not $Original){foreach($e in $profile.overlays){$changes+=@{file=$e.file;source=(Path-InRuntime $e.source);sha256=$e.sha256}}}

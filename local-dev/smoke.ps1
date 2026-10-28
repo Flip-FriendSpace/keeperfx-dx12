@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
-param([string]$WorkspacePath, [switch]$Upstream, [ValidateSet('OPENGL', 'SOFTWARE', 'DX12')][string]$Renderer = 'OPENGL', [ValidateSet('x86', 'x64')][string]$Architecture = 'x64', [switch]$Sound)
+param([string]$WorkspacePath, [switch]$Upstream, [ValidateSet('OPENGL', 'SOFTWARE', 'DX12')][string]$Renderer = 'OPENGL', [ValidateSet('x86', 'x64')][string]$Architecture = 'x64', [switch]$Sound, [ValidateSet('', 'ENG', 'FRE', 'GER', 'JPN')][string]$Language = '')
 $ErrorActionPreference = 'Stop'
 if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
 $workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
@@ -19,6 +19,7 @@ if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog,keeperfx-dx12
   throw 'Close running KeeperFX instances before running the smoke check.'
 }
 $config = Get-Content -LiteralPath (Join-Path $runtime 'keeperfx.cfg') -Raw
+if ($Language) { $config = $config -replace '(?m)^LANGUAGE=.*$', "LANGUAGE=$Language" }
 $config = $config -replace '(?m)^API_ENABLED=.*$', 'API_ENABLED=TRUE'
 $config = $config -replace '(?m)^API_PORT=.*$', 'API_PORT=5599'
 $config = $config -replace '(?m)^AUTOMATIC_REPLAYS=.*$', 'AUTOMATIC_REPLAYS=OFF'
@@ -28,6 +29,7 @@ $config = $config -replace '(?m)^FREEZE_GAME_ON_FOCUS_LOST=.*$', 'FREEZE_GAME_ON
 $gameArguments = '-config keeperfx-smoke.cfg -nointro -skipheartzoom -campaign keeporig -level 1'
 if (-not $Sound) { $gameArguments += ' -nosound' }
 $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -ArgumentList $gameArguments -WindowStyle Hidden -PassThru
+$null = $game.Handle
 $label = if ($Upstream) { 'upstream' } else { 'local' }
 $client = $null
 $clientStdout = Join-Path $workspace "artifacts/smoke-$label-$Architecture-$Renderer-api.stdout.log"
@@ -56,12 +58,13 @@ try {
   if (-not $listenerReady) { throw 'KeeperFX did not own a loopback API listener within 30 seconds.' }
   # Node owns one persistent API connection and its bounded startup retry.
   # A disposable TCP probe can fill the one-slot listen backlog during loading.
-  $arguments = @(('"' + (Join-Path $PSScriptRoot 'smoke.mjs') + '"'), '--quit')
+  $arguments = @(('"' + (Join-Path $PSScriptRoot 'smoke.mjs') + '"'), '--quit', '--output', ('"' + (Join-Path $workspace "artifacts/smoke-$label.json") + '"'))
   if ($Upstream) { $arguments += '--upstream' }
   $nodeExecutable = (Get-Command node -ErrorAction Stop).Source
   $smokePhase = 'persistent-api-client'
   $client = Start-Process -FilePath $nodeExecutable -ArgumentList $arguments -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $clientStdout -RedirectStandardError $clientStderr
+  $null = $client.Handle
   $checkTimer = [Diagnostics.Stopwatch]::StartNew()
   while (-not $client.WaitForExit(100)) {
     if ($game.HasExited) {

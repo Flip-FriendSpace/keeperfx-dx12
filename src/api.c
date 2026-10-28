@@ -1345,7 +1345,13 @@ static void api_process_buffer(const char *buffer, size_t buf_size)
                 || strncmp(console_command, "scenecheck reference ", 21) == 0
                 || strcmp(console_command, "pause") == 0 || strcmp(console_command, "step") == 0
                 || strcmp(console_command, "quit") == 0);
-        if ((game.operation_flags & GOF_Paused) != 0 && !benchmark_command && !reference_command)
+        const char* fidelity_mode = getenv("KFX_STATE_TEST");
+        const char* fidelity_directory = getenv("KFX_FIDELITY_DIR");
+        const TbBool fidelity_command = fidelity_mode && strcmp(fidelity_mode, "1") == 0
+            && fidelity_directory && *fidelity_directory && game.game_kind == GKind_LocalGame
+            && !(local_system_flags & GSF_NetworkActive)
+            && strncmp(console_command, "statecheck fingerprint ", 23) == 0;
+        if ((game.operation_flags & GOF_Paused) != 0 && !benchmark_command && !reference_command && !fidelity_command)
         {
             api_err("GAME_IS_PAUSED", ack_id);
             value_fini(&json_data);

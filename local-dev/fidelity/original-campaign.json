@@ -1,0 +1,523 @@
+{
+  "schema": 1,
+  "campaign": "keeporig",
+  "referencePolicy": {
+    "gameplayBaseline": "Pin the exact KeeperFX revision, configuration and initial save in each run manifest.",
+    "historicalAuthority": "Original Dungeon Keeper Gold executable and matching original assets for disputed mechanical behavior; enhanced/original launchers share this fork and are not independent historical references",
+    "preserveClassicBugs": "No blanket enablement. Resolve only demonstrated compatibility differences.",
+    "noAutomaticChanges": [
+      "Creature statistics",
+      "Room economics",
+      "Spell timing",
+      "AI priorities",
+      "Population limits",
+      "Campaign scripts"
+    ]
+  },
+  "campaignConfig": {
+    "path": "campgns/keeporig.cfg",
+    "sha256": "7a76b81c41596f75b2e66b2f97e98cab664b13073c29c2b889fef52159530488"
+  },
+  "domains": [
+    {
+      "id": "health-combat-cooldowns",
+      "status": "not_run",
+      "evidence": [],
+      "remaining": [
+        "Ordinary combat damage, armour and ability cooldown timing against an independent reference",
+        "Spell cost and player input rather than the fixture's free scripted cast",
+        "Lethal damage, corpse and resurrection transitions"
+      ]
+    },
+    {
+      "id": "hunger-payday-anger-lair",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "economy-gold-mining",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "training-experience",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "research-unlocks",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "manufacturing-traps-doors",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "prison-torture-conversion",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "graveyard-vampire-rebirth",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "temple-sacrifice",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "scavenging",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "script-flags-timers-waves",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "synchronized-rng",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "victory-defeat-transfer",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "armageddon",
+      "status": "not_run",
+      "evidence": []
+    }
+  ],
+  "maps": [
+    {
+      "level": 1,
+      "name": "Eversmile",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00001.txt",
+      "scriptSha256": "f2fdf7831308c9070f27206a83a6541e4586b00b621443a920897f7ec77edf7c",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 2,
+      "name": "Cosyton",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00002.txt",
+      "scriptSha256": "d85a4297d84b4730dd3c2b90724a18b57fd0ed63d4022a55d3dc7133d90e2e8c",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 3,
+      "name": "Waterdream Warm",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00003.txt",
+      "scriptSha256": "13c48ac0294ce6b3953adadd4f0cbd6a949627c75d3319c94874880d892bc86f",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 4,
+      "name": "Flowerhat",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00004.txt",
+      "scriptSha256": "c187acd8cd0a1396311237a62bcfe1ba6ea63d9d4f2f8100b445e6d0aa91a3e4",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 5,
+      "name": "Lushmeadow-on-Down",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00005.txt",
+      "scriptSha256": "876607e2acb1cf1eb2fdcea9a859fe7c6daefb994dead683c149da93c0e97154",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 6,
+      "name": "Snuggledell",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00006.txt",
+      "scriptSha256": "07b6f2e6fd8cd87dc940003402dd44d38cfcc467a6411c2ddc44adefeffc9c6f",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 7,
+      "name": "Wishvale",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00007.txt",
+      "scriptSha256": "d0ea0959b652fd1cf9c86de7cddaee0101a6721a2932333ab0eb8460840758e7",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 8,
+      "name": "Tickle",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00008.txt",
+      "scriptSha256": "1142c43bd962c0807f2167e1b3b7d2875a442858d1ce15a451175db2875dc5f2",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 9,
+      "name": "Moonbrush Wood",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00009.txt",
+      "scriptSha256": "48a77ed7f27ba648465d2165dd0d3dcd865005163aee0b337520099e4c03de1c",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 10,
+      "name": "Nevergrim",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00010.txt",
+      "scriptSha256": "d6709c065ea112b532608ce101113aacd90e40699535ad7388781ad8ececbc44",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 11,
+      "name": "Hearth",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00011.txt",
+      "scriptSha256": "5a6d6056e679743c1974da98b902e39055a119a2bdf98b8c488a34c0ccfd960b",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 12,
+      "name": "Elf's Dance",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00012.txt",
+      "scriptSha256": "077bde45b01e68195daafecccd7876cde5f6bd8c1216e8a77334a09c2266c7d4",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 13,
+      "name": "Buffy Oak",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00013.txt",
+      "scriptSha256": "3887b55799bfbbb5bde288f5e9e570ebce9298676072c07dccd0516ff36d038d",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 14,
+      "name": "Sleepiburgh",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00014.txt",
+      "scriptSha256": "4a00556d5910c4377f0fa2606b1651101b2f8c96484e177da6d3fd97151ce474",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 15,
+      "name": "Woodly Rhyme",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00015.txt",
+      "scriptSha256": "f88c74500b31b8002b6e3c7a644170cf1580e2af16b807912bd80c20dcac2359",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 16,
+      "name": "Tulipscent",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00016.txt",
+      "scriptSha256": "516ecf700f296028c49345f5cec60c49a63cb8cd91cbc64526e2fa04c82d9064",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 17,
+      "name": "Mirthshire",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00017.txt",
+      "scriptSha256": "3eff3c9636e703fb9857b457ee867f28fb7eaff9fe65cbd63f619a24d1328b07",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 18,
+      "name": "Blaise End",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00018.txt",
+      "scriptSha256": "bf2b5857be970c7a9e161138919adb9cbd983bdb265f57f059a0725931b4c938",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 19,
+      "name": "Mistle",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00019.txt",
+      "scriptSha256": "9e7b7e4171b66cb9388043d2058f383a9e3f9ae58a01ddfc5a0932d978955c75",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 20,
+      "name": "Skybird Trill",
+      "kind": "campaign",
+      "script": "campgns/keeporig/map00020.txt",
+      "scriptSha256": "45425debaef7a7294e76c9b034f84b945b06e3bbc186cc4658d4db289023dd67",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 100,
+      "name": "Secret 1",
+      "kind": "secret",
+      "script": "campgns/keeporig/map00100.txt",
+      "scriptSha256": "07145c0779d392c88070963b4866b04db3fbe1df6cee4edd61755f8a7698378f",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 101,
+      "name": "Secret 2",
+      "kind": "secret",
+      "script": "campgns/keeporig/map00101.txt",
+      "scriptSha256": "9e4668b9e04741d34ca3a2c229a10e51d5ef674967622023752a91b30fa98c69",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 102,
+      "name": "Secret 3",
+      "kind": "secret",
+      "script": "campgns/keeporig/map00102.txt",
+      "scriptSha256": "ddec8fd1080b8540695a8810ce1863319bc91287dc930d9e5a3954738ea4c75a",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 103,
+      "name": "Secret 4",
+      "kind": "secret",
+      "script": "campgns/keeporig/map00103.txt",
+      "scriptSha256": "caf440cccbcd8bd3b061f1112b6e9790500d248f40d311321763814a68b11b88",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 104,
+      "name": "Secret 5",
+      "kind": "secret",
+      "script": "campgns/keeporig/map00104.txt",
+      "scriptSha256": "e4bb9db240ea0b7afbba5cdf92f6da080ddd7148c68b2d1342226ed8e3720bdf",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    },
+    {
+      "level": 105,
+      "name": "Moon Bonus",
+      "kind": "moon",
+      "script": "campgns/keeporig/map00105.txt",
+      "scriptSha256": "887ef0380aa4c58b998836a48b5574fb2c0bc55a7f4b45cd38b5fb72110f8c00",
+      "status": "not_run",
+      "requiredChecks": [
+        "start",
+        "objectives-and-waves",
+        "save-load-continuation",
+        "terminal-outcome",
+        "campaign-progress"
+      ],
+      "evidence": []
+    }
+  ],
+  "acceptanceRule": "A map remains not_run or in_progress until hash-bound start, script/wave, save/load, outcome and progress evidence exists. Historical limited replays do not constitute map completion.",
+  "exclusions": [
+    "Arbitrary Lua VM globals/upvalues/math.random state",
+    "Mixed architecture multiplayer/replay compatibility",
+    "Full simulation-state equivalence"
+  ],
+  "inventoryScope": "Script hashes identify the original campaign content used by this matrix. This checked-in template contains no local acceptance evidence; keep completed run matrices outside the repository."
+}

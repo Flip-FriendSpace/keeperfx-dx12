@@ -33,11 +33,26 @@ foreach ($relative in $files) {
 foreach ($movie in @('drag.smk', 'intromix.smk', 'outromix.smk')) {
   $source = Join-Path $OriginalPath "ldata/$movie"
   if (Test-Path -LiteralPath $source) {
-    Copy-Item -LiteralPath $source -Destination (Join-Path $runtime "ldata/$movie") -Force
+    $relative = "ldata/$movie"
+    $destination = Join-Path $runtime $relative
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    $hash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+    if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $hash) {
+      throw "Copied movie failed verification: $relative"
+    }
+    $manifest += [pscustomobject]@{ source = $source; runtimePath = $relative; sha256 = $hash }
   }
 }
 Get-ChildItem -LiteralPath $OriginalPath -Filter 'keeper*.ogg' -File | ForEach-Object {
-  Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $runtime "music/$($_.Name)") -Force
+  $source = $_.FullName
+  $relative = "music/$($_.Name)"
+  $destination = Join-Path $runtime $relative
+  Copy-Item -LiteralPath $source -Destination $destination -Force
+  $hash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+  if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $hash) {
+    throw "Copied music failed verification: $relative"
+  }
+  $manifest += [pscustomobject]@{ source = $source; runtimePath = $relative; sha256 = $hash }
 }
 $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $workspace 'artifacts/original-data-manifest.json') -Encoding utf8
-Write-Output "Imported and hash-verified $($files.Count) required files, plus available movies and music."
+Write-Output "Imported and hash-verified $($manifest.Count) files, including $($files.Count) required files and available movies/music."

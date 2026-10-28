@@ -1,5 +1,18 @@
 # Developer guide
 
+## Faithful restoration checks
+
+Speech overrides support exact language sections such as `[speecheng]` and
+participate in campaign snapshot/reset handling. The installed remaster launcher
+accepts `-NativeAudio` for original audio during one session with exact mod-order
+restoration. See [audio tools](audio/README.md).
+
+The [fidelity tools](fidelity/README.md) capture selected gameplay state without
+changing simulation, compare snapshots and validate hash-bound acceptance
+evidence. The campaign matrix is a template for all 26 original maps; it does not
+claim completed playthroughs. Art candidates and runtime evidence remain local.
+This change adds no gameplay balance adjustments or new default artwork.
+
 This is an unofficial Windows x64 and DirectX 12 single-player preview based on [KeeperFX](https://github.com/dkfans/keeperfx). OpenGL remains available. There are no packaged binaries for this fork yet. The upstream starting revision is `fb0ab7f4d152286d25e73189530ed5536a360478`; see also the upstream [building guide](https://github.com/dkfans/keeperfx/wiki/Building-KeeperFX).
 
 ## Reviewed remaster defaults

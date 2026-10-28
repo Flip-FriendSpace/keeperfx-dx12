@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "status": "proposed_next_fixtures_not_acceptance",
+  "policy": "Preserve original stats, room costs, script timing and configured compatibility choices. Use an isolated fixture or an exact saved original campaign state, then ordinary simulation and real actions; never force post-action results. Compare matched turns, input and save hashes across branches/builds. Historical disputes require an original Dungeon Keeper Gold reference, not two launchers of this fork.",
+  "captureContract": [
+    "Bind executable/source/config/mod order/map/script/save hashes and initial seeds.",
+    "Capture before action, immediately around each threshold, and after completion. Match interrupted save/load and uninterrupted branches.",
+    "Use selected-gameplay snapshots plus domain-specific observations where the schema omits a necessary field; equal hashes alone do not prove all simulation state.",
+    "Keep setup edits distinct from ordinary input/continuation. A free scripted cast does not qualify normal cost or mouse interaction.",
+    "Record expected changes as explicit assertions and retain failures. A smoke success cannot complete a campaign or a whole mechanic domain."
+  ],
+  "fixtures": [
+    {
+      "priority": 1,
+      "domain": "hunger-payday-anger-lair",
+      "reason": "A short continuation does not cross a complete needs/payday cycle; these coupled systems define ordinary dungeon management.",
+      "source": [{"path":"src/creature_states.c","line":4289,"symbol":"process_creature_hunger"},{"path":"src/creature_states.c","line":3133,"symbol":"creature_take_salary"},{"path":"src/creature_states.c","line":5235,"symbol":"process_creature_needs_a_wage"},{"path":"src/game_update.cpp","line":239,"symbol":"Payday progress and threshold"}],
+      "fixture": "A saved low-gold dungeon just before payday with fed/hungry and housed/unhoused creatures; one branch has accessible treasury/food/lair and another deliberately blocks a route. Advance original timers, then restore access.",
+      "assertions": ["Hunger, health-loss cadence, eating and hunger reduction", "Gold, pay owed/advanced/backpay, anger and salary completion", "Lair assignment and recovery; route failure does not silently consume salary or food"],
+      "status": "not_run"
+    },
+    {
+      "priority": 1,
+      "domain": "economy-gold-mining",
+      "reason": "Directed DIG animation does not prove mining, hauling or gold conservation. An existing functional fixture supplies a bounded starting point.",
+      "source": [{"path":"src/ftests/tests/ftest_bug_imp_goldseam_dig.c","line":36,"symbol":"ftest_bug_imp_goldseam_dig_init"},{"path":"src/creature_states_spdig.c","line":1211,"symbol":"imp_drops_gold"},{"path":"src/player_utils.c","line":400,"symbol":"take_money_from_dungeon_f"}],
+      "fixture": "Mark one original gold slab for digging with an ordinary Imp and reachable treasury. Follow mining, carrying, deposit and a paid room/spell action using the configured gold-per-block amount. Add a full-treasury case.",
+      "assertions": ["Gold conservation across block, carried gold, ground pile, hoards and dungeon total", "Full storage/route behavior and subsequent recovery", "No animation-driven gain/loss or duplicated deposit after save/load"],
+      "status": "not_run"
+    },
+    {
+      "priority": 1,
+      "domain": "research-unlocks",
+      "reason": "Research completion changes progress, room/spell availability, physical spellbook objects and room capacity together.",
+      "source": [{"path":"src/room_library.c","line":292,"symbol":"process_player_research"},{"path":"src/creature_states_rsrch.c","line":232,"symbol":"researching"}],
+      "fixture": "Exact save immediately before a naturally researched spell and room threshold; continue with available and full library storage, then free a slot.",
+      "assertions": ["Progress consumption and next research order", "Unlock occurs once with a valid artifact and matching room occupancy", "Full library delays creation without losing points or duplicating books after reload"],
+      "status": "not_run"
+    },
+    {
+      "priority": 1,
+      "domain": "script-flags-timers-waves",
+      "reason": "Map20 starts a meaningful script event at turn150 and later waves at TIMER0 1000..1766; existing 40-turn samples do not exercise these branches.",
+      "source": [{"path":"src/lvl_script.c","line":1146,"symbol":"process_level_script"},{"path":"src/lvl_script_conditions.c","line":455,"symbol":"process_condition"}],
+      "campaignEvidence": [{"path":"campgns/keeporig/map00020.txt","line":146,"condition":"GAME_TURN >=150"},{"path":"campgns/keeporig/map00020.txt","line":214,"condition":"PLAYER_GOOD TIMER0 >=1000"}],
+      "fixture": "Use a recorded original map20 save before an actual flag-triggered final-wave timer; sample immediately before/after 150, 1000 and later wave thresholds. Do not rewrite script timings to accelerate acceptance.",
+      "assertions": ["Condition/trigger flags and timer counters", "Exact creature party model, owner, level, target and count", "No repeated one-shot waves after reload; replay observer camera does not alter script lifetime"],
+      "status": "not_run"
+    },
+    {
+      "priority": 1,
+      "domain": "synchronized-rng",
+      "reason": "Equal selected RNG in a short quiet interval does not cover random decisions at research placement, prison conversion or creature combat boundaries.",
+      "source": [{"path":"src/fidelity_state.c","line":89,"symbol":"fidelity_write_snapshot RNG fields"},{"path":"src/creature_states_prisn.c","line":367,"symbol":"process_prisoner_skelification"}],
+      "fixture": "Reuse exact saves from threshold fixtures and the same ordered actions across renderer and uninterrupted/reloaded branches; change only camera/UI/presentation between repeated runs.",
+      "assertions": ["Action/AI/player and per-thing seeds match at every sampled turn", "Random outcome and created positions match", "Document unsnapshotted Lua/pathfinding state instead of generalizing a match"],
+      "status": "not_run"
+    },
+    {
+      "priority": 1,
+      "domain": "victory-defeat-transfer",
+      "reason": "Zero original maps have completed; starts and save/load cannot qualify progression, terminal conditions or transferred creatures.",
+      "source": [{"path":"src/lvl_script.c","line":1094,"symbol":"process_win_and_lose_conditions"},{"path":"src/power_specials.c","line":694,"symbol":"transfer_creature"},{"path":"src/power_specials.c","line":768,"symbol":"create_transferred_creatures_on_level"}],
+      "campaignEvidence": [{"path":"campgns/keeporig/map00100.txt","line":24,"condition":"TIMER0 >=40000 loses"},{"path":"campgns/keeporig/map00020.txt","line":259,"condition":"Final victory branch"}],
+      "fixture": "Use genuine pre-terminal saves for one win, one loss and one transfer-enabled original level; proceed through the actual frontend to the next level in a fully backed-up isolated session.",
+      "assertions": ["Victory/defeat occurs once at the right condition", "Campaign score/progress and next-map selection", "Transfer preserves permitted model/level/name and is consumed once; restoration protects user progress"],
+      "status": "not_run"
+    },
+    {
+      "priority": 1,
+      "domain": "armageddon",
+      "reason": "Existing capacity work needs a natural spell-lifecycle fixture covering ownership, teleport order, pickup restrictions and loss evaluation, not just allocator stress.",
+      "source": [{"path":"src/magic_powers.c","line":991,"symbol":"magic_use_power_armageddon"},{"path":"src/power_process.c","line":104,"symbol":"process_armageddon"},{"path":"src/power_process.c","line":166,"symbol":"process_armageddon_influencing_creature"},{"path":"src/power_hand.c","line":218,"symbol":"armageddon_blocks_creature_pickup"}],
+      "fixture": "Saved late-game original state with owned/enemy/neutral creatures and hand contents; cast normally and sample countdown, first/last teleport and end. Repeat one branch with caster losing during countdown.",
+      "assertions": ["Configured neutral inclusion, countdown and owner/enemy teleport spacing", "No stale creature identity or pickup bypass during restrictions", "Capacity handling does not remove live creatures or change original defeat timing"],
+      "status": "not_run"
+    },
+    {
+      "priority": 2,
+      "domain": "health-combat-cooldowns",
+      "reason": "One live slap proves delayed damage and natural hit/cower; ordinary melee/ranged damage, armour and cooldowns remain unqualified.",
+      "source": [{"path":"src/magic_powers.c","line":1800,"symbol":"magic_use_power_slap_thing"},{"path":"src/fidelity_state.c","line":35,"symbol":"Instance/cooldown observations"}],
+      "fixture": "Matched ordinary melee and ranged duels with original creature levels/configs, followed by a lethal outcome; record cooldown availability and save immediately before an attack resolves.",
+      "assertions": ["Damage, armour, health and ability timing", "Identical uninterrupted/reloaded attack results", "Death/corpse behavior independent of art; normal spell costs separately tested"],
+      "status": "partial_slap_only"
+    },
+    {
+      "priority": 2,
+      "domain": "training-experience",
+      "source": [{"path":"src/creature_states_train.c","line":544,"symbol":"training"}],
+      "fixture": "A normal trainer crossing one cost-frequency and one experience threshold; repeat with insufficient treasury funds.",
+      "assertions": ["Gold debit matches configured cost/frequency", "Room efficiency, experience accumulation and level-up", "Insufficient money exits training without free progress"],
+      "status": "not_run"
+    },
+    {
+      "priority": 2,
+      "domain": "manufacturing-traps-doors",
+      "source": [{"path":"src/room_workshop.c","line":605,"symbol":"process_player_manufacturing"}],
+      "fixture": "Normal workshop reaches one trap and one door completion, full-capacity stall and resumed work; place each item through ordinary action.",
+      "assertions": ["Manufacture progress consumed once", "Crate object, stored/placeable counts and occupancy agree", "Storage/item limits and placed-item stock remain consistent after reload"],
+      "status": "not_run"
+    },
+    {
+      "priority": 2,
+      "domain": "prison-torture-conversion",
+      "source": [{"path":"src/creature_states_prisn.c","line":367,"symbol":"process_prisoner_skelification"},{"path":"src/creature_states_tortr.c","line":596,"symbol":"torturing"}],
+      "fixture": "Captured original humanoid crosses starvation/skeleton boundary; separate prisoner naturally undergoes torture conversion with matching seeds.",
+      "assertions": ["Original probability and timing; food/health effects", "Owner, population, room capacity and replacement identity", "No duplicate conversion or changed RNG after reload"],
+      "status": "not_run"
+    },
+    {
+      "priority": 2,
+      "domain": "graveyard-vampire-rebirth",
+      "source": [{"path":"src/thing_corpses.c","line":147,"symbol":"remove_body_from_graveyard"},{"path":"src/thing_creature.c","line":2979,"symbol":"creature_rebirth_at_lair"}],
+      "fixture": "Naturally collected corpses reach configured vampire count; kill a rebirth-eligible vampire with and without an assigned lair.",
+      "assertions": ["Rotten corpse count, capacity, population limit and one vampire creation", "Rebirth level loss, health and lair/heart fallback", "No duplicated body credit or creature after reload"],
+      "status": "not_run"
+    },
+    {
+      "priority": 2,
+      "domain": "temple-sacrifice",
+      "source": [{"path":"src/creature_states_pray.c","line":583,"symbol":"process_sacrifice_award"},{"path":"src/creature_states_pray.c","line":678,"symbol":"process_sacrifice_creature"}],
+      "fixture": "One original positive recipe and an Imp sacrifice delivered by actual hand drop into the temple; save between victims.",
+      "assertions": ["Recipe victim/experience accumulation and reset", "Reward/penalty and original Imp price reduction", "No double reward after intermediate reload"],
+      "status": "not_run"
+    },
+    {
+      "priority": 2,
+      "domain": "scavenging",
+      "source": [{"path":"src/creature_states_scavn.c","line":385,"symbol":"process_scavenge_creature_from_level"},{"path":"src/creature_states_scavn.c","line":493,"symbol":"process_scavenge_creature_from_pool"},{"path":"src/creature_states_scavn.c","line":563,"symbol":"scavengering"}],
+      "fixture": "Normal scavenger draws one creature from pool and one eligible enemy, then runs out of gold; use matched saved state before transfer.",
+      "assertions": ["Original cost/progress, matching model eligibility and resistance", "Ownership/population/pool conservation through disappear/reappear", "No free continued work or duplicate transfer after reload"],
+      "status": "not_run"
+    }
+  ]
+}

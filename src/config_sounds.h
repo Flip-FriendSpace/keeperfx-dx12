@@ -304,7 +304,8 @@ extern SoundSmplTblID snd_hit_wall_boulder;       /* HitWallSound for SHOT_BOULD
  * @brief Per-message speech override paths, indexed by SMsg_* enum value.
  * A non-empty string means output_message() will play this file instead of
  * the default speech-bank sample.  Populated by the [speech] section of
- * sounds.cfg.
+ * sounds.cfg. A matching [speecheng], [speechfre], etc. section overrides
+ * [speech] in the same file without affecting other languages.
  */
 extern char g_speech_overrides[SMsg_MAX][512];
 
