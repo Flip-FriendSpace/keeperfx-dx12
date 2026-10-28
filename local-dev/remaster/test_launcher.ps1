@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 param([Parameter(Mandatory=$true)][string]$OutputPath)
 $ErrorActionPreference='Stop'
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'audio/session-audio.ps1')
 $source=Join-Path $PSScriptRoot 'play-remaster.ps1'
 $tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if($errors){throw ($errors|Out-String)}
@@ -22,6 +23,16 @@ foreach($input in @('[after_map]',"[after_map]`n", "[after_base]`r`nkeeper_enhan
   Check ($original.Contains('keeper_remaster_default_extra')) 'Unrelated default prefix altered.'
  }
 }
+$audioOrder="[after_base]`r`n; dk_modern_audio is optional`r`nDK_MODERN_AUDIO ; enabled`r`nother_audio`r`ndk_modern_audio_extra`r`n[after_map]`r`ndk_modern_audio`r`n"
+foreach($useOriginal in @($false,$true)){
+ $native=Get-SessionModOrder $audioOrder $useOriginal 'keeper_remaster_default' $true
+ Check ($native -notmatch '(?im)^\s*dk_modern_audio[\t ]*(?:[;#].*)?$') 'Native session retained Modern audio.'
+ Check ($native.Contains('; dk_modern_audio is optional') -and $native.Contains('other_audio') -and $native.Contains('dk_modern_audio_extra')) 'Native session altered unrelated mods/comments.'
+ Check ($useOriginal -eq ($native -notmatch '(?m)^keeper_remaster_default\r?$')) 'Audio selection changed graphics selection.'
+}
+$nativeCr=Get-SessionModOrder "[after_base]`rdk_modern_audio`rother_audio`r" $true 'keeper_remaster_default' $true
+Check (-not ($nativeCr -split '[\r\n]+' | Where-Object { $_ -eq 'dk_modern_audio' })) 'Native session retained CR-only Modern entry.'
+Check ($nativeCr.Contains("other_audio`r")) 'Native session changed unrelated CR-only entry.'
 $path=Join-Path $runtime 'data/native.dat';$replacement=Join-Path $runtime 'data/replacement.dat'
 [IO.File]::WriteAllBytes($path,[byte[]](1,2,3,4));[IO.File]::WriteAllBytes($replacement,[byte[]](5,6,7,8))
 $session=Join-Path $runtime 'remaster/sessions/test';Copy-Item -LiteralPath $path -Destination (Join-Path $session '0')

@@ -12,7 +12,32 @@ The installer verifies every audio file before activation, preserves other mod e
 
 The treatment uses gentle cleanup and source-constrained upper-band detail at 48 kHz, preserving the original performances, recording length and channel layout. The reconstructed residual is capped against 15% of the cleaned original spectral magnitude, and fades out at the original source bandwidth. This replaces v1's unrestricted 65% high-band blend, which added metallic ringing to speech and effects. The lower original band remains intact. Cleanup is spectral noise reduction only. v2.1 removes v1's DC subtraction and 18/30 Hz high-pass: they removed nothing audible, but their short filter edge padding started 82 effects and 4 voices with a step of up to 15% full scale. Each play began with a click, most noticeable on frequent sounds such as digging and footsteps. Recording edges now match the originals. Loudness follows the current game recordings with peak headroom. Four distinct noisy recordings retain cleanup only because their reconstruction failed alignment. Music and KeeperFX-only extra recordings are unchanged. See [asset provenance](../../config/mods/dk_modern_audio/NOTICE.md); the engine's GPL license does not relicense the original recordings.
 
-To select the original audio again, remove or comment out dk_modern_audio in both the runtime and source config/mods/load_order.cfg files. Keep the audio directory to enable it again later.
+For a reversible original-audio comparison, add `-NativeAudio` to either installed
+remaster play launcher, or run `local-dev/play.ps1 -WorkspacePath <workspace>
+-NativeAudio`. The session removes only active `dk_modern_audio` entries and
+restores the exact prior mod order on exit. Other mods and comments are preserved.
+This option requires an installed remaster profile so the launcher can own the
+restoration transaction. The normal Modern default remains available.
+
+Mentor performances use `[speecheng]`; other languages retain their native bank
+or their own configured overrides. Generic `[speech]` still applies to every
+language. A matching `[speechfre]`, `[speechger]`, etc. wins within the same file.
+Speech overrides are cleared on baseline loading and saved/restored with the
+campaign snapshot. This config requires the corresponding updated engine.
+
+`test_speech_language.py` compiles the actual parser under ASan/UBSan and checks
+the 125 English mappings, six fallback codes, section matching and snapshot/reset
+behaviour. Run it with a C++ compiler in `keeperfx-dev`.
+`test_session_audio.ps1` checks the pure mod-order transformation; the remaster
+launcher fixture also checks graphics/audio combinations and restoration.
+
+With Python 3.11 or newer, `audit_original_media.py --original <installation> --runtime <runtime>
+--output <new-report-directory>` verifies six original music tracks and three
+films against local original data. Add `--ffmpeg <executable> --ffprobe
+<executable>` for complete decoding. Integrity, complete traversal and live
+playback qualification are separate fields. `test_media_audit.py` verifies that
+a changed file or interrupted traversal cannot leave a passing report. No media
+or live playback is bundled by these tools.
 
 Engine support includes numeric speech IDs 1-125, campaign-scoped WAV narration overrides and matching mentor-volume scaling. Effect redirects also apply to pan, volume, pitch and stop controls. Bank resets detach finished OpenAL sources before deleting their custom buffers.
 
@@ -24,6 +49,6 @@ The control and buffer regression fixture uses the actual engine functions with 
 
     python3 local-dev/audio/test_controls.py
 
-Live validation covered the complete default package, real DX12 voice/effect playback, audio reset and campaign landview WAV routing. The default test preserved settings and the existing visual mods. A normal OpenGL run loaded the campaign and initialized audio but timed out during shutdown; full OpenGL shutdown qualification remains unresolved.
+Live validation covered the complete default package, real DX12 voice/effect playback, audio reset and campaign landview WAV routing. The default test preserved settings and the existing visual mods. Targeted OpenGL Eversmile startup, advancing simulation and clean shutdown now pass with sound enabled in English and French, using both fresh and retained settings. The smoke check verifies native-bank and SDL mixer initialization, rather than accepting a silent fallback. The [Windows render-thread regression](../render-thread-test.md) covers synchronous window messages during startup, presentation and shutdown. These checks do not qualify every audio device, audible quality or full campaign playback.
 
 To reproduce the v2.1 package from the retained local masters, use `repair_high_band.py --master-directory <masters> --package-directory <previous-package> --output-directory <new-package>`. The masters directory needs the original `sources/`, the `clean/` and `modern/` float masters and `plan.json`. The script rebuilds each cleaned base from its source and keeps the v1 reconstructed detail. It requires NumPy, SciPy, SoundFile and pyloudnorm, validates frame/channel counts, preserves the protected original band, rejects any added edge step and checks four-times-oversampled peak headroom. Original banks and v1 masters are read-only inputs. Use `test_package.py --package-directory <new-package>` before installing.

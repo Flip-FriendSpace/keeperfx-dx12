@@ -7,6 +7,11 @@ import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 // The smoke config enables the engine's existing loopback-only API on port 5599.
+const outputIndex = process.argv.indexOf('--output');
+assert.ok(outputIndex < 0 || process.argv[outputIndex + 1], '--output requires a file path');
+const output = outputIndex < 0
+  ? fileURLToPath(new URL('../../artifacts/' + (process.argv.includes('--upstream') ? 'smoke-upstream.json' : 'smoke-local.json'), import.meta.url))
+  : process.argv[outputIndex + 1];
 const startupDeadline = Date.now() + 30_000;
 async function connectStartup() {
   let lastError;
@@ -87,6 +92,7 @@ try {
   if (!process.argv.includes('--upstream')) await request('console_command', { command: 'renderbench 0' }, false);
   if (!process.argv.includes('--upstream')) await request('console_command', { command: 'statecheck' }, false);
   if (!process.argv.includes('--upstream')) await request('console_command', { command: 'statecheck replay-start' }, false);
+  if (!process.argv.includes('--upstream')) await request('console_command', { command: 'statecheck fingerprint smoke-denied' }, false);
   if (!process.argv.includes('--upstream')) await request('console_command', { command: 'scenecheck' }, false);
   if (!process.argv.includes('--upstream')) await request('console_command', { command: 'scenecheck capture' }, false);
   if (!process.argv.includes('--upstream')) await request('console_command', { command: 'scenecheck reference clear-ui' }, false);
@@ -101,7 +107,6 @@ try {
   assert.equal(level.is_multiplayer, false);
   assert.ok(second.game_turn > first.game_turn, 'Simulation must advance');
   const result = { checkedAt: new Date().toISOString(), version, level, first, second, passed: true };
-  const output = fileURLToPath(new URL('../../artifacts/' + (process.argv.includes('--upstream') ? 'smoke-upstream.json' : 'smoke-local.json'), import.meta.url));
   await writeFile(output, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result, null, 2));
   if (process.argv.includes('--quit')) await request('console_command', { command: 'quit' });

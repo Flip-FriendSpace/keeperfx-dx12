@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {compareSnapshots,canonical,validateSnapshot} from './compare.mjs';
+const base=()=>({schema:1,scope:'selected-gameplay-v1',turn:100,level:1,state:{rng:{action:123,ai:456,player:789},things:[{id:1,health:100,hunger_level:0,annoyance_level:[0,0],exp_points:20,instance_use_turn:[0]}],dungeons:[{id:0,total_money_owned:1000,research_progress:4,manufacture_progress:5,script_flags:[0],turn_timers:[[2,1]]}],players:[{id:0,victory_state:0}],rooms:[],slabs:[[1,0,100,0]],scripts:{conditions:[[0,0]],values:[]},armageddon:[0,0,0]}});
+test('canonical key ordering does not create a false difference',()=>assert.equal(canonical({b:2,a:1}),canonical({a:1,b:2})));
+test('identical selected gameplay passes',()=>assert.equal(compareSnapshots(base(),base()).passed,true));
+for(const [name,mutate] of Object.entries({health:x=>x.state.things[0].health--,needs:x=>x.state.things[0].hunger_level++,economy:x=>x.state.dungeons[0].total_money_owned--,research:x=>x.state.dungeons[0].research_progress++,manufacturing:x=>x.state.dungeons[0].manufacture_progress++,flags:x=>x.state.dungeons[0].script_flags[0]++,timer:x=>x.state.dungeons[0].turn_timers[0][0]++,script:x=>x.state.scripts.conditions[0][1]++,rng:x=>x.state.rng.action++,outcome:x=>x.state.players[0].victory_state++}))test(name+' divergence is detected',()=>{const b=base();mutate(b);const r=compareSnapshots(base(),b);assert.equal(r.passed,false);assert.equal(r.differenceCount,1)});
+test('different turns and levels fail closed',()=>{const b=base();b.turn++;assert.throws(()=>compareSnapshots(base(),b),/same simulation turn/);b.turn--;b.level++;assert.throws(()=>compareSnapshots(base(),b),/same level/)});
+test('missing domain, duplicate entities and unsafe values are refused',()=>{const b=base();delete b.state.rng;assert.throws(()=>validateSnapshot(b));const c=base();c.state.things.push({...c.state.things[0]});assert.throws(()=>validateSnapshot(c));assert.throws(()=>canonical(NaN));assert.throws(()=>canonical(Number.MAX_SAFE_INTEGER+1))});

@@ -1,5 +1,18 @@
 # Developer guide
 
+## Faithful restoration checks
+
+Speech overrides support exact language sections such as `[speecheng]` and
+participate in campaign snapshot/reset handling. The installed remaster launcher
+accepts `-NativeAudio` for original audio during one session with exact mod-order
+restoration. See [audio tools](audio/README.md).
+
+The [fidelity tools](fidelity/README.md) capture selected gameplay state without
+changing simulation, compare snapshots and validate hash-bound acceptance
+evidence. The campaign matrix is a template for all 26 original maps; it does not
+claim completed playthroughs. Art candidates and runtime evidence remain local.
+This change adds no gameplay balance adjustments or new default artwork.
+
 This is an unofficial Windows x64 and DirectX 12 single-player preview based on [KeeperFX](https://github.com/dkfans/keeperfx). OpenGL remains available. There are no packaged binaries for this fork yet. The upstream starting revision is `fb0ab7f4d152286d25e73189530ed5536a360478`; see also the upstream [building guide](https://github.com/dkfans/keeperfx/wiki/Building-KeeperFX).
 
 ## Reviewed remaster defaults
@@ -104,6 +117,14 @@ Live campaign checks require your prepared runtime and original assets. They tem
 ```
 
 Read each runner before use. Live wrappers refuse an existing game/API listener and reserved save-slot conflicts, preserve their declared configuration/settings/save scope and write to sibling `artifacts/`. Keep the API loopback-only and disabled for normal play. Local codec/resync tests do not qualify multiplayer sessions.
+
+On Windows, OpenGL render-thread waits service synchronous native window messages
+without consuming posted gameplay input. This prevents a driver waiting on the
+window owner from deadlocking that owner's render wait during startup, rendering
+or shutdown. The [render-thread regression](render-thread-test.md) exercises the
+actual manager on x86/x64, including restart and input preservation. Sound-enabled
+local smoke checks additionally require native sound banks and SDL music/speech
+tracks to initialize; a disabled-audio fallback cannot pass.
 
 GPU validation needs Windows Graphics Tools. `dx12-install-tools.ps1` explicitly installs that development prerequisite with administrator privileges; ordinary preview play does not enable validation. Procedural GPU/CPU fixtures and source tests are in `local-dev/`. Reference workflows must generate their captured inputs locally; no historical capture corpus or test report is supplied.
 

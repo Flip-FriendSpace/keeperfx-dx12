@@ -18,6 +18,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "config_sounds.h"
+#include "config_keeperfx.h"
 #include "config.h"
 #include "bflib_basics.h"
 #include "bflib_fileio.h"
@@ -225,6 +226,8 @@ SoundSmplTblID snd_hit_wall_boulder      = 0;
 /** Per-message speech override paths.  Indexed by SMsg_* enum value.
  *  Empty string = use default speech bank sample. */
 char g_speech_overrides[SMsg_MAX][512];
+static char campaign_speech_overrides[SMsg_MAX][512];
+static TbBool campaign_speech_snapshot_valid;
 
 /** NamedCommand table mapping SMsg_* name strings to enum values. */
 static const struct NamedCommand speech_desc[] = {
@@ -351,7 +354,7 @@ static const struct NamedCommand speech_desc[] = {
  * and game root in that order. Language-specific variants are tried first (e.g. "eng/file.wav").
  */
 static TbBool parse_speech_section(char* buf, long len, const char* config_textname,
-                                   unsigned short flags)
+                                   unsigned short flags, const char* section_name)
 {
     int32_t pos = 0;
     const char* blockname = NULL;
@@ -360,7 +363,8 @@ static TbBool parse_speech_section(char* buf, long len, const char* config_textn
 
     while (iterate_conf_blocks(buf, &pos, len, &blockname, &blocknamelen))
     {
-        if (blocknamelen > 0 && strncasecmp(blockname, "speech", blocknamelen) == 0)
+        if (blocknamelen == (int)strlen(section_name) &&
+            strncasecmp(blockname, section_name, blocknamelen) == 0)
         {
             found_section = true;
             break;
@@ -867,6 +871,21 @@ static TbBool parse_system_section(char* buf, long len, const char* config_textn
 /**
  * @brief Main loader for sounds.cfg
  */
+static void parse_language_speech_sections(char* buf, long len, const char* fname,
+    unsigned short flags, const char* language)
+{
+    parse_speech_section(buf, len, fname, flags, "speech");
+    // Block names use the existing alphanumeric config syntax, e.g. [speecheng].
+    // Generic overrides retain their usual priority; a matching language wins
+    // within the same file. Other languages keep their native bank or earlier mod.
+    if (language != NULL && language[0] != '\0')
+    {
+        char section_name[32];
+        snprintf(section_name, sizeof(section_name), "speech%s", language);
+        parse_speech_section(buf, len, fname, flags, section_name);
+    }
+}
+
 static TbBool load_sounds_config_file(const char *fname, unsigned short flags)
 {
     SYNCDBG(0, "%s file \"%s\".", ((flags & CnfLd_ListOnly) == 0) ? "Reading" : "Parsing", fname);
@@ -902,7 +921,8 @@ static TbBool load_sounds_config_file(const char *fname, unsigned short flags)
     {
         result = false;
     }
-    parse_speech_section(buf, len, fname, flags);
+    parse_language_speech_sections(buf, len, fname, flags,
+        get_language_lwrstr(install_info.lang_id));
     
     free(buf);
     return result;
@@ -914,6 +934,8 @@ static TbBool load_sounds_config_file(const char *fname, unsigned short flags)
 
 TbBool load_sounds_config(void)
 {
+    memset(g_speech_overrides, 0, sizeof(g_speech_overrides));
+    campaign_speech_snapshot_valid = false;
     return load_config(&keeper_sounds_file_data, CnfLd_Standard);
 }
 
@@ -976,6 +998,8 @@ TbBool load_level_sounds_config(short fgroup, LevelNumber lvnum)
 
 void sound_save_campaign_snapshot(void)
 {
+    memcpy(campaign_speech_overrides, g_speech_overrides, sizeof(g_speech_overrides));
+    campaign_speech_snapshot_valid = true;
     sound_manager_save_snapshot();
     sound_save_id_redirect_snapshot();
     SYNCDBG(7, "sound_save_campaign_snapshot: snapshot saved");
@@ -983,6 +1007,8 @@ void sound_save_campaign_snapshot(void)
 
 void sound_restore_to_campaign_snapshot(void)
 {
+    if (campaign_speech_snapshot_valid)
+        memcpy(g_speech_overrides, campaign_speech_overrides, sizeof(g_speech_overrides));
     sound_manager_restore_snapshot();
     sound_restore_id_redirect_snapshot();
     cache_common_sound_ids();

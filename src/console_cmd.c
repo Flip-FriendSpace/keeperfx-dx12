@@ -22,6 +22,7 @@
 #include "kfx/renderer/IndexedWorldFallbackDiagnostic.h"
 #include "observer.h"
 #include "console_cmd.h"
+#include "fidelity_state.h"
 #include "globals.h"
 
 #include "actionpt.h"
@@ -667,6 +668,22 @@ static TbBool cmd_statecheck(PlayerNumber plyr_idx, char *args)
 {
     char *action = strsep_param_with_space(&args);
     if (action != NULL) {
+        if (strcmp(action, "fingerprint") == 0) {
+            const char *enabled = getenv("KFX_STATE_TEST");
+            const char *directory = getenv("KFX_FIDELITY_DIR");
+            char *label = strsep_param_with_space(&args);
+            if (!enabled || strcmp(enabled, "1") != 0 || !directory || !*directory
+                || !label || !*label || strlen(label) > 64 || strsep_param_with_space(&args)
+                || game.game_kind != GKind_LocalGame || network_is_active()
+                || !flag_is_set(game.operation_flags, GOF_Paused)) return false;
+            for (const char *p = label; *p; ++p)
+                if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')
+                    || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) return false;
+            char path[DISKPATH_SIZE];
+            int length = snprintf(path, sizeof(path), "%s/%s.json", directory, label);
+            if (length < 0 || (size_t)length >= sizeof(path)) return false;
+            return fidelity_write_snapshot_path(path, &game);
+        }
         if (strcmp(action, "replay-start") != 0 || strsep_param_with_space(&args) != NULL)
             return false;
         return request_replay_test_recording();

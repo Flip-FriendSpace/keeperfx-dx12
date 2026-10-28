@@ -44,6 +44,7 @@ private:
     bool m_work_done   = true;
     bool m_quit        = false;
     bool m_initialized = false;
+    bool m_stopped     = true;
     bool m_active      = false;
 };
 

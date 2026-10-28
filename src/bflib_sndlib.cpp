@@ -1313,6 +1313,7 @@ extern "C" int InitialiseSDLAudio()
 		MIX_Quit();
 		return 0;
 	}
+	LbJustLog("SDL audio ready: music and speech tracks initialized (%s)\n", SDL_GetCurrentAudioDriver());
 	return 1;
 }
 

@@ -57,7 +57,9 @@ def main():
     config = configparser.ConfigParser()
     config.read(package / "fxdata/sounds.cfg")
     for section, mapping in mappings.items():
-        assert dict(config[section]) == mapping, section
+        config_section = "speecheng" if section == "speech" else section
+        assert dict(config[config_section]) == mapping, config_section
+    assert "speech" not in config, "English performances must not override other languages"
     assert (package / "sounds.cfg").read_bytes() == (package / "fxdata/sounds.cfg").read_bytes()
     assert (package / "NOTICE.md").is_file()
     print(f"PASS: {len(paths)} PCM16/48k WAVs, exact coverage/mappings and SHA256 hashes ({total_bytes:,} bytes)")

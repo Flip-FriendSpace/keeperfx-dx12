@@ -4,6 +4,7 @@ param(
   [string]$WorkspacePath,
   [string]$RuntimePath,
   [switch]$Original,
+  [switch]$NativeAudio,
   [switch]$NativeProfile,
   [ValidateSet('x86', 'x64')][string]$Architecture = 'x64',
   [switch]$Upstream,
@@ -27,9 +28,10 @@ $profileRuntime = if ($RuntimePath) { $RuntimePath } else { Join-Path $Workspace
 $installedProfile = Join-Path $profileRuntime 'remaster/default.json'
 if (-not $NativeProfile -and -not $Upstream -and -not $HeavyLog -and $Architecture -eq 'x64' -and (Test-Path -LiteralPath $installedProfile)) {
   if ($PassThru) { throw 'The installed remaster owns its launch/restoration lifecycle. Use -NativeProfile for direct diagnostic launches.' }
-  & (Join-Path $PSScriptRoot 'remaster/play-remaster.ps1') -WorkspacePath $WorkspacePath -RuntimePath $profileRuntime -Original:$Original -QuickStart:$QuickStart -OpenGLFallback:$OpenGLFallback -Hidden:$Hidden -GpuValidation:$GpuValidation
+  & (Join-Path $PSScriptRoot 'remaster/play-remaster.ps1') -WorkspacePath $WorkspacePath -RuntimePath $profileRuntime -Original:$Original -NativeAudio:$NativeAudio -QuickStart:$QuickStart -OpenGLFallback:$OpenGLFallback -Hidden:$Hidden -GpuValidation:$GpuValidation
   return
 }
+if ($NativeAudio) { throw '-NativeAudio requires the installed remaster session launcher so mod order can be restored safely.' }
 if ($Original) { $DX12Preview = $true; $NativeTerrain = $true; $UiTextPercent = 100 }
 
 if ($GpuValidation -and (-not $DX12Preview -or $OpenGLFallback)) { throw 'GPU validation requires DX12.' }
