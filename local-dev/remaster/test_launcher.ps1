@@ -12,6 +12,21 @@ $runtime=[IO.Path]::GetFullPath((Join-Path $OutputPath ('fixture-'+[Guid]::NewGu
 New-Item -ItemType Directory -Path (Join-Path $runtime 'mods'),(Join-Path $runtime 'data'),(Join-Path $runtime 'remaster/sessions/test') -Force|Out-Null
 $checks=0
 function Check([bool]$Condition,[string]$Message){$script:checks++;if(-not $Condition){throw $Message}}
+$legacySelection='dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf'
+$currentSelection='9a285bacf69a60ea22bd0974c915ed37f1d5ab1b93bf20b7a0bc93390b0065de'
+foreach($selection in @($legacySelection,$currentSelection)){
+ $profile=@{schema=1;id='keeperfx-remaster-v13';selection=$selection;mod='keeper_remaster_default';ui_directory=('remaster/packages/'+$selection+'/ui');text_percent=80;api_enabled=$false}
+ $banks=@(Get-ExpectedUiBanks $profile)
+ $expectedCount=if($selection -eq $currentSelection){14}else{12}
+ Check ($banks.Count -eq $expectedCount) 'Installed V13/V23 profile selected the wrong bank count.'
+ Check (($banks -contains 'lndflag_ens.kfui') -eq ($selection -eq $currentSelection)) 'Campaign marker bank selected for the wrong publication.'
+ Check (($banks -contains 'lndflag_pin.kfui') -eq ($selection -eq $currentSelection)) 'Pin marker bank selected for the wrong publication.'
+ foreach($bad in @(@{selection=('0'*64)},@{ui_directory='remaster/packages/other/ui'},@{api_enabled=$true})){
+  $changed=$profile.Clone();foreach($key in $bad.Keys){$changed[$key]=$bad[$key]}
+  $rejected=$false;try{$null=Get-ExpectedUiBanks $changed}catch{$rejected=$true}
+  Check $rejected 'Unsupported publication, UI path or API setting accepted.'
+ }
+}
 foreach($input in @('[after_map]',"[after_map]`n", "[after_base]`r`nkeeper_enhanced_default`r`n[after_map]`r`nkeeper_hd_terrain`r`nenhanced_creatures_custom`r`nkeeper_remaster_default_extra")){
  $hd=Get-SessionModOrder $input $false 'keeper_remaster_default'
  Check ($hd -match '(?m)^keeper_remaster_default\r?$') 'Default must be inserted, including EOF header.'

@@ -163,7 +163,7 @@
   },
   "possessionFollowup": {
     "date": "2026-10-29",
-    "status": "candidate_runtime_checked_appearance_pending",
+    "status": "user_appearance_accepted_runtime_checked",
     "scope": "Imp possession artwork; historical overhead, held and hero acceptance above remains separate.",
     "root": "artifacts/restoration-followup-20261029/possession/imp",
     "package": "candidate-actions-v4/imp-sprites.zip",
@@ -185,9 +185,12 @@
     ],
     "combinedManifestSHA256": "9a285bacf69a60ea22bd0974c915ed37f1d5ab1b93bf20b7a0bc93390b0065de",
     "combinedReview": "artifacts/restoration-followup-20261029/review.html",
-    "userAppearanceAccepted": false,
+    "userAppearanceAccepted": true,
+    "userAppearanceAcceptanceDate": "2026-10-29",
+    "userAppearanceAcceptanceQuote": "Ok create the PR for these updates- accepted",
+    "userAppearanceAcceptanceReceipt": "artifacts/restoration-followup-20261029/user-appearance-acceptance-v23.json",
     "normalArtSelectionChanged": false,
     "remaining": "Other 29 models retain 3,012 native possession frame uses. Natural job acquisition, hauling, combat and broad campaign play remain separate from directed renderer checks.",
-    "resume": "Present the opt-in v23 comparison for appearance review. Preserve this exact package; ordinary artwork selection remains unchanged. Do not infer appearance approval from the earlier CTA approval."
+    "resume": "Publish the accepted v23 artwork through lossless source-bound recipes. Preserve the checked package and its runtime limits; local normal-play selection is unchanged."
   }
 }

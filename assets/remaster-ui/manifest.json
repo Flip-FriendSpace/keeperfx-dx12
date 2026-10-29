@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "selection": "dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf",
+  "selection": "9a285bacf69a60ea22bd0974c915ed37f1d5ab1b93bf20b7a0bc93390b0065de",
   "sources": {
     "data/font1-64.dat": {
       "bytes": 4119,
@@ -475,6 +475,162 @@
       "sha256": "3a8035c099d87a6011084a232973e78f26a4724cbc70c6d3166c25233b14eb60",
       "decoded_bytes": 146656,
       "decoded_sha256": "3a8035c099d87a6011084a232973e78f26a4724cbc70c6d3166c25233b14eb60"
+    },
+    "ldata/lndflag_ens.dat": {
+      "bytes": 40452,
+      "sha256": "07ede3ab51f2fc01cf27931fc8563674e7e581ac0b7ec197d2f62a238c1884a4",
+      "decoded_bytes": 40452,
+      "decoded_sha256": "07ede3ab51f2fc01cf27931fc8563674e7e581ac0b7ec197d2f62a238c1884a4"
+    },
+    "ldata/lndflag_ens.tab": {
+      "bytes": 276,
+      "sha256": "50c46727ba193c3fe52e66b5bc00069bd3b8a00b5a22e97f86d54f6026c3bc0e",
+      "decoded_bytes": 276,
+      "decoded_sha256": "50c46727ba193c3fe52e66b5bc00069bd3b8a00b5a22e97f86d54f6026c3bc0e"
+    },
+    "ldata/lndflag_pin.dat": {
+      "bytes": 34258,
+      "sha256": "9be1428824fdbcf6b02d3ca75bb7969975255c0049fe4afdba4923598fa5219d",
+      "decoded_bytes": 34258,
+      "decoded_sha256": "9be1428824fdbcf6b02d3ca75bb7969975255c0049fe4afdba4923598fa5219d"
+    },
+    "ldata/lndflag_pin.tab": {
+      "bytes": 276,
+      "sha256": "30195575f46595b9590078e92c2474abd4661b1242f49e372a75cdd1124116fe",
+      "decoded_bytes": 276,
+      "decoded_sha256": "30195575f46595b9590078e92c2474abd4661b1242f49e372a75cdd1124116fe"
+    },
+    "campgns/keeporig_lnd/rgmap00.raw": {
+      "bytes": 598154,
+      "sha256": "ab3f6a3f9e4db8d366666fc07cd65cfdff2b121d4235297f84a40ce7529b1c7f",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "69a99307ca95f63798da4de3a7c79d33e9fe650b6af8f6c420b5f5d9b577ccb8"
+    },
+    "campgns/keeporig_lnd/rgmap01.raw": {
+      "bytes": 582434,
+      "sha256": "1fdf659b8706b34c3ac07fd67072b3e1b914e81f89e6cd51829b426d30e30388",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "363154ab3e9bfc4baa0b555ee45f3fa9c0f272c0c517e73175192d8f9732e87a"
+    },
+    "campgns/keeporig_lnd/rgmap02.raw": {
+      "bytes": 604748,
+      "sha256": "652493265097a94017638090406944448727727fcbdfea855ae6f8b348fba365",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "4a35973bb899f75938dff3eaed3f5d923e1e15fcf94e1e9b7bf322ced3021fc6"
+    },
+    "campgns/keeporig_lnd/rgmap03.raw": {
+      "bytes": 620563,
+      "sha256": "47e328c09a71929727c92222ffd00a7a60cf8349675519dc342ac4e74147a62a",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "29b674ecd228197f84fb58c6fe48b1a5f527c22366ead710838b1fd60e3195e1"
+    },
+    "campgns/keeporig_lnd/rgmap04.raw": {
+      "bytes": 1228800,
+      "sha256": "fe94294061a5fdf3a00cfdd389aa37a68555e9bcaeaee5c1424f09ae61614dac",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "fe94294061a5fdf3a00cfdd389aa37a68555e9bcaeaee5c1424f09ae61614dac"
+    },
+    "campgns/keeporig_lnd/rgmap05.raw": {
+      "bytes": 598445,
+      "sha256": "210ba9990b1d58b228243e609d7a790a745a6c052310d4493ef61eb5b4da312d",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "ad621f4456d75f5326a45b2490c71ffef250a6207f1d68b450c5d0cfb014cba4"
+    },
+    "campgns/keeporig_lnd/rgmap06.raw": {
+      "bytes": 611568,
+      "sha256": "460339c5714aa0f1a025010404e6daebe7216de3629fe1848277087fda497373",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "2c6ee769827b1ace7705347691a557a66e64615c3cc6e464ed5afc8b263ec596"
+    },
+    "campgns/keeporig_lnd/rgmap07.raw": {
+      "bytes": 591030,
+      "sha256": "354321ffce216721e4c777851d3cdc56522e6511795a7c36b79ca2843d2bd035",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "ab05919dc9681772af06842f79c02d65db621cbda3a5fdeb87bc193b5ac7a3f1"
+    },
+    "campgns/keeporig_lnd/rgmap08.raw": {
+      "bytes": 585294,
+      "sha256": "0924bc985cd6150ae23f77fcc968d1a8a70848d469c5963db5874e5508ac3432",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "434214642dc9ad87b9c3a8c16741bf4ee80b210a9a20ad1681e9e48a40686292"
+    },
+    "campgns/keeporig_lnd/rgmap09.raw": {
+      "bytes": 586825,
+      "sha256": "194ba8c781dec9b0702ff6ff4bd2d3ef8cf94164f70ba814f3a4c318dbc16b74",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "906f7ee3f946df2890e322e1423c84c563fdfc76beaf833a6f4e5fc2117e9dd1"
+    },
+    "campgns/keeporig_lnd/rgmap10.raw": {
+      "bytes": 587915,
+      "sha256": "1adc477e68fc2c601ed3cc5b09564bd6e14921f36114121961659ac6f1cedf89",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "cb6db425321e607eb871100a7a0a8af631797f7387dd751c30b394caeca03a20"
+    },
+    "campgns/keeporig_lnd/rgmap11.raw": {
+      "bytes": 595400,
+      "sha256": "5c01de5819ed2b6d256eb284cc954adb56ec875c25f674e48d83d94d7deebb5f",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "892c627976f38e5b3b98a35358174834df545112af23e5b0c54bf9b9bb704a8a"
+    },
+    "campgns/keeporig_lnd/rgmap12.raw": {
+      "bytes": 598170,
+      "sha256": "572f2a98df58d51b263cff92a6715028a2693cfbabdedf0e78aecef3776b6ceb",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "7560d1e860b96a238a3aea6517181455560794bd1e6b8f6c7ff77307a4320582"
+    },
+    "campgns/keeporig_lnd/rgmap13.raw": {
+      "bytes": 639871,
+      "sha256": "9f7c153279fb0df03ff3c699e8f67f1079e06f5213e694ef4faf0b993e9a942f",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "7bb8eed7ec21574416f39578d14af826a392128122525dc1deea5651753a2714"
+    },
+    "campgns/keeporig_lnd/rgmap14.raw": {
+      "bytes": 632174,
+      "sha256": "f985660e0ca236d92ad5223771efca656ea776bfc25cb029eefdf598acf19d14",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "4cc11c28efc60fd05e4ab3017e33f415018314545211f6de4efb923de7592b49"
+    },
+    "campgns/keeporig_lnd/rgmap15.raw": {
+      "bytes": 669496,
+      "sha256": "37810900771500313954e876ce38bc5fba82cc91283de262248e483b7f9791fe",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "6e59f84432c6fc24a4814333db30010c599e5283fc68e5d972440726c9d11736"
+    },
+    "campgns/keeporig_lnd/rgmap16.raw": {
+      "bytes": 644937,
+      "sha256": "c574f9356116fff18d4804d540f4a563a4c79f9e109d0165c3b369bf7b35f131",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "05b1e0dee7224b2cd3c63b2244086d151b3df90352d46aaed10037e2853377e3"
+    },
+    "campgns/keeporig_lnd/rgmap17.raw": {
+      "bytes": 602679,
+      "sha256": "b8fc5ada22ae9724adc12a4eb2f0455839884039a463e4331cbb9557732d6557",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "24bc284eadb56f0475fca8a0c8bdee7e28d52b2f60438f3b40a0fadc070fd19f"
+    },
+    "campgns/keeporig_lnd/rgmap18.raw": {
+      "bytes": 591551,
+      "sha256": "16de50973725022ea6bc9e4dbf0f7cf079df39a8bccd170e3d4dcc0c4f4bc1f2",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "ae8f6edf6353c2060b00a805b6986f7e76a8b182d86a58058d9d15c3c0eb3899"
+    },
+    "campgns/keeporig_lnd/rgmap19.raw": {
+      "bytes": 583593,
+      "sha256": "b95737bc8531f168fff6b1541685c456f8da433da6ab6409f6a38da41ff95cd3",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "1b8693a882c9a369c56d31b9271bcfcf521f25c61c8ea34bea65c9c9883f8c9a"
+    },
+    "campgns/keeporig_lnd/rgmap20.raw": {
+      "bytes": 547376,
+      "sha256": "dc620006f936a2fa75c8ca573afba0a01d05d001ff3d95aeee817536709d5baf",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "f57468539d67fcbfe4731605adb609d98acd0485d02ce45dd7f340bbc3706976"
+    },
+    "campgns/keeporig_lnd/rgmap21.raw": {
+      "bytes": 535334,
+      "sha256": "beca09a9fedf0b8d2095ecc888c5a781c2d978cd0de317693701156320eb5307",
+      "decoded_bytes": 1228800,
+      "decoded_sha256": "9d83b4cba7a28189b3ca559dc7bb40a59f0d2626e3943189b4423e98f42d3c08"
     }
   },
   "objects": {
@@ -8919,6 +9075,231 @@
       "compressed_bytes": 2787,
       "compressed_sha256": "bf9c2d0809ab12d740efeb320e978712a27a2bb9dd016a7231e6fba321257f64",
       "role": "hand/cursor generated/native operator graph metadata only"
+    },
+    "8a8829be5c16228896af047d65b72769828fc1c38c59da714e47e39fa9d90664": {
+      "bytes": 110592,
+      "compressed_bytes": 65797,
+      "compressed_sha256": "608d0410151e242c2dfa19b4a1def745f3f99a9ec05da2e7e3737e6aea5e8e4f"
+    },
+    "3ef02b4d5a74d6212c9ca1d70b1be5eaec88325f88640a467f11f3fd9901c5a1": {
+      "bytes": 110592,
+      "compressed_bytes": 48612,
+      "compressed_sha256": "b1ce1c54a9e113b0c52296d7ef96f481ee125a45c569f82a6360c76e58192f63"
+    },
+    "6ce47c01f8d9186788c0012ba7659d1e28333a762714394d816072e3a7d078fb": {
+      "bytes": 110592,
+      "compressed_bytes": 52572,
+      "compressed_sha256": "13b63e236e429d670e858981e25958c458c047d29392cb6863105823ad55eb98"
+    },
+    "7c21a67b94cf05922d6ffa8ce03b8aae2176b8bc06217becddaec7ed8defedd6": {
+      "bytes": 110592,
+      "compressed_bytes": 62086,
+      "compressed_sha256": "70956e0f904923811322a0863fc765707bdb3531910f9c5b227052d36cbb279b"
+    },
+    "4802306c107b6437c80cb9b439e45fb6bf94183f768a91a28176d6c09f2f0f12": {
+      "bytes": 110592,
+      "compressed_bytes": 54666,
+      "compressed_sha256": "5bef5a0f9817a2d83a4224dc16f1fec49a4e0042c7676c3ed06242b8dc3cd1e5"
+    },
+    "28de8b8bb25b580561a24a8039de660ea073b79c4e9d18e7bc09fd02cae79412": {
+      "bytes": 110592,
+      "compressed_bytes": 52090,
+      "compressed_sha256": "7be28a98944f78174507805a490e948b9e0ff5889faf1cdac11548dc4fd8a605"
+    },
+    "523357f3be4e6d07467beb62296fe39544017373706860061aeb20ffb17206cf": {
+      "bytes": 110592,
+      "compressed_bytes": 53753,
+      "compressed_sha256": "b1a8a4d1ee7ae861296a19158762de39a7397b98d7427e1b31243f748e890049"
+    },
+    "ce66c59c2f942b303f1677a342afb510aaf8dfdae84e122c784dc8fc72ebe8ea": {
+      "bytes": 110592,
+      "compressed_bytes": 58482,
+      "compressed_sha256": "1cdcdd218c72bb91b428e53c74c3b74284f5924d6b19e5766d632d0e4e110f77"
+    },
+    "f09f73ab7cf45802c872403efcef4eb2dea79687eedef5954a44b0cddd110418": {
+      "bytes": 110592,
+      "compressed_bytes": 71124,
+      "compressed_sha256": "10a2b5fec40eeb88900d3647bb29626c5e262d15ad9590cff103a28d58243ade"
+    },
+    "8e708dd4a773511a4c22dc2c0a633983435a38f1bd9092f8c72c298d342f865a": {
+      "bytes": 110592,
+      "compressed_bytes": 49795,
+      "compressed_sha256": "378753d7ed79a159695bd6c4a576bf6abf757b258302b498d13512fab2f1674b"
+    },
+    "aa990d9e98ecfe449760369a721b394f4cab367af6c2145bfe52fd3b17941b6b": {
+      "bytes": 110592,
+      "compressed_bytes": 54783,
+      "compressed_sha256": "c32df5af022c3c3e87311f845f63aeeb4d6342c2b8b65da4fe5dacf2d90e27c9"
+    },
+    "033ac06fbc4b0d6fe8e2a7e3a196e8f76c05668b30ff0329ed3db297fb0bfd21": {
+      "bytes": 110592,
+      "compressed_bytes": 63069,
+      "compressed_sha256": "937b754024cd487f904b7e6d2668c46c6860b601d7292fbb1d2e47a9d5a108fe"
+    },
+    "339258569d001e73c4b5ebd93a745b964381333e8843c2cea24cafdb5de0a75a": {
+      "bytes": 110592,
+      "compressed_bytes": 52437,
+      "compressed_sha256": "58d823d74a0de073b1cfdb076deadc2185edec4b6a45e425c552278d062a1ac6"
+    },
+    "81e7c32740f745c0f64660463fa5f23cda7c53d3322796c8a5f5c7dee16c5416": {
+      "bytes": 110592,
+      "compressed_bytes": 35813,
+      "compressed_sha256": "4e4fd1d5bd9325f3dc479d09c7094523a6a61ab76837a9ef6b5875a9729c479c"
+    },
+    "8ee59e2f8e25b90ad6eebbca196e19c7ae28b056cd73957f0ad273b678cf12ae": {
+      "bytes": 110592,
+      "compressed_bytes": 44915,
+      "compressed_sha256": "47a4f3c131a616023e783445407e7b4408bfdb853ddea094738a678fd6594d4c"
+    },
+    "0b4ee660c4cbb5e451d5fa74c3be9c0b4734b1cd51f1d57e768a9f77e6b8e72b": {
+      "bytes": 110592,
+      "compressed_bytes": 68657,
+      "compressed_sha256": "93d8063fbebe5dd204160fa6494be8d5883effb0bf077256817c0d88219e508e"
+    },
+    "c0ef645b4eb95be20512f3fd1345f9c742cb1212bf6a283141c0c3967e92b5cd": {
+      "bytes": 110592,
+      "compressed_bytes": 53745,
+      "compressed_sha256": "933d98acd924cd23affc9cd631dacbee50c94d6f6d9aa3c6be4c99bb61e49933"
+    },
+    "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20": {
+      "bytes": 31248,
+      "compressed_bytes": 1513,
+      "compressed_sha256": "b8cb915600b1faee5ef9abced8d69c76876b1e902062490c768373cd59946023"
+    },
+    "6d55155e107343fe2deebcb0717343fd4e11e19bac024f534190a38698089049": {
+      "bytes": 31248,
+      "compressed_bytes": 1416,
+      "compressed_sha256": "08f09930cd4f104a348fe515e64a0d684f14c628a40178922e494ebd2a1d6a58"
+    },
+    "b1eb5ef57ce795204d59469e8fa07542eec765def89f6c88d5ed2d3bbeada371": {
+      "bytes": 31248,
+      "compressed_bytes": 1450,
+      "compressed_sha256": "5d1a82330e769b28ad68d0dd6f6bc483860374749185309283453ea399cb5078"
+    },
+    "deeec67da18651be2940c6304d56c8710e9a262132c42e5dd821aa8d2918560e": {
+      "bytes": 31248,
+      "compressed_bytes": 1368,
+      "compressed_sha256": "927162e149cb5243fb0e6e9786475bb9e7886baa2fd0e9ae60cb7b4af14a942e"
+    },
+    "c514c07dd9466d366e2a3c50707d0accf41320651b85ce3fa99f276250dcfe98": {
+      "bytes": 31248,
+      "compressed_bytes": 1358,
+      "compressed_sha256": "be59530d0e6febb1c17e13968cfaa0a0c5b3f9994eeaff5c0761fee8a499fa61"
+    },
+    "d5088a322a6881a487ed9876c7e85238617be93e8712f3bb6a5c6021e0249d28": {
+      "bytes": 31248,
+      "compressed_bytes": 1326,
+      "compressed_sha256": "9cf18f9ba756689c84f167e41dd72cb42bfdfcd801371212575fef3953db3c61"
+    },
+    "67e0fb0f6a654eaa2d7cb0f954785923d633d627bf12f3899d2f7a2fb3e2f702": {
+      "bytes": 31248,
+      "compressed_bytes": 1242,
+      "compressed_sha256": "55b3dbc46edf71bd9e29adabc0b377206270fc6b28583046d8b8a7051e2cc948"
+    },
+    "bb4d94ac8b191a7f5592c0583c749cbbbc843ff00a2269165174c881515719dc": {
+      "bytes": 31248,
+      "compressed_bytes": 1406,
+      "compressed_sha256": "433819f08710fcced17f5cc545c7e27f7f2e2c8ca73c7cb2a0444af7c60ab2ff"
+    },
+    "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296": {
+      "bytes": 23808,
+      "compressed_bytes": 1154,
+      "compressed_sha256": "32e187f2590931e77144439df879bf94614bd4332a9920dbc5903e0429cd4dc7"
+    },
+    "411a3b3f7e64787a6fed8959a5b8aafef7de1e80ef0e83a70e247ea56354cbd2": {
+      "bytes": 23808,
+      "compressed_bytes": 1093,
+      "compressed_sha256": "127ed77630b92a5cd031598c4445a8be83709fb276d2db8ce9418a76e5e22aca"
+    },
+    "4425be1986ea84c4252aa224e8e94a0aeb917df1a3d411c0211e3d7c014c626f": {
+      "bytes": 23808,
+      "compressed_bytes": 1138,
+      "compressed_sha256": "ed57a08476f1611a4c9dbb9ddb72dfa9e13df0b86b7585ac063b0d71af49c083"
+    },
+    "cb12f312d901668adb912b9f04f1d755e6541b38c45b6c9830f2d0e6a844a897": {
+      "bytes": 23808,
+      "compressed_bytes": 1133,
+      "compressed_sha256": "24db73f9259633152146d55e2983a68fff4e40223979da56df81c68d0a2fc6db"
+    },
+    "35b5561e0f83f6cb3e6102668812b5fb137be2fb634720518ca46044f397d62b": {
+      "bytes": 23808,
+      "compressed_bytes": 1145,
+      "compressed_sha256": "640834ae9158a95431122e0e500719f663e414a3919b4d9f1d46c9c261dd3116"
+    },
+    "0f6aff521ea4a10c79174742fbf19914e4186f1b86950773805bd7e5f37e3bbd": {
+      "bytes": 23808,
+      "compressed_bytes": 1087,
+      "compressed_sha256": "98c4937566c09052909c8881c9dc303572dca82e30fca2893009eb52c59f8e66"
+    },
+    "cceb9ea66e9d9ac07d69e69d09e003273f0cbe2487a05151ca6e53c37213980d": {
+      "bytes": 23808,
+      "compressed_bytes": 1085,
+      "compressed_sha256": "24683999c3bce013ea2454b2598a73d54c4792c6f5ca911f3954819a8bcbecc4"
+    },
+    "49efa861019136871d714f1d03b1b7480b57b79d2ef864ecebd1f00b24d42a28": {
+      "bytes": 23808,
+      "compressed_bytes": 1039,
+      "compressed_sha256": "f31d111f6f208202c1c64b2729747f1fcf1f23f4e9292da248d60479ba570a2f"
+    },
+    "974cee19056f1c75d8261913db40b4028c1924c7c5598085917e3a55649b76e6": {
+      "bytes": 18304,
+      "compressed_bytes": 6904,
+      "compressed_sha256": "a859dd5123a8b1efa9dd90e877e1e5391405401e6da6cbcc1a4b11730ea429d6"
+    },
+    "51fb458ecafa19d62c28158f5060965a8bf2f8c81d25af57357e8e780d39c012": {
+      "bytes": 18304,
+      "compressed_bytes": 6994,
+      "compressed_sha256": "43d369908c3aa9931aa581acc7f3aa39744b8c20c5a9460f3239618cd2bff70e"
+    },
+    "9ac0854e6a90548b7d91cfb169dca2673f45e55880841586936ec7e935ec7f91": {
+      "bytes": 18304,
+      "compressed_bytes": 7755,
+      "compressed_sha256": "eb469e4b4bc1fe7196950c4707c8397192269fd522addc1acce5c8deb6d6f053"
+    },
+    "5a485a44fe0c49621f8b2bcae2d20e63fd3c9ad40a2025629b10c27c4b2f32b6": {
+      "bytes": 18304,
+      "compressed_bytes": 7303,
+      "compressed_sha256": "48d141f8c7d605a090c6eea715013c6107c8499720a4a613be36c068591ee293"
+    },
+    "b33d6be7163168e4aed173582eec651669a4ccbe4adef430b60b0a50ec4f82bf": {
+      "bytes": 26624,
+      "compressed_bytes": 11021,
+      "compressed_sha256": "73a093c0ab9b8757697dca6d96a2937f6fa4b011d59ca0bf0c299ab1bcf4cea7"
+    },
+    "ee5e1374ab4bd6a4698b154a850bbd8a08643a335001c6712a524f8fdff63662": {
+      "bytes": 26624,
+      "compressed_bytes": 10059,
+      "compressed_sha256": "d446a08a7262a12f4e312e0f4f9a8dce55282a353e3acb3f538d3979ca717e02"
+    },
+    "36eed66556dfdde5899751b7c7e41d44825bff0ad957086c3b1dfe2f80b28ccd": {
+      "bytes": 9728,
+      "compressed_bytes": 4733,
+      "compressed_sha256": "05a31c197093d921a4e1571825626a28075c11863954698cf9e5f54ccf53332a"
+    },
+    "95527b9acb904df982ab8667637e03bdc97121acd29c522a5046fc7a6404c5cd": {
+      "bytes": 28160,
+      "compressed_bytes": 7248,
+      "compressed_sha256": "67425ba4b106abdedd33b8ce09534d0331cd5e45711a8ebc4d0fc4aceaf2b48f"
+    },
+    "58d274c35618d7e5dde22290508f7175d86892d931242d9a0d7c21d9cfdac40b": {
+      "bytes": 77440,
+      "compressed_bytes": 19131,
+      "compressed_sha256": "00dbc81486d3f0081b0f8737ee71a58c39eb8c903c65ed8e78a578f6da2fbab6"
+    },
+    "a75aaf18dce68b7064ba7af801a5b253e8a1022480a92ebce50722cd699d1296": {
+      "bytes": 28160,
+      "compressed_bytes": 7213,
+      "compressed_sha256": "3bf9ed1322f091bdf4c9157f6e7bcf1b8440cb7993e246d0ae128ef74892edfd"
+    },
+    "004ede233d55707620327ea07f5093404836a018da92a565f4023aff8ba1fa59": {
+      "bytes": 26624,
+      "compressed_bytes": 11196,
+      "compressed_sha256": "1e3431cc3d532e7f7855983406216f7da49e3cfee83a9dbe53e3f54550ca95aa"
+    },
+    "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd": {
+      "bytes": 3686400,
+      "compressed_bytes": 2687721,
+      "compressed_sha256": "27d08633fcef6c4d429a85f459c8e71958d8f1c61635122de2ecd1e893170a7c"
     }
   },
   "banks": [
@@ -10542,8 +10923,8 @@
     },
     {
       "output": "ui/frontbit.kfui",
-      "bytes": 2924977,
-      "sha256": "fd730a56e0967a9a7a9e6393e4d67564a1dcbe521410a5dc981db9d9b8b89cc7",
+      "bytes": 3061097,
+      "sha256": "46a390f93a9c293befb447a6c2275b543f98863d8d643ac2b961ba6bcbb7f5e5",
       "records": [
         {
           "index": 1,
@@ -11443,6 +11824,97 @@
             "panel"
           ],
           "material": "03b89f87bb7864a040669be71d76751a733225696c10356ac9003876bd56990d"
+        },
+        {
+          "index": 83,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "974cee19056f1c75d8261913db40b4028c1924c7c5598085917e3a55649b76e6",
+          "pixel_sha256": "0008d560980ecf06cbab87a0f0eba01b9188b622a22c79f1473acf3fa1978d8a"
+        },
+        {
+          "index": 84,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "974cee19056f1c75d8261913db40b4028c1924c7c5598085917e3a55649b76e6",
+          "pixel_sha256": "0008d560980ecf06cbab87a0f0eba01b9188b622a22c79f1473acf3fa1978d8a"
+        },
+        {
+          "index": 85,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "974cee19056f1c75d8261913db40b4028c1924c7c5598085917e3a55649b76e6",
+          "pixel_sha256": "0008d560980ecf06cbab87a0f0eba01b9188b622a22c79f1473acf3fa1978d8a"
+        },
+        {
+          "index": 86,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "51fb458ecafa19d62c28158f5060965a8bf2f8c81d25af57357e8e780d39c012",
+          "pixel_sha256": "c14026d68a583ad0112fc445545caa62b17564f8c9373c85a169186f3cc6a975"
+        },
+        {
+          "index": 87,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "9ac0854e6a90548b7d91cfb169dca2673f45e55880841586936ec7e935ec7f91",
+          "pixel_sha256": "538b787f1fced93fb9b042eec5d46c30331004d881081c060b5e45bfa0b20004"
+        },
+        {
+          "index": 88,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "5a485a44fe0c49621f8b2bcae2d20e63fd3c9ad40a2025629b10c27c4b2f32b6",
+          "pixel_sha256": "78483a071a0110cf8b83033609c9db40c322d33214fb9947301658c5cdefb861"
+        },
+        {
+          "index": 89,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "b33d6be7163168e4aed173582eec651669a4ccbe4adef430b60b0a50ec4f82bf",
+          "pixel_sha256": "25c0e5e7d1bd0ea425a2f3b0da091e3e6e8680b47aadf4f7644e70e45d6a66ca"
+        },
+        {
+          "index": 90,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "ee5e1374ab4bd6a4698b154a850bbd8a08643a335001c6712a524f8fdff63662",
+          "pixel_sha256": "374fee0bfe1d7d71f55c02eac1cb4ee97d2f6c52232661488e522b804c237bad"
+        },
+        {
+          "index": 91,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "36eed66556dfdde5899751b7c7e41d44825bff0ad957086c3b1dfe2f80b28ccd",
+          "pixel_sha256": "4395aed7d2ce39d28ca3a615d7c01dd9119e27fc07030f37ac98c343c9ab2761"
+        },
+        {
+          "index": 92,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "95527b9acb904df982ab8667637e03bdc97121acd29c522a5046fc7a6404c5cd",
+          "pixel_sha256": "cb9dd475579b1faf8892b4080213a492b86324d4a8ed7dc679817e1ed34c2ca8"
+        },
+        {
+          "index": 93,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "58d274c35618d7e5dde22290508f7175d86892d931242d9a0d7c21d9cfdac40b",
+          "pixel_sha256": "fb27994b17baff83195e2d2fd65492919e8f5910e18f1c67f58a8a767099c889"
+        },
+        {
+          "index": 94,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "a75aaf18dce68b7064ba7af801a5b253e8a1022480a92ebce50722cd699d1296",
+          "pixel_sha256": "17fd7f09a33c13fba2dbe1f182d476459484875d76f81c1dde36f44ec6528e16"
+        },
+        {
+          "index": 95,
+          "operator": "controls",
+          "method": "control-relief-v1",
+          "generated_relief": "004ede233d55707620327ea07f5093404836a018da92a565f4023aff8ba1fa59",
+          "pixel_sha256": "ed146dec5ae25576f3c989cee82cfbdf91646615fb3cef81d67397a238b8be4f"
         }
       ],
       "scale": 4,
@@ -18162,8 +18634,8 @@
     },
     {
       "output": "ui/gui1-64.kfui",
-      "bytes": 1111844,
-      "sha256": "417cfa41db788104bfef5223c6692dc32d792c69a81958a0fc327a445ab5902b",
+      "bytes": 1748868,
+      "sha256": "783aef0a3a66bec9171285126c09da8a3ac097458d027e47e35554c6eee88c4c",
       "records": [
         {
           "index": 1,
@@ -18664,6 +19136,125 @@
           "index": 126,
           "pixel_sha256": "3cfbb6041f425c284da1b9d41878a08d8c000c0ff8591fc31e69ade8c671130c",
           "operator": "hud"
+        },
+        {
+          "index": 145,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "8a8829be5c16228896af047d65b72769828fc1c38c59da714e47e39fa9d90664",
+          "pixel_sha256": "7ad10dae605cf6a97dc5362c996106b0fad8c057dc7f8f107d14ca191b46e12c"
+        },
+        {
+          "index": 146,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "3ef02b4d5a74d6212c9ca1d70b1be5eaec88325f88640a467f11f3fd9901c5a1",
+          "pixel_sha256": "9edbe5796b5d8761508f72f99b7959d5cd239a9f34ca0b7b18f433093140d0f2"
+        },
+        {
+          "index": 147,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "6ce47c01f8d9186788c0012ba7659d1e28333a762714394d816072e3a7d078fb",
+          "pixel_sha256": "fce12a99227f14e97bc1ede0ad224f0da20e8ed6f441d81a13226234bd47d9ff"
+        },
+        {
+          "index": 148,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "7c21a67b94cf05922d6ffa8ce03b8aae2176b8bc06217becddaec7ed8defedd6",
+          "pixel_sha256": "326e216529ca4f7d29ea53ce1aa41613b334a4c8a02e8598a930f8d74efe9f8d"
+        },
+        {
+          "index": 149,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "4802306c107b6437c80cb9b439e45fb6bf94183f768a91a28176d6c09f2f0f12",
+          "pixel_sha256": "e10c73096b03150dd5c27d6bdfa15378ab4b18a24d639a6b5b8df7d8b0c97fc4"
+        },
+        {
+          "index": 150,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "28de8b8bb25b580561a24a8039de660ea073b79c4e9d18e7bc09fd02cae79412",
+          "pixel_sha256": "4517118f3112a3eb2f42870fafa96c1e72a43ffbee1ee2175c72eae3338435e2"
+        },
+        {
+          "index": 151,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "523357f3be4e6d07467beb62296fe39544017373706860061aeb20ffb17206cf",
+          "pixel_sha256": "67d3c4408567f4c44407f2fabf192b930977fc16d29e9cf9a77ae45421a5f77f"
+        },
+        {
+          "index": 152,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "ce66c59c2f942b303f1677a342afb510aaf8dfdae84e122c784dc8fc72ebe8ea",
+          "pixel_sha256": "5ecbf866cc679c3326d39df0be567ed23ed891391acdc69083980079a2b27bc9"
+        },
+        {
+          "index": 153,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "f09f73ab7cf45802c872403efcef4eb2dea79687eedef5954a44b0cddd110418",
+          "pixel_sha256": "a3b54702efb15d38f3b492e332f5c26193ed802971dd33c2b1d5d40793496792"
+        },
+        {
+          "index": 154,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "8e708dd4a773511a4c22dc2c0a633983435a38f1bd9092f8c72c298d342f865a",
+          "pixel_sha256": "6ebe2e4cfb33e132392ea66b54da86775ae5de92243d90079db7f3d15aa6bb54"
+        },
+        {
+          "index": 155,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "aa990d9e98ecfe449760369a721b394f4cab367af6c2145bfe52fd3b17941b6b",
+          "pixel_sha256": "44f471f8955f1b9ba09eb73dd2abde28233c12c944e9c7401e231399a75874c1"
+        },
+        {
+          "index": 156,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "033ac06fbc4b0d6fe8e2a7e3a196e8f76c05668b30ff0329ed3db297fb0bfd21",
+          "pixel_sha256": "d33a2e8add74e09a00626ba2ee846d4d5040c4ac4a2a754adf394bf2c849c5e8"
+        },
+        {
+          "index": 157,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "339258569d001e73c4b5ebd93a745b964381333e8843c2cea24cafdb5de0a75a",
+          "pixel_sha256": "9f74952d49a2ccd295d984405d6764e2a7c55d5abde820fde66af264ea971e8e"
+        },
+        {
+          "index": 158,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "81e7c32740f745c0f64660463fa5f23cda7c53d3322796c8a5f5c7dee16c5416",
+          "pixel_sha256": "0ff5abde852f4b37a9d7da932886dd98715688c5eddab65428bd527d1d105e42"
+        },
+        {
+          "index": 159,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "8ee59e2f8e25b90ad6eebbca196e19c7ae28b056cd73957f0ad273b678cf12ae",
+          "pixel_sha256": "46c53fe1e40ed07a2d4d50041cb5e797abac1c407ceee02a570311908a90c0e1"
+        },
+        {
+          "index": 160,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "0b4ee660c4cbb5e451d5fa74c3be9c0b4734b1cd51f1d57e768a9f77e6b8e72b",
+          "pixel_sha256": "0764e9792816efb9b195e26fd9f8f204d165ea82a634599de47258d3e447af19"
+        },
+        {
+          "index": 173,
+          "operator": "portrait",
+          "method": "portrait-local-colour-v1",
+          "generated_rgb": "c0ef645b4eb95be20512f3fd1345f9c742cb1212bf6a283141c0c3967e92b5cd",
+          "pixel_sha256": "cba0ad8aa4913d2ebaa23550d106405252a58f5730d65fe4f23fc617bb22fea2"
         },
         {
           "index": 174,
@@ -25314,6 +25905,644 @@
       "palette": "data/palette.dat",
       "operator": "hand",
       "hand_recipe": "f84edd1a22d6c6d36f0ce264045aaae0fc86ce30c988970cd395e4d9c273ac22"
+    },
+    {
+      "output": "ui/lndflag_ens.kfui",
+      "scale": 4,
+      "name": "lndflag_ens",
+      "data": "ldata/lndflag_ens.dat",
+      "table": "ldata/lndflag_ens.tab",
+      "records": [
+        {
+          "index": 2,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "e0c0a52cfa42d0aee0e20140be8fdf3eb2a78c21fa4186f413ee05c37b1c87e6"
+        },
+        {
+          "index": 3,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "6d55155e107343fe2deebcb0717343fd4e11e19bac024f534190a38698089049",
+          "pixel_sha256": "44396c60a4bd2ed952d555c1630a6e53dc1f1a517c3485c8b65551c4009e9e1b"
+        },
+        {
+          "index": 4,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "b1eb5ef57ce795204d59469e8fa07542eec765def89f6c88d5ed2d3bbeada371",
+          "pixel_sha256": "eb0c209deaacf9545bf5f62a557f175c20d08dc2106dc1e7947992ed473225fa"
+        },
+        {
+          "index": 5,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "deeec67da18651be2940c6304d56c8710e9a262132c42e5dd821aa8d2918560e",
+          "pixel_sha256": "3dd9d9dae738e2e9ece4d0944c5a42271d86f3c30582f20908f9b182acdd0076"
+        },
+        {
+          "index": 6,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "c514c07dd9466d366e2a3c50707d0accf41320651b85ce3fa99f276250dcfe98",
+          "pixel_sha256": "3b4c0abd9958aa48f9ce4cf17aca7e7b48f5baca3fbf758d6a848953701a74db"
+        },
+        {
+          "index": 7,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "d5088a322a6881a487ed9876c7e85238617be93e8712f3bb6a5c6021e0249d28",
+          "pixel_sha256": "94d39d30be3c6fb1ac221e8813bf3125f49d1fa75f84f0546b73a77ebcc52b46"
+        },
+        {
+          "index": 8,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "67e0fb0f6a654eaa2d7cb0f954785923d633d627bf12f3899d2f7a2fb3e2f702",
+          "pixel_sha256": "2ba837467c73b3a6fae33bec8666530937242818bf8233b4d7d6a06516bb4ee0"
+        },
+        {
+          "index": 9,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "bb4d94ac8b191a7f5592c0583c749cbbbc843ff00a2269165174c881515719dc",
+          "pixel_sha256": "148c53a6a55c47f58d3be11d6c4823a3d02ef7119db7e82d6bbefcb93783d227"
+        },
+        {
+          "index": 10,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "00123f5a0c0edb4fbe6e5d0a45efe6e88c6edaf3923463fad64e19eea994e6c2"
+        },
+        {
+          "index": 11,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "6d55155e107343fe2deebcb0717343fd4e11e19bac024f534190a38698089049",
+          "pixel_sha256": "489bddbec6a2e9015ade727f21807e6850ddf213ee8f6097b7100569c21d0185"
+        },
+        {
+          "index": 12,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "b1eb5ef57ce795204d59469e8fa07542eec765def89f6c88d5ed2d3bbeada371",
+          "pixel_sha256": "fcdd4083f275d1a5dd40ad68e3a59187a977f6b83ad89925d078faddbae33cb8"
+        },
+        {
+          "index": 13,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "deeec67da18651be2940c6304d56c8710e9a262132c42e5dd821aa8d2918560e",
+          "pixel_sha256": "79cb5d288ede7b2843bdc72e61d848096dacab418c7313e101b4e518b0088fd5"
+        },
+        {
+          "index": 14,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "c514c07dd9466d366e2a3c50707d0accf41320651b85ce3fa99f276250dcfe98",
+          "pixel_sha256": "d90a24a1cace78a5d55bc2f1b39d48ced383482c7efa9378e1ec624a814f06d6"
+        },
+        {
+          "index": 15,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "d5088a322a6881a487ed9876c7e85238617be93e8712f3bb6a5c6021e0249d28",
+          "pixel_sha256": "933a3424727862488eec2da0aeefcc2976015b1899df32d8622c1f3e4f395392"
+        },
+        {
+          "index": 16,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "67e0fb0f6a654eaa2d7cb0f954785923d633d627bf12f3899d2f7a2fb3e2f702",
+          "pixel_sha256": "10fec74bc32f8e3de261873e5621b1cb5c60b945d511e210726b1731325ea0ca"
+        },
+        {
+          "index": 17,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "bb4d94ac8b191a7f5592c0583c749cbbbc843ff00a2269165174c881515719dc",
+          "pixel_sha256": "43733c4179f03d7b5dc54b51ffdbb2e498252a72222a08c68924b91fa8de760a"
+        },
+        {
+          "index": 18,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "8470701624ff650af5c90c42da16b6cc30f13dae003fe7b5b81fec60502fcf68"
+        },
+        {
+          "index": 19,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "6d55155e107343fe2deebcb0717343fd4e11e19bac024f534190a38698089049",
+          "pixel_sha256": "32203edbdc9a8de5c94e8013ed1e558b21d5c095e4989f9ea40fab23091e37bc"
+        },
+        {
+          "index": 20,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "b1eb5ef57ce795204d59469e8fa07542eec765def89f6c88d5ed2d3bbeada371",
+          "pixel_sha256": "78b223433c7c251d72f03ac335b05dd1abbd208e3bf86d2a29a8aef95f7b0d4e"
+        },
+        {
+          "index": 21,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "deeec67da18651be2940c6304d56c8710e9a262132c42e5dd821aa8d2918560e",
+          "pixel_sha256": "02646a92019409bdab520db05e24c1a429ee60d708f87e1edfe2dd04feae4334"
+        },
+        {
+          "index": 22,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "c514c07dd9466d366e2a3c50707d0accf41320651b85ce3fa99f276250dcfe98",
+          "pixel_sha256": "221fe68329c3e36ccb4379f96ff7b72aa18352ef50e2ff8dbc7969daa3858b47"
+        },
+        {
+          "index": 23,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "d5088a322a6881a487ed9876c7e85238617be93e8712f3bb6a5c6021e0249d28",
+          "pixel_sha256": "1c750e90d34123b787479049d0f316090e0fad25191da6e9f9a5953979c84522"
+        },
+        {
+          "index": 24,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "67e0fb0f6a654eaa2d7cb0f954785923d633d627bf12f3899d2f7a2fb3e2f702",
+          "pixel_sha256": "1580d65e114afe597142ec8c0c751c84ad30fe7d601b1bd1ccaed7c47c2fbdf8"
+        },
+        {
+          "index": 25,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "bb4d94ac8b191a7f5592c0583c749cbbbc843ff00a2269165174c881515719dc",
+          "pixel_sha256": "65a9632612ad0e9985df7472674b015e949c7e34ac9e5de5839cec2d42a2018e"
+        },
+        {
+          "index": 26,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "96ff5448b3120d32f16a52e25d1fb3b400b862cd6be58ba19e92f6f2bdc20628"
+        },
+        {
+          "index": 27,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "6d55155e107343fe2deebcb0717343fd4e11e19bac024f534190a38698089049",
+          "pixel_sha256": "e7b96266abf31c613d9d5889c021c4f7e5f46a0c54fccb9766a74c067b2bd147"
+        },
+        {
+          "index": 28,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "b1eb5ef57ce795204d59469e8fa07542eec765def89f6c88d5ed2d3bbeada371",
+          "pixel_sha256": "d716f154b78e28a99a4e10202a200e8110955055e707510f519546969ae87d2b"
+        },
+        {
+          "index": 29,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "deeec67da18651be2940c6304d56c8710e9a262132c42e5dd821aa8d2918560e",
+          "pixel_sha256": "ea70422dcd664bf21f85cebb257ec5b2520d7d191297f5524969cea696cc9de7"
+        },
+        {
+          "index": 30,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "c514c07dd9466d366e2a3c50707d0accf41320651b85ce3fa99f276250dcfe98",
+          "pixel_sha256": "27ec392a84f381609f94a0cbd62d12a556ba9675e8481632aa1b9a9b77ae83ea"
+        },
+        {
+          "index": 31,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "d5088a322a6881a487ed9876c7e85238617be93e8712f3bb6a5c6021e0249d28",
+          "pixel_sha256": "d4614fb2b78d1c96ba75a3b82fba31cadb36d316fa44cdf34a05883112881e32"
+        },
+        {
+          "index": 32,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "67e0fb0f6a654eaa2d7cb0f954785923d633d627bf12f3899d2f7a2fb3e2f702",
+          "pixel_sha256": "29dd8d7ecfcbeef7d1bd00d7f05163ed491768fdc80feee580ed26cc73a75355"
+        },
+        {
+          "index": 33,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "bb4d94ac8b191a7f5592c0583c749cbbbc843ff00a2269165174c881515719dc",
+          "pixel_sha256": "12de6899b2b60eb190d25269cff4b8ef1ff06a2ad5644e39e053130a810d8e50"
+        },
+        {
+          "index": 34,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "c1a4bd3d0c9dfabe9545075b6ff05a84a99795b4ab04e943e71b26e370581f0e"
+        },
+        {
+          "index": 35,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "9b37a683424ff6dc4001f71578faa5f1def8a07b347f47fa04b9da1bfc1ffc2b"
+        },
+        {
+          "index": 36,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "51eedad64502d73aeba53928537f8dd6090f306906a06f9f67c51b1b0706f49d"
+        },
+        {
+          "index": 37,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "6dde06e4acbdc68fbc75507c4fe2375ab9e34b8f933cc46dd3ad8e81d167718d"
+        },
+        {
+          "index": 38,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "6d55155e107343fe2deebcb0717343fd4e11e19bac024f534190a38698089049",
+          "pixel_sha256": "e1e2dff344baaf463302729e1245f94524d0d4f23d09e2549a4a66f808b934e4"
+        },
+        {
+          "index": 39,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "b1eb5ef57ce795204d59469e8fa07542eec765def89f6c88d5ed2d3bbeada371",
+          "pixel_sha256": "0b60c7efb0c9421053d2fbdb252b39783e7d7bd6f41fdaf9c3944246737e556e"
+        },
+        {
+          "index": 40,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "deeec67da18651be2940c6304d56c8710e9a262132c42e5dd821aa8d2918560e",
+          "pixel_sha256": "4e0b4eb8ece23bd788cc637b21a6331719232240fea73d05e45ee522573998a3"
+        },
+        {
+          "index": 41,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "c514c07dd9466d366e2a3c50707d0accf41320651b85ce3fa99f276250dcfe98",
+          "pixel_sha256": "772fae51b4ac502a906bba2e4b7ebf68faa3266d02b757c93feb5af7f96f5360"
+        },
+        {
+          "index": 42,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "d5088a322a6881a487ed9876c7e85238617be93e8712f3bb6a5c6021e0249d28",
+          "pixel_sha256": "1d9e9f05051a095a0b823d58516143fb018a4ab1f5894801b05f36c5dfd20e03"
+        },
+        {
+          "index": 43,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "67e0fb0f6a654eaa2d7cb0f954785923d633d627bf12f3899d2f7a2fb3e2f702",
+          "pixel_sha256": "43fc3dd1975e51642584ab32f1d5bd0f0e8444358175752291d57b2378fd3488"
+        },
+        {
+          "index": 44,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "bb4d94ac8b191a7f5592c0583c749cbbbc843ff00a2269165174c881515719dc",
+          "pixel_sha256": "f1809234b4abd7ff67e950bcca136ebae8b0c2ac0d8fd93a81d48ba85c2390cb"
+        },
+        {
+          "index": 45,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "3918344ad02d6dd076934f79e013d9696949b67fda7e04a8e989824bb09e0d20",
+          "pixel_sha256": "a05c6fce6c92f046064971b2e36e18d0db128823e51b289810fc2c149e959fc2"
+        }
+      ],
+      "bytes": 531628,
+      "sha256": "1fd7bf8a8148be66dae70f4c10d07c35f6d44501b16fc6581829c74ea3bfc214"
+    },
+    {
+      "output": "ui/lndflag_pin.kfui",
+      "scale": 4,
+      "name": "lndflag_pin",
+      "data": "ldata/lndflag_pin.dat",
+      "table": "ldata/lndflag_pin.tab",
+      "records": [
+        {
+          "index": 2,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "eac2af874f47be662b2dcefa238bc6d3b9a7ce60e25699f8b20187db8639ec0b"
+        },
+        {
+          "index": 3,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "411a3b3f7e64787a6fed8959a5b8aafef7de1e80ef0e83a70e247ea56354cbd2",
+          "pixel_sha256": "465c06f91f159b1faf4c5b29af9150881c34beac0ad9ba93bda4f097e3f380d7"
+        },
+        {
+          "index": 4,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "4425be1986ea84c4252aa224e8e94a0aeb917df1a3d411c0211e3d7c014c626f",
+          "pixel_sha256": "a4e473b31cc27d460185fc4b2be6ac5022eb84fd02e3fc30a9aeb469c1cc4ad2"
+        },
+        {
+          "index": 5,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cb12f312d901668adb912b9f04f1d755e6541b38c45b6c9830f2d0e6a844a897",
+          "pixel_sha256": "a50b8893497ce29505594e1728ed2337dd28140a4b2219fa33ac46cd9287a80d"
+        },
+        {
+          "index": 6,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "35b5561e0f83f6cb3e6102668812b5fb137be2fb634720518ca46044f397d62b",
+          "pixel_sha256": "381a1c93a5d143b60094431d00111326f99daccf792dfd4cbb831199562f5463"
+        },
+        {
+          "index": 7,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "0f6aff521ea4a10c79174742fbf19914e4186f1b86950773805bd7e5f37e3bbd",
+          "pixel_sha256": "27d534ed3506f1d7194fa7c8389da9e73c3c7ec93db4ddf506fedb4a5b6e301d"
+        },
+        {
+          "index": 8,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cceb9ea66e9d9ac07d69e69d09e003273f0cbe2487a05151ca6e53c37213980d",
+          "pixel_sha256": "7401ed7ce127077e07070cbe6b814b0f8b4707757568a02bc97a79e210f492f3"
+        },
+        {
+          "index": 9,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "49efa861019136871d714f1d03b1b7480b57b79d2ef864ecebd1f00b24d42a28",
+          "pixel_sha256": "1cbf6b399d03c7301d745cd48ce467dab41f5694b6405f88eb6cc145bfe71db7"
+        },
+        {
+          "index": 10,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "fb4192b96c9d809fe44cb9c76ba4c3b50bb5f8199eb37cff6638df0f659476c5"
+        },
+        {
+          "index": 11,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "411a3b3f7e64787a6fed8959a5b8aafef7de1e80ef0e83a70e247ea56354cbd2",
+          "pixel_sha256": "54d3a50825ba69ae9ccde28fbc7a2b996420ed98812f617d00a7c6f907031cfd"
+        },
+        {
+          "index": 12,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "4425be1986ea84c4252aa224e8e94a0aeb917df1a3d411c0211e3d7c014c626f",
+          "pixel_sha256": "5f94c811f497f793c85a0be75fd39c056caf35e320a33b99bce77c3c3b61a99f"
+        },
+        {
+          "index": 13,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cb12f312d901668adb912b9f04f1d755e6541b38c45b6c9830f2d0e6a844a897",
+          "pixel_sha256": "7e0748ee6e061918872d19d25cac25384b1d52f2591a7632fd0403e4c3348f34"
+        },
+        {
+          "index": 14,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "35b5561e0f83f6cb3e6102668812b5fb137be2fb634720518ca46044f397d62b",
+          "pixel_sha256": "365c9e89e72d59062dc6a54493a7028789f8969c9d00d9954a289dad7970a2a3"
+        },
+        {
+          "index": 15,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "0f6aff521ea4a10c79174742fbf19914e4186f1b86950773805bd7e5f37e3bbd",
+          "pixel_sha256": "b76e217eb4b475814739708db7925f8cfcde342ffab9c99e65b6ca6f95016c78"
+        },
+        {
+          "index": 16,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cceb9ea66e9d9ac07d69e69d09e003273f0cbe2487a05151ca6e53c37213980d",
+          "pixel_sha256": "154fb8885db631fb3dcc7eb59218a13580d9a4fe4f373254ff34df93d7555f21"
+        },
+        {
+          "index": 17,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "49efa861019136871d714f1d03b1b7480b57b79d2ef864ecebd1f00b24d42a28",
+          "pixel_sha256": "05be28331b0308ac034bc0b9551cc163fbe216514ce1ad385aeb10165740d358"
+        },
+        {
+          "index": 18,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "a73b833cb48f03dd7d6a7d4be1cee3253f57f57a557a9086df25f2ba8a25c896"
+        },
+        {
+          "index": 19,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "411a3b3f7e64787a6fed8959a5b8aafef7de1e80ef0e83a70e247ea56354cbd2",
+          "pixel_sha256": "53607db084a541906355dd776b2febe7c2fce10e8faa0d79296e57a18d90f213"
+        },
+        {
+          "index": 20,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "4425be1986ea84c4252aa224e8e94a0aeb917df1a3d411c0211e3d7c014c626f",
+          "pixel_sha256": "5624c4a4b7cbcb73af6eb0cd0336d9e461356a4d859092f6acae939ab0790c4f"
+        },
+        {
+          "index": 21,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cb12f312d901668adb912b9f04f1d755e6541b38c45b6c9830f2d0e6a844a897",
+          "pixel_sha256": "766c156ae23ba3a6ba276e00e3274e1679ef94eb43cb833bae7fc4153e8848d1"
+        },
+        {
+          "index": 22,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "35b5561e0f83f6cb3e6102668812b5fb137be2fb634720518ca46044f397d62b",
+          "pixel_sha256": "e64b4ce1c6f6e56b8e35c7ea602f32b1e5dfeefe77203fee46b0e712c767ecfc"
+        },
+        {
+          "index": 23,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "0f6aff521ea4a10c79174742fbf19914e4186f1b86950773805bd7e5f37e3bbd",
+          "pixel_sha256": "ae2b80dfa62883f6af4b690b5da428a7b7f05497c085219959df07221ed258ed"
+        },
+        {
+          "index": 24,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cceb9ea66e9d9ac07d69e69d09e003273f0cbe2487a05151ca6e53c37213980d",
+          "pixel_sha256": "64ccb16dd1f0134f9f1b03fc97eab02746cb0b2b714b40ff757a017e87d4a187"
+        },
+        {
+          "index": 25,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "49efa861019136871d714f1d03b1b7480b57b79d2ef864ecebd1f00b24d42a28",
+          "pixel_sha256": "c816f7e3caf2f6e24437022946cf556dbac7b56918b2ce07f77849b0ab73e4db"
+        },
+        {
+          "index": 26,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "c07839bdcb94a6b531dfc3233d38d2e3a53f2b13deed4c36cc3a855d0965e630"
+        },
+        {
+          "index": 27,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "411a3b3f7e64787a6fed8959a5b8aafef7de1e80ef0e83a70e247ea56354cbd2",
+          "pixel_sha256": "6fb021e62450b3db33d49481f746b76599f5f0a978adbf8125e6873b887deb74"
+        },
+        {
+          "index": 28,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "4425be1986ea84c4252aa224e8e94a0aeb917df1a3d411c0211e3d7c014c626f",
+          "pixel_sha256": "9890161cd48ccb9fe6e57f17561e2ed7454258a5670c850261a558af60c8112d"
+        },
+        {
+          "index": 29,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cb12f312d901668adb912b9f04f1d755e6541b38c45b6c9830f2d0e6a844a897",
+          "pixel_sha256": "45ae91bc0d71a5d9ce39038af0cdd32d68a789c545238703fc8231ce9456c787"
+        },
+        {
+          "index": 30,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "35b5561e0f83f6cb3e6102668812b5fb137be2fb634720518ca46044f397d62b",
+          "pixel_sha256": "0d179d96a46ea4cdd4c9beac75ac43dbc2f84e74b0bb1dd2e9c04c8c909cb33b"
+        },
+        {
+          "index": 31,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "0f6aff521ea4a10c79174742fbf19914e4186f1b86950773805bd7e5f37e3bbd",
+          "pixel_sha256": "f637b7ebfdf48b5126c36af4d82fddec35cb553ebe2aa13e58702fbc8e08078c"
+        },
+        {
+          "index": 32,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cceb9ea66e9d9ac07d69e69d09e003273f0cbe2487a05151ca6e53c37213980d",
+          "pixel_sha256": "539a94064ab5e06a74484175c195d4be1a041bece38956283a5d00c31336a95a"
+        },
+        {
+          "index": 33,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "49efa861019136871d714f1d03b1b7480b57b79d2ef864ecebd1f00b24d42a28",
+          "pixel_sha256": "0b0228c0e033442078b063385ce8379b6b607f1cb590143a28c48aaa91ee131d"
+        },
+        {
+          "index": 34,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "e108763c8a33c91139dd0f4a6881079cacaca8dc9287dfa5519cc17b0a6a0bf1"
+        },
+        {
+          "index": 35,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "d20d8a0a920e12f314e2ecf3f550e18642c9f514fa2a8f73b84e070b5496cade"
+        },
+        {
+          "index": 36,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "fc71e276d44306e9a8fea29eaeecf70fce25783d06e014ea59d572b0a22a07cb"
+        },
+        {
+          "index": 37,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "62d0bdf66f2e89513169f31389016df5a81adf4ade98f6f8bb4fb9ba4c1ba743"
+        },
+        {
+          "index": 38,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "411a3b3f7e64787a6fed8959a5b8aafef7de1e80ef0e83a70e247ea56354cbd2",
+          "pixel_sha256": "c3899823e2645075bb32c4dfdadc90bde972700f415fbe46931de0a22d24c6b2"
+        },
+        {
+          "index": 39,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "4425be1986ea84c4252aa224e8e94a0aeb917df1a3d411c0211e3d7c014c626f",
+          "pixel_sha256": "2ac034da9bad6e57593301e21ab78fa2915d89075d46203ccd8a93423071e05c"
+        },
+        {
+          "index": 40,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cb12f312d901668adb912b9f04f1d755e6541b38c45b6c9830f2d0e6a844a897",
+          "pixel_sha256": "72ab52ae1ceef64523db9f677cf86f9b20bb8a7f2a15849bfeeca4b46457b1f5"
+        },
+        {
+          "index": 41,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "35b5561e0f83f6cb3e6102668812b5fb137be2fb634720518ca46044f397d62b",
+          "pixel_sha256": "44609ba9f4c182c8a88871760f2642bffa15cb0469af96854baf8eaa9c0ad3e9"
+        },
+        {
+          "index": 42,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "0f6aff521ea4a10c79174742fbf19914e4186f1b86950773805bd7e5f37e3bbd",
+          "pixel_sha256": "f22b9e3c8ec94387eede800fe3a4709b1fbf5592c0a035715c925f8d77b19c98"
+        },
+        {
+          "index": 43,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "cceb9ea66e9d9ac07d69e69d09e003273f0cbe2487a05151ca6e53c37213980d",
+          "pixel_sha256": "842ef93b1a339db3e9fdab0387ea313e7c05baedcda679685ae2f74e89761aaf"
+        },
+        {
+          "index": 44,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "49efa861019136871d714f1d03b1b7480b57b79d2ef864ecebd1f00b24d42a28",
+          "pixel_sha256": "b06a4a22a28837e30a91a4db0a04a0738b8e4ff0cf855e915714691629b0fc68"
+        },
+        {
+          "index": 45,
+          "operator": "marker",
+          "method": "marker-wood-relief-v1",
+          "generated_relief": "f9f8c714f710c2b37cfa49cd4804067b7200417e587541fb6f0e6fdde0a00296",
+          "pixel_sha256": "be2960e55b17e29d79dae052f56131a04f021b8eea6ea0e18d6152cb8a065ef3"
+        }
+      ],
+      "bytes": 458156,
+      "sha256": "db48bb2805570b09192d91bcdb5ef2615ca7154fdc9afcd91ab2f0149e3b681f"
     }
   ],
   "native": [
@@ -25740,6 +26969,358 @@
       "native_colour": "legacy4",
       "generated_alpha": "ef63ad59bd9b0b0ce86c3a8d3a887c9b09610f2ae61fca6b5f5ae818456fc869",
       "pixel_sha256": "122c89788cc16d573783a0c76c45e4e92c7eaa8ad4bdd09cb28138474170e937"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap00.raw",
+      "output": "campgns/keeporig_lnd/rgmap00.raw",
+      "palette": "campgns/keeporig_lnd/rgmap00.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "601dc2d18b595824b8d20285bb8ffbbb573ef816f9616ec82725b4228eea0d88",
+      "pixel_sha256": "6a730e5391a7b8f749e351bafb9b80ecac882385b0f4cdd55581b4e0c58c6966"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap01.raw",
+      "output": "campgns/keeporig_lnd/rgmap01.raw",
+      "palette": "campgns/keeporig_lnd/rgmap01.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "7f53be1b799601d80ea2d95f9d6978ab5c2aebc5f960513e7bf682b7fc226b7f",
+      "pixel_sha256": "9f3cb6aece783afd325f92c2b43a357941b3031913e69dfc4911a2caa1a945ed"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap02.raw",
+      "output": "campgns/keeporig_lnd/rgmap02.raw",
+      "palette": "campgns/keeporig_lnd/rgmap02.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "589061691d8d1d34d1a6c88cdf5ca277b65ff63f70886591b1f4c5579d3d0f3a",
+      "pixel_sha256": "22db3330bf2558882bb0a2f52a5d15d8f6e2c05ac73e825397f28f29ace0a453"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap03.raw",
+      "output": "campgns/keeporig_lnd/rgmap03.raw",
+      "palette": "campgns/keeporig_lnd/rgmap03.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "02c399a62ecdd3587be680ceb68b7b8ad697b767f1d33056d79302f64e7a24b3",
+      "pixel_sha256": "ffbbc92fc739f5a1ce509b4826408280b45ad7c23e2061ee59289b93fb0a8d2d"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap04.raw",
+      "output": "campgns/keeporig_lnd/rgmap04.raw",
+      "palette": "campgns/keeporig_lnd/rgmap04.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "98fcdfb8370aefdcf7a2267fad80a58e4917e6b8b23250183230a588efcc1cd6",
+      "pixel_sha256": "94439ac7576c5ecfb06b7046db88bc52b9039568633dc9c4c198e961cf115abf"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap05.raw",
+      "output": "campgns/keeporig_lnd/rgmap05.raw",
+      "palette": "campgns/keeporig_lnd/rgmap05.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "ec324c79090fe96bc962bbe3652cf32e58d91278c453b7ceddb6c454333aa76d",
+      "pixel_sha256": "dbba118f6e6b04b5205eaa7773a3792d9cc43f36c922ef3c03bfdb451d163d88"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap06.raw",
+      "output": "campgns/keeporig_lnd/rgmap06.raw",
+      "palette": "campgns/keeporig_lnd/rgmap06.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "07d6bc98a5b433a12d81950e9cde969c393eba3fa00e61604c32515c13e2e029",
+      "pixel_sha256": "239986fa239cbea5361f19b5378d777ab5d5972b36588ad6b3759d92b32b24c6"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap07.raw",
+      "output": "campgns/keeporig_lnd/rgmap07.raw",
+      "palette": "campgns/keeporig_lnd/rgmap07.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "34c0bd14cd66483ece5c355fbdd5ecaa2368fc994df0b9b7fe7eb4288d68761c",
+      "pixel_sha256": "a3271f022575cfd6b305fbf487b0a2f2d5b60128adba622847ab9f2d399bb8f9"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap08.raw",
+      "output": "campgns/keeporig_lnd/rgmap08.raw",
+      "palette": "campgns/keeporig_lnd/rgmap08.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "9e7cf448b2c09a93c632f3b934a980bc9174247414cf949d71f21992689a2a01",
+      "pixel_sha256": "ecfb2ea295084026962bc734f96e7c75eaa4fe84b1dbd9a6037d288ae1ae8a68"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap09.raw",
+      "output": "campgns/keeporig_lnd/rgmap09.raw",
+      "palette": "campgns/keeporig_lnd/rgmap09.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "bf2a66c00908a8c54929c7a9e3eb62d29c5a79de814a8594f5e2abd221ab7874",
+      "pixel_sha256": "742c90938512fe64fee1c334ad5b402977cb3a3eb1c7ecea00651caee8bd161e"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap10.raw",
+      "output": "campgns/keeporig_lnd/rgmap10.raw",
+      "palette": "campgns/keeporig_lnd/rgmap10.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "66c6b6b7c212e07affdd840ae0e6343e6734e9d2dbeb8ecd85914b2cf0d6b918",
+      "pixel_sha256": "e98278dd499cd9e8f219295ad2b8a2744fd3d3fd9fc957c5a2ab974d6c39de83"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap11.raw",
+      "output": "campgns/keeporig_lnd/rgmap11.raw",
+      "palette": "campgns/keeporig_lnd/rgmap11.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "4945f8dd2f66139a451cfa6340669d82527960ac140c3a0ef5de919c83822323",
+      "pixel_sha256": "18d4225d94501a5e8e16f6313f0243ce94009b450e212acd689842c4d3b23626"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap12.raw",
+      "output": "campgns/keeporig_lnd/rgmap12.raw",
+      "palette": "campgns/keeporig_lnd/rgmap12.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "cd20837d79d1fdf308877f007fe12867bca35944a12e22bda085e380815623b6",
+      "pixel_sha256": "0bad64da0472c454fca4db767c99bda8b56e3bf9a2f01bacb4befd6bfc41194b"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap13.raw",
+      "output": "campgns/keeporig_lnd/rgmap13.raw",
+      "palette": "campgns/keeporig_lnd/rgmap13.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "fb80f99f56b3ef10ddb92e00ca87acf2b9ab8ce58a056b0d1e7cc6550db9ec1f",
+      "pixel_sha256": "40bc58398f180b848fa9593ed89c5917e2d83172c715ae9cc27b786a9b37eb74"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap14.raw",
+      "output": "campgns/keeporig_lnd/rgmap14.raw",
+      "palette": "campgns/keeporig_lnd/rgmap14.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "ba90013856ffedde0076ef4233a2242a4cbf5ef13eb62b28781c2c30f7b5ef3f",
+      "pixel_sha256": "f0c2e1da4fb31a4e1c0e21205229797efa66a7e4c94fae48046999b491ffed48"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap15.raw",
+      "output": "campgns/keeporig_lnd/rgmap15.raw",
+      "palette": "campgns/keeporig_lnd/rgmap15.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "e347c58057fd052f3c2a878bcc1bd34bc8ec8bcf613fc4de00b037105de2172b",
+      "pixel_sha256": "c73caeb2b428d41171a570e45ce86acdfb5d784c2928858d3c06c1d8283d9349"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap16.raw",
+      "output": "campgns/keeporig_lnd/rgmap16.raw",
+      "palette": "campgns/keeporig_lnd/rgmap16.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "dc4985927b8bdb86c88831cd06684f083ec429e15886bb0f7b28854882229d5d",
+      "pixel_sha256": "5e7d9fdd24b497d7f05db0d7a7807f57ccc8719e3a5f8a6dfb4873b420b6b6c1"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap17.raw",
+      "output": "campgns/keeporig_lnd/rgmap17.raw",
+      "palette": "campgns/keeporig_lnd/rgmap17.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "226f632279f9ae9fc5c83943c4c1d582364662abfcaa739026382828379572a8",
+      "pixel_sha256": "a86a46970603424973d52bc83567d9cb3ea1bb633425751d108a8a3db199d3e2"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap18.raw",
+      "output": "campgns/keeporig_lnd/rgmap18.raw",
+      "palette": "campgns/keeporig_lnd/rgmap18.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "0aedc59f403d482fcc4a39d86945634d27eb743d85c1b230fbe220433c6de330",
+      "pixel_sha256": "71ad294ce0152cee29bb00ca0b110976bc65ed52c780c06ec52a84a0394046aa"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap19.raw",
+      "output": "campgns/keeporig_lnd/rgmap19.raw",
+      "palette": "campgns/keeporig_lnd/rgmap19.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "dbcfb144311616a1eb466af1a51c24314b81e6d06b5ff03d965088dab6bd91ee",
+      "pixel_sha256": "bf61300ca27b85a4599b72e2e5890f2c13738617a1b03339ae852025b5bb2dd8"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap20.raw",
+      "output": "campgns/keeporig_lnd/rgmap20.raw",
+      "palette": "campgns/keeporig_lnd/rgmap20.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "838234d5490ee02af48c7c736d8b09c46eb5710fca597360eff07d5c203b4fae",
+      "pixel_sha256": "03b4d83baeacec87f5f1014049855fa9f9dd04e09779ca40c806fc49a08803b7"
+    },
+    {
+      "source": "campgns/keeporig_lnd/rgmap21.raw",
+      "output": "campgns/keeporig_lnd/rgmap21.raw",
+      "palette": "campgns/keeporig_lnd/rgmap21.pal",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "format": "raw",
+      "operator": "landview",
+      "method": "landview-local-colour-v1",
+      "generated_rgb": "8304f793c1cf9061323d597f40337879f4441c732fb41e1bf6dd021cbe7de5cd",
+      "bytes": 1228800,
+      "sha256": "1c5e0876d0a2cf538ceeb7f68dfa214a35a74971f351b4ecfdf6cbf2a0d0f2c7",
+      "pixel_sha256": "c56a48bb4b91b79a1c61cdb2518f2d2dff865582b6fcacde39d3438053c91fe1"
     }
   ],
   "requirements": {
@@ -25800,5 +27381,26 @@
       ],
       "note": "The generated main-menu cursor (Horned Reaper head) is replaced by a 4x upscale computed only from the native sprite and palette; no generated pixels are stored. User-approved 2026-10-19."
     }
-  ]
+  ],
+  "restoration_update": {
+    "previous_selection": "dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf",
+    "previous_manifest_sha256": "799df32330823ef2cdcc308d00ab12f2e9693fd6f4a3973dc592a6d9318ec27b",
+    "portraits": 17,
+    "campaign_states": 22,
+    "campaign_marker_records": 88,
+    "control_records": 13,
+    "previous_records_preserved": 2514,
+    "previous_native_outputs_preserved": 27,
+    "recipes": {
+      "portrait": "portrait-local-colour-v1",
+      "landview": "landview-local-colour-v1",
+      "marker": "marker-wood-relief-v1",
+      "controls": "control-relief-v1"
+    },
+    "excluded": [
+      "torture tower",
+      "unselected native UI slots"
+    ],
+    "native_data_in_objects": false
+  }
 }

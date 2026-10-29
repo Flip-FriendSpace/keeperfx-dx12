@@ -17,7 +17,7 @@ import sys
 import uuid
 
 REPO = Path(__file__).resolve().parents[2]
-SELECTION = 'dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf'
+SELECTION = '9a285bacf69a60ea22bd0974c915ed37f1d5ab1b93bf20b7a0bc93390b0065de'
 MOD = 'keeper_remaster_default'
 
 def sha(path):
@@ -84,6 +84,8 @@ def assemble(game, stage, powershell):
     sprites = module('remaster_sprite_import', REPO / 'tools/import_remaster_sprites.py')
     ui = module('remaster_ui_import', REPO / 'local-dev/world-remaster/frontend-art/ui_publication.py')
     sprite_result = sprites.build(REPO / 'assets/remaster-sprites', game / 'data', stage / 'sprites')
+    if sprite_result['authority_manifest_sha256'] != SELECTION:
+        raise ValueError('Sprite selection differs from accepted bundle')
     ui_manifest = json.loads((REPO / 'assets/remaster-ui/manifest.json').read_text(encoding='utf-8-sig'))
     # The prepared x64 runtime deliberately shares original banks through top-level
     # junctions. Snapshot only the manifest-bound originals into a private ordinary
@@ -124,6 +126,8 @@ def assemble(game, stage, powershell):
         changes['fxdata/' + entry['path']] = terrain_stage / 'fxdata' / entry['path']
     audio = REPO / 'config/mods/dk_modern_audio'
     for entry in inventory(audio): changes['mods/dk_modern_audio/' + entry['path']] = audio / entry['path']
+    # Keep the installation-family ID stable so an owned V13 install upgrades
+    # through the existing backup transaction; selection identifies its artwork.
     profile = {'schema': 1, 'id': 'keeperfx-remaster-v13', 'selection': SELECTION,
                'mod': MOD, 'ui_directory': package + '/ui', 'text_percent': 80,
                'lighting': True, 'emissive': 'source-v1', 'api_enabled': False,

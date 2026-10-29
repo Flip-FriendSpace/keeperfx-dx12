@@ -174,6 +174,28 @@ class InstallerTransactions(unittest.TestCase):
                 raise InjectedFailure('Synthetic partial copy failure')
         return self.real_copy(source, destination, *args, **kwargs)
 
+    def test_old_selection_upgrades_with_recoverable_profile(self):
+        profile_path = self.game / 'remaster/default.json'
+        previous = json.loads(profile_path.read_text())
+        previous['selection'] = 'dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf'
+        old_bytes = self.json_bytes(previous)
+        profile_path.write_bytes(old_bytes)
+        result = self.install()
+        self.assertTrue(result['installed'])
+        self.assertEqual(json.loads(profile_path.read_text())['selection'], self.selection)
+        journal_path, journal = self.journals()[-1]
+        entry = next(e for e in journal['entries'] if e['path'] == 'remaster/default.json')
+        self.assertEqual((journal_path.parent / entry['backup']).read_bytes(), old_bytes)
+
+    def test_assembly_refuses_mixed_sprite_selection(self):
+        probe = load_installer()
+        importer = types.SimpleNamespace(build=mock.Mock(return_value={
+            'authority_manifest_sha256': '0' * 64}))
+        with mock.patch.object(probe, 'module', return_value=importer):
+            with self.assertRaisesRegex(ValueError, 'Sprite selection differs'):
+                probe.assemble(self.game, self.stage, 'forbidden-powershell.exe')
+        self.assertEqual(importer.build.call_count, 1)
+
     def test_success_and_idempotence_preserve_existing_payloads(self):
         first = self.install()
         self.assertTrue(first['installed'])

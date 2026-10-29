@@ -322,7 +322,7 @@ def build_ui_assets(asset_root, game_root, output_root, *, source_decoder=None, 
                 'Output must be separate from assets and game data')
     raw_manifest = read_limited(asset_root / 'manifest.json', MANIFEST_LIMIT)
     manifest = json.loads(raw_manifest)
-    require(manifest['schema'] == 1 and len(manifest['sources']) <= 100 and
+    require(manifest['schema'] == 1 and len(manifest['sources']) <= 128 and
             len(manifest['banks']) <= 32 and len(manifest['native']) <= 64 and
             len(manifest['objects']) <= 10000, 'Unsupported manifest or limits')
     # Mandatory first pass: do not attempt reconstruction from missing/modified originals.
@@ -360,6 +360,8 @@ def build_ui_assets(asset_root, game_root, output_root, *, source_decoder=None, 
     objects = manifest['objects']
     from frontend_reconstruct import (preflight, reconstruct_font, reconstruct_material, reconstruct_faithful,
                                       reconstruct_native)
+    from restoration_reconstruct import (reconstruct_portrait, reconstruct_marker, reconstruct_controls,
+                                         landview_dimensions, reconstruct_landview)
     preflight()
     object_loader = lambda key: load_object(asset_root, objects, key)
     for bank in manifest['banks']:
@@ -393,10 +395,11 @@ def build_ui_assets(asset_root, game_root, output_root, *, source_decoder=None, 
                 ow, oh, os, of, indices, mask = owner_records.pop(index)
                 require((ow, oh, os, of) == (width, height, scale, fingerprint),
                         'Owner reconstruction changed native metrics/fingerprint')
-            elif record.get('operator') in ('font', 'material', 'faithful'):
+            elif record.get('operator') in ('font', 'material', 'faithful', 'portrait', 'marker', 'controls'):
                 inputs = {relative: source(relative) for relative in manifest['sources']}
                 operation = {'font': reconstruct_font, 'material': reconstruct_material,
-                             'faithful': reconstruct_faithful}[record['operator']]
+                             'faithful': reconstruct_faithful, 'portrait': reconstruct_portrait,
+                             'marker': reconstruct_marker, 'controls': reconstruct_controls}[record['operator']]
                 indices, mask = operation(bank, record, inputs, object_loader)
             else:
                 raise ValueError('Unimplemented UI record operation')
@@ -415,13 +418,17 @@ def build_ui_assets(asset_root, game_root, output_root, *, source_decoder=None, 
         if entry['format'] == 'huge':
             indices, mask = decode_huge(native, width, height)
         else:
-            require(entry['format'] == 'raw' and len(native) == dimensions(width, height),
+            size = landview_dimensions(entry) if entry.get('operator') == 'landview' else dimensions(width, height)
+            require(entry['format'] == 'raw' and len(native) == size,
                     'Invalid raw native source')
             indices, mask = bytearray(native), bytearray(b'\xff' * len(native))
         if entry.get('native_colour'):
             remap = palette_remap(sources[entry['palette']], entry['native_colour'])
             indices = bytearray(indices.translate(remap))
-        indices = reconstruct_native(entry, indices, mask, object_loader)
+        if entry.get('operator') == 'landview':
+            indices = reconstruct_landview(entry, indices, source(entry['palette']), object_loader)
+        else:
+            indices = reconstruct_native(entry, indices, mask, object_loader)
         pixels = pixel_digest(indices, mask)
         require(pixels == entry['pixel_sha256'], 'Reconstructed native-image pixel mismatch')
         data = encode_huge(indices, mask, width, height) if entry['format'] == 'huge' else bytes(indices)

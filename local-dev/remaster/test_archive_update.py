@@ -157,6 +157,79 @@ class ArchiveUpdateTests(unittest.TestCase):
             updater.update(self.assets, self.source, self.data, ['fxdata/other.zip'], [], 'synthetic')
         self.assertEqual(self.snapshot(), self.before)
 
+    def test_explicit_additions_rebuild_exactly_and_preserve_existing_outputs(self):
+        added = 'fxdata/new-sprites.zip'
+        metadata = json.dumps([{'name': 'NEW', 'td_resolution_scale': 4,
+                               'td': [[{'file': 'new.png'}]], 'fp': [[{'file': 'native.png'}]]}]).encode()
+        members = [('new.png', png_bytes(Image.new('RGBA', (8, 8), (17, 22, 31, 255)))),
+                   ('native.png', self.members[1][1]), ('sprites.json', metadata)]
+        write_zip(self.source / added, members)
+        config = b'[sprite0]\nBlue=NEW\n'
+        (self.source / 'fxdata/spritecolors.toml').write_bytes(config)
+        before = json.loads(self.before['manifest.json'])
+        updater.update(self.assets, self.source, self.data, [], [], 'synthetic',
+                       add_archives=[added], add_files=['fxdata/spritecolors.toml'],
+                       publication_identity='remaster-v23-sprites')
+        manifest = json.loads((self.assets / 'manifest.json').read_bytes())
+        self.assertEqual(manifest['archives'][0], before['archives'][0])
+        self.assertEqual(manifest['files'][0], before['files'][0])
+        self.assertEqual(manifest['id'], 'remaster-v23-sprites')
+        change = manifest['archive_updates'][-1]
+        self.assertIsNone(change['archives'][added]['before_zip_sha256'])
+        self.assertIsNone(change['files']['fxdata/spritecolors.toml']['before_sha256'])
+        self.assertEqual(change['previous_publication_identity'],
+                         {'id': IDENTITY, 'authority_manifest_sha256': AUTHORITY})
+        self.assertEqual(manifest['archives'][1]['counts'], {'enhanced': 1, 'metadata': 1, 'original': 1})
+        output, original = self.rebuild()
+        self.assertEqual(original, self.members)
+        with zipfile.ZipFile(output / added) as archive:
+            self.assertEqual([(n, archive.read(n)) for n in archive.namelist()], members)
+        self.assertEqual((output / 'fxdata/spritecolors.toml').read_bytes(), config)
+        receipt = installer.build(self.assets, None, output, verify_only=True)
+        self.assertEqual(receipt['id'], manifest['id'])
+        self.assertEqual(receipt['authority_manifest_sha256'], manifest['authority_manifest_sha256'])
+        receipt['authority_manifest_sha256'] = AUTHORITY
+        (output / installer.RECEIPT).write_bytes(encode_json(receipt))
+        with self.assertRaises(AssetError):
+            installer.build(self.assets, None, output, verify_only=True)
+
+    def test_addition_collisions_paths_and_wrong_identity_are_refused(self):
+        cases = [dict(add_archives=[ARCHIVE]), dict(add_archives=['fxdata/TEST-sprites.zip']),
+                 dict(add_archives=['fxdata/new.zip', 'fxdata/NEW.zip']),
+                 dict(add_archives=['fxdata/../new.zip']), dict(add_archives=['creatrs/new.zip']),
+                 dict(add_files=['fxdata/source.png']), dict(add_files=['fxdata/nested/new.toml']),
+                 dict(add_files=['fxdata/new.toml'], publication_identity='unreviewed')]
+        for options in cases:
+            with self.subTest(options=options), self.assertRaises(AssetError):
+                updater.update(self.assets, self.source, self.data, [], [], 'synthetic', **options)
+            self.assertEqual(self.snapshot(), self.before)
+
+    def test_new_archive_unclassified_native_or_unreferenced_pixels_are_refused(self):
+        added = 'fxdata/new-sprites.zip'
+        art = png_bytes(Image.new('RGBA', (3, 3), (200, 0, 0, 255)))
+        for view, scale, extra in [('td', 1, False), ('fp', 1, False), ('td', 4, True)]:
+            with self.subTest(view=view, scale=scale, extra=extra):
+                entry = {'name': 'NEW', 'td': [], 'fp': [], 'resolution_scale': scale}
+                entry[view] = [[{'file': 'new.png'}]]
+                members = [('new.png', art), ('sprites.json', json.dumps([entry]).encode())]
+                if extra:
+                    members.insert(0, ('unreferenced.png', art))
+                write_zip(self.source / added, members)
+                with self.assertRaises(AssetError):
+                    updater.update(self.assets, self.source, self.data, [], [], 'synthetic', add_archives=[added])
+                self.assertEqual(self.snapshot(), self.before)
+
+    def test_new_archive_late_failure_rolls_back_stored_objects(self):
+        added = 'fxdata/new-sprites.zip'
+        metadata = json.dumps([{'name': 'NEW', 'td': [[{'file': 'new.png'}]], 'fp': [],
+                               'resolution_scale': 4}]).encode()
+        write_zip(self.source / added, [('new.png', png_bytes(Image.new('RGBA', (8, 8), (17, 22, 31, 255)))),
+                                       ('sprites.json', metadata)])
+        with self.assertRaises(AssetError):
+            updater.update(self.assets, self.source, self.data, [], [], 'synthetic',
+                           add_archives=[added], add_files=['fxdata/missing.toml'])
+        self.assertEqual(self.snapshot(), self.before)
+
 
 if __name__ == '__main__':
     unittest.main()
