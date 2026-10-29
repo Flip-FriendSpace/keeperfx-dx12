@@ -934,9 +934,19 @@ static TbBool load_sounds_config_file(const char *fname, unsigned short flags)
 
 TbBool load_sounds_config(void)
 {
+    return load_sounds_config_for_level(get_selected_level_number());
+}
+
+TbBool load_sounds_config_for_level(LevelNumber lvnum)
+{
+    // Rebuild before creature configs register their sounds. This also clears
+    // map-only names and redirects when loading a save in the same campaign.
+    sound_manager_clear_custom_sounds();
+    sound_manager_clear_registry();
+    g_speech_queue_limit = 4;
     memset(g_speech_overrides, 0, sizeof(g_speech_overrides));
     campaign_speech_snapshot_valid = false;
-    return load_config(&keeper_sounds_file_data, CnfLd_Standard);
+    return load_config_for_level(&keeper_sounds_file_data, CnfLd_RootMod, lvnum);
 }
 
 TbBool load_campaign_sounds_config(const char* levels_location)
@@ -983,19 +993,6 @@ TbBool load_mod_sounds_config(const char* mod_name)
     return result;
 }
 
-TbBool load_level_sounds_config(short fgroup, LevelNumber lvnum)
-{
-    char* fullpath = prepare_file_fmtpath(fgroup, "map%05lu.sounds.cfg", (unsigned long)lvnum);
-    if (fullpath == NULL || !LbFileExists(fullpath))
-    {
-        return false;
-    }
-
-    TbBool result = load_sounds_config_file(fullpath, CnfLd_Standard | CnfLd_IgnoreErrors);
-    cache_common_sound_ids();
-    return result;
-}
-
 void sound_save_campaign_snapshot(void)
 {
     memcpy(campaign_speech_overrides, g_speech_overrides, sizeof(g_speech_overrides));
@@ -1020,7 +1017,12 @@ void sound_reset_to_fxdata_baseline(void)
     sound_manager_clear_custom_sounds();
     sound_manager_clear_registry();
     g_speech_queue_limit = 4;
-    load_sounds_config();
+    memset(g_speech_overrides, 0, sizeof(g_speech_overrides));
+    campaign_speech_snapshot_valid = false;
+    load_global_config(&keeper_sounds_file_data, CnfLd_RootMod);
+    // The previous campaign snapshot may reference buffers cleared above.
+    // Replace it so restarting the same campaign cannot resurrect those IDs.
+    sound_save_campaign_snapshot();
     SYNCDBG(7, "sound_reset_to_fxdata_baseline: reset to fxdata defaults");
 }
 

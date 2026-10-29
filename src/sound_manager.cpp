@@ -155,9 +155,10 @@ void SoundManager::stopMusic() {
 
 // Load custom WAV file and assign sample ID
 SoundSmplTblID SoundManager::loadCustomSound(const std::string& name, const std::string& filepath) {
-    // Check if already loaded
+    // Reuse the same file, but allow a later config layer to replace this name.
+    // Existing bank entries keep their indices until the next bank reset.
     auto it = custom_sounds_.find(name);
-    if (it != custom_sounds_.end() && it->second.loaded) {
+    if (it != custom_sounds_.end() && it->second.loaded && it->second.filepath == filepath) {
         SYNCDBG(7,"Custom sound '%s' already loaded as bank index % d",
                name.c_str(), it->second.sample_id);
         return it->second.sample_id;

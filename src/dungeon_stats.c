@@ -45,6 +45,11 @@
 /******************************************************************************/
 TbBool load_stats_files(void)
 {
+    return load_stats_files_for_level(get_selected_level_number());
+}
+
+TbBool load_stats_files_for_level(LevelNumber sound_level)
+{
     SYNCDBG(8, "Starting");
     TbBool result = true;
 
@@ -67,7 +72,7 @@ TbBool load_stats_files(void)
 
     // Load sounds before full config passes so that named sounds are available
     // when fields like AmbienceSound, PlaceSound, TriggerSound are parsed.
-    load_sounds_config();
+    load_sounds_config_for_level(sound_level);
 
     //then load everything for real
     load_config(&keeper_terrain_file_data,      CnfLd_Standard|CnfLd_PreListed);

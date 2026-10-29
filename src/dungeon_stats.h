@@ -102,6 +102,8 @@ struct LevelStats {
 long update_dungeons_scores(void);
 TbBool update_dungeon_scores_for_player(struct PlayerInfo *player);
 TbBool load_stats_files(void);
+// Only sound configuration uses this explicit saved level; other config selection is unchanged.
+TbBool load_stats_files_for_level(LevelNumber sound_level);
 
 /******************************************************************************/
 #ifdef __cplusplus

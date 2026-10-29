@@ -615,7 +615,8 @@ int load_game_chunks(TbFileHandle fhandle, struct CatalogueEntry *centry)
                 // Load configs which may have per-campaign part, and even be modified within a level
                 recheck_all_mod_exist();
                 init_custom_sprites(centry->level_num);
-                load_stats_files();
+                // The selected frontend map can differ from the saved map.
+                load_stats_files_for_level(centry->level_num);
                 snprintf(high_score_entry, PLAYER_NAME_LENGTH, "%s", centry->player_name);
             } else {
                 return GLoad_Failed;

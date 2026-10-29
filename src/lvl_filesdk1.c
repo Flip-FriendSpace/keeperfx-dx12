@@ -1480,9 +1480,8 @@ static TbBool load_level_file(LevelNumber lvnum)
         init_top_texture_to_cube_table();
         result = false;
     }
-    // Apply per-level sound overrides if levels/mapNNNNN.sounds.cfg exists.
-    // (Snapshot was already restored before load_stats_files in main_game.c.)
-    load_level_sounds_config(fgroup, lvnum);
+    // load_stats_files already loaded this level's sounds before creature
+    // configs, finishing with after_map mods. Do not reapply the map here.
     return result;
 }
 

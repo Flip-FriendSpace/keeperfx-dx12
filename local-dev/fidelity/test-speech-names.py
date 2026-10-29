@@ -47,8 +47,9 @@ def main():
 #include <map>
 #include <vector>
 using TbBool = bool;
+using LevelNumber = int32_t;
 constexpr int COMMAND_WORD_LEN = 256, CnfLd_Standard = 0,
-    CnfLd_AcceptPartial = 1, CnfLd_IgnoreErrors = 2;
+    CnfLd_AcceptPartial = 1, CnfLd_IgnoreErrors = 2, CnfLd_RootMod = 16;
 static int text_line_number, warnings;
 #define SYNCDBG(...) ((void)0)
 #define WARNLOG(...) (++warnings)
@@ -58,18 +59,25 @@ static void sound_save_id_redirect_snapshot() {}
 static void sound_manager_restore_snapshot() {}
 static void sound_restore_id_redirect_snapshot() {}
 static void cache_common_sound_ids() {}
+static void sound_manager_clear_custom_sounds() {}
+static void sound_manager_clear_registry() {}
+static int g_speech_queue_limit;
+static TbBool load_sounds_config_for_level(LevelNumber);
 struct ConfigFileData {
     const char* filename;
     TbBool (*load_func)(const char*, unsigned short);
     void (*pre_load_func)();
     void (*post_load_func)();
 };
-struct ModConfigItem { const char* name; struct { int mod_dir; } state; };
+struct ModExistState { int mod_dir, fx_data, cmpg_config, cmpg_lvls; };
+struct ModConfigItem { const char* name; ModExistState state; };
 static struct {
     long after_base_cnt, after_campaign_cnt, after_map_cnt;
     ModConfigItem after_base_item[1], after_campaign_item[1], after_map_item[1];
 } mods_conf;
-enum { FGrp_FxData, FGrp_CmpgConfig, FGrp_CmpgLvls };
+enum { FGrp_FxData, FGrp_CmpgConfig, FGrp_CmpgLvls, FGrp_Main };
+#define MODS_DIR_NAME "mods"
+#define set_flag(value, flags) ((value) |= (flags))
 static unsigned long selected_level = 1;
 static std::map<std::string, std::string> fixture_files;
 static std::vector<std::string> loaded;
@@ -85,12 +93,18 @@ static char* get_game_file_path_fmt(int, const char*, unsigned long level, const
     snprintf(path, sizeof(path), "map%05lu", level);
     return path;
 }
-static TbBool fixture_load(const char*, unsigned short);
-static void load_config_for_mod_list(const ConfigFileData* data, unsigned short flags,
-                                     const ModConfigItem* items, long count) {
-    for (long i = 0; i < count; ++i)
-        if (items[i].state.mod_dir) data->load_func(items[i].name, flags);
+static char* prepare_file_path_mod(const char* mod, int group, const char*) {
+    static char path[128];
+    snprintf(path, sizeof(path), "%s%s", mod + 5,
+        group == FGrp_Main ? "-root" : group == FGrp_CmpgConfig ? "-campaign" : "");
+    return path;
 }
+static char* get_mod_file_path_fmt(const char* mod, int, const char*, unsigned long level, const char*) {
+    static char path[128];
+    snprintf(path, sizeof(path), "%s-map%05lu", mod + 5, level);
+    return path;
+}
+static TbBool fixture_load(const char*, unsigned short);
 static ConfigFileData keeper_sounds_file_data = {"sounds.cfg", fixture_load, nullptr, nullptr};
 '''
     body = block(header, "enum TbSpeechMessages", True)
@@ -103,11 +117,15 @@ static TbBool campaign_speech_snapshot_valid;
     body += "\n" + "\n".join(block(config, marker) for marker in (
         "long get_id(", "TbBool skip_conf_to_next_line(", "TbBool skip_conf_spaces(",
         "TbBool conf_get_block_name(", "TbBool iterate_conf_blocks(",
-        "int get_conf_parameter_single(", "TbBool load_config("))
+        "int get_conf_parameter_single(", "short get_level_fgroup(",
+        "static void load_config_for_mod(", "static void load_config_for_mod_list(",
+        "static TbBool load_config_layers(", "TbBool load_config(",
+        "TbBool load_config_for_level(", "TbBool load_global_config("))
     body += "\n" + "\n".join(block(sounds, marker) for marker in (
         "static TbBool parse_speech_section(", "static void parse_language_speech_sections(",
-        "TbBool load_sounds_config(void)", "void sound_save_campaign_snapshot(void)",
-        "void sound_restore_to_campaign_snapshot(void)"))
+        "TbBool load_sounds_config(void)", "TbBool load_sounds_config_for_level(",
+        "void sound_save_campaign_snapshot(void)", "void sound_restore_to_campaign_snapshot(void)",
+        "void sound_reset_to_fxdata_baseline(void)"))
     tests = r'''
 static void parse(std::string input) {
     const auto length = input.size();
@@ -164,11 +182,11 @@ int main() {
         {"after-map", "[speech]\nGoldNotEnough = after-map.wav\n"}
     };
     mods_conf.after_base_cnt = mods_conf.after_campaign_cnt = mods_conf.after_map_cnt = 1;
-    mods_conf.after_base_item[0] = {"after-base", {1}};
-    mods_conf.after_campaign_item[0] = {"after-campaign", {1}};
-    mods_conf.after_map_item[0] = {"after-map", {1}};
+    mods_conf.after_base_item[0] = {"after-base", {1, 1, 0, 0}};
+    mods_conf.after_campaign_item[0] = {"after-campaign", {1, 1, 0, 0}};
+    mods_conf.after_map_item[0] = {"after-map", {1, 1, 0, 0}};
     loaded.clear(); load_sounds_config();
-    assert((loaded == std::vector<std::string>{"base", "after-base", "campaign", "after-campaign", "map00001", "after-map"}));
+    assert((loaded == std::vector<std::string>{"base", "after-base-root", "after-base", "campaign", "after-campaign-root", "after-campaign", "map00001", "after-map-root", "after-map"}));
     expect(SMsg_GoldNotEnough, "after-map.wav");
     sound_save_campaign_snapshot();
     // main_game restores first, then load_stats_files calls load_sounds_config.
@@ -180,18 +198,19 @@ int main() {
     fixture_files.clear(); language = "ger"; load_sounds_config();
     for (int id = 0; id < SMsg_MAX; ++id) expect(id, "");
 
-    // Characterize existing caller-order caveats; these are NOT acceptance assertions.
+    // Menu baseline omits selected campaign/map layers and preserves global mods.
     fixture_files = {{"base", "[speech]\nGoldNotEnough = base.wav\n"},
         {"map00001", "[speech]\nGoldNotEnough = map.wav\nPayday = map-only.wav\n"},
         {"after-map", "[speech]\nGoldNotEnough = after-map.wav\n"}};
     selected_level = 1; load_sounds_config(); expect(SMsg_GoldNotEnough, "after-map.wav");
-    fixture_load("map00001", 0); // load_level_file applies per-level sounds again.
-    expect(SMsg_GoldNotEnough, "map.wav");
-    load_sounds_config(); // sound_reset_to_fxdata_baseline uses this generic reload.
-    expect(SMsg_Payday, "map-only.wav");
+    sound_reset_to_fxdata_baseline();
+    expect(SMsg_GoldNotEnough, "after-map.wav"); expect(SMsg_Payday, "");
+    sound_restore_to_campaign_snapshot(); expect(SMsg_Payday, "");
+    load_sounds_config_for_level(2); expect(SMsg_Payday, "");
+    assert(selected_level == 1); // Explicit saved-level loading does not change frontend state.
     assert(warnings == 0);
     puts("PASS: actual 109 named IDs, case folding, actual enum bounds, 125 numeric IDs, language precedence, snapshots, generic layer order, map/campaign reload clearing");
-    puts("CHARACTERIZED: late explicit map reload overrides after-map; generic baseline reload retains selected map overrides (modeled callers, no playback claim)");
+    puts("PASS: menu baseline preserves global mods, excludes map speech, replaces snapshot; explicit saved-level sound selection");
 }
 '''
     source = prefix + body + tests
@@ -215,7 +234,7 @@ int main() {
                   "sanitizers": ["address", "undefined"],
                   "scope": "Actual enum, name table, get_id, speech parser, reset/snapshot and generic load_config functions; in-memory file fixtures and modeled call sequences; no runtime/playback claim",
                   "source": [{"path": p, "sha256": hashlib.sha256((ROOT / p).read_bytes()).hexdigest()} for p in paths],
-                  "observedExistingCaveats": ["Explicit late map load overrides after_map mod priority", "Generic baseline reset can reload selected map speech"],
+                  "scopeLimits": ["Sound playback/registry replaced by fixtures; see test_speech_loading.py for actual SoundManager lifecycle coverage", "No runtime/playback claim"],
                   "log": "speech-names.log"}
         (out / "verification.json").write_text(json.dumps(record, indent=2) + "\n")
 
