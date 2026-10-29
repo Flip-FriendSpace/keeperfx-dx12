@@ -199,6 +199,46 @@ class ReviewBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unsupported native frontend'):
             self.verify()
 
+    def test_torture_background_requires_unchanged_native_contract(self):
+        background = self.runtime / 'ldata/torture.raw'
+        palette = self.runtime / 'ldata/torture.pal'
+        put(background, b'original-torture')
+        put(palette, b'original-torture-palette')
+        put(self.w / 'inputs/torture.raw', b'restored-torture')
+        entry = self.change('native-frontend', 'ldata/torture.raw', 'torture.raw', None)
+        entry['native_control'] = {'original_sha256': M.digest(background), 'palette': {
+            'path': str(palette), 'expected_sha256': M.digest(palette),
+            'current_sha256': M.digest(palette), 'replace_palette': False}}
+        self.plan['changes'].append(entry)
+        state = self.verify()
+        self.assertEqual(state['maps']['native-frontend']['ldata/torture.raw']['sha256'], entry['sha256'])
+        for path in (background, palette):
+            original = path.read_bytes()
+            path.write_bytes(b'drift')
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, '(baseline differs|palette changed)'):
+                self.verify()
+            path.write_bytes(original)
+        for name in ('ldata/torture.pal', 'ldata/torture.dat', 'ldata/door01.dat', 'ldata/torture2.raw'):
+            entry['file'] = name
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'Unsupported native frontend'):
+                self.verify()
+
+    def test_original_global_palette_dat_binding_only(self):
+        palette = self.runtime / 'data/palette.dat'
+        put(palette, b'original-game-palette')
+        control = self.plan['changes'][-1]['native_control']['palette']
+        control.update(path=str(palette), expected_sha256=M.digest(palette), current_sha256=M.digest(palette))
+        self.verify()
+        palette.write_bytes(b'changed-palette')
+        with self.assertRaisesRegex(ValueError, 'Native palette changed'):
+            self.verify()
+        for name in ('data/other.dat', 'ldata/palette.dat', 'campgns/keeporig_lnd/palette.dat'):
+            path = self.runtime / name
+            put(path, b'other-palette')
+            control.update(path=str(path), expected_sha256=M.digest(path), current_sha256=M.digest(path))
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'unchanged runtime palette'):
+                self.verify()
+
     def test_copy_failure_keeps_identifiable_output_without_activation(self):
         state = self.verify()
         put(self.w / 'inputs/imp.zip', b'changed-after-preflight')
