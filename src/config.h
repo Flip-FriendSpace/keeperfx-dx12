@@ -117,6 +117,7 @@ enum TbConfigLoadFlags {
     CnfLd_AcceptPartial =  0x02, /**< Accept partial files (with only some options set), and don't clear previous configuration. */
     CnfLd_IgnoreErrors  =  0x04, /**< Do not log error message on failures (still, return with error). */
     CnfLd_PreListed     =  0x08, /**< Already parsed the names. */
+    CnfLd_RootMod       =  0x10, /**< Also read legacy mod-root files before their fxdata layer (sounds only). */
 };
 
 #pragma pack(1)
@@ -278,6 +279,8 @@ char *get_mod_file_path_fmt(const char *mod_dir, short fgroup, const char *fmt_s
 unsigned char *load_data_file_to_buffer(int32_t *ldsize, short fgroup, const char *fmt_str, ...);
 /******************************************************************************/
 TbBool load_config(const struct ConfigFileData* file_data, unsigned short flags);
+TbBool load_config_for_level(const struct ConfigFileData* file_data, unsigned short flags, LevelNumber lvnum);
+TbBool load_global_config(const struct ConfigFileData* file_data, unsigned short flags);
 /******************************************************************************/
 short is_bonus_level(LevelNumber lvnum);
 short is_extra_level(LevelNumber lvnum);

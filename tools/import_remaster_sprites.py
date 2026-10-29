@@ -11,7 +11,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import zipfile
-from remaster_sprite_codec import (AssetError, SCHEMA, IDENTITY, AUTHORITY, MAX_OBJECT, digest, encode_json,
+from remaster_sprite_codec import (AssetError, SCHEMA, PUBLICATION_IDENTITIES, MAX_OBJECT, digest, encode_json,
     parse_json, safe_relative, no_links, read_regular, load_object, OriginalBank,
     reconstruct_member, rename_new_directory)
 
@@ -21,7 +21,8 @@ KIND="keeperfx-remaster-sprite-install"
 def load_manifest(assets):
     raw=read_regular(assets/"manifest.json")
     m=parse_json(raw,"manifest.json")
-    if m.get("schema")!=SCHEMA or m.get("id")!=IDENTITY or m.get("authority_manifest_sha256")!=AUTHORITY:
+    if (m.get("schema")!=SCHEMA or m.get("id") not in PUBLICATION_IDENTITIES or
+            m.get("authority_manifest_sha256")!=PUBLICATION_IDENTITIES[m["id"]]):
         raise AssetError("Unsupported sprite publication identity/schema")
     if not isinstance(m.get("archives"),list) or not m["archives"] or not isinstance(m.get("files"),list):
         raise AssetError("Manifest needs archives and files")
@@ -71,7 +72,9 @@ def output_names(manifest):
 
 def verify_output(assets,output,manifest,manifest_hash):
     receipt=parse_json(read_regular(output/RECEIPT),RECEIPT)
-    if (receipt.get("schema"),receipt.get("id"),receipt.get("kind"),receipt.get("manifest_sha256")) != (SCHEMA,IDENTITY,KIND,manifest_hash):
+    if (receipt.get("schema"),receipt.get("id"),receipt.get("kind"),receipt.get("manifest_sha256"),
+            receipt.get("authority_manifest_sha256")) != (SCHEMA,manifest["id"],KIND,manifest_hash,
+                                                         manifest["authority_manifest_sha256"]):
         raise AssetError("Output receipt differs from the selected assets")
     expected=output_names(manifest)
     if not isinstance(receipt.get("files"),dict) or set(receipt["files"])!=expected:
@@ -132,7 +135,7 @@ def build(assets:Path,data:Path|None,output:Path,verify_only=False):
                 raise AssetError("Config object differs")
             path=stage/safe_relative(record["file"]);path.parent.mkdir(parents=True,exist_ok=True)
             path.write_bytes(raw);files[record["file"]]=digest(raw)
-        receipt={"schema":SCHEMA,"id":IDENTITY,"kind":KIND,"manifest_sha256":manifest_hash,
+        receipt={"schema":SCHEMA,"id":manifest["id"],"kind":KIND,"manifest_sha256":manifest_hash,
             "authority_manifest_sha256":manifest["authority_manifest_sha256"],"files":files,
             "fallback_source_sha256":bank.hashes,"fallback_original_archives_sha256":bank.archive_hashes}
         (stage/RECEIPT).write_bytes(encode_json(receipt))

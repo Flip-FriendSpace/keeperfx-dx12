@@ -1,6 +1,6 @@
 # Source-bound UI reconstruction
 
-`ui_publication.py` rebuilds the accepted V13 UI selection from losslessly
+`ui_publication.py` rebuilds the accepted V23 UI selection from losslessly
 compressed generated inputs and a verified local game installation. It writes
 only a separate staging directory. The integration installer owns installation,
 backups, mod order and default settings.
@@ -27,23 +27,26 @@ the decoded source hash in either case. The receipt contains `schema`, `selectio
 `manifest_sha256`, `verify_only` and `files`. Each file has `path`, `bytes`, `sha256`
 and `pixel_sha256`. Native image pixel hashes cover zeroed transparent indices
 followed by binary coverage. A UI bank's pixel hash covers its ordered record
-pixel digests. Every full output file must also match its manifest hash: the
-V13 output, the colour-matched V13 output for the 22 campaign frames, or for `frontbit`
-the V13 bank with the faithful main-menu cursor.
+pixel digests. Every full output file must also match its manifest hash. V23 adds
+17 portraits, 88 campaign-marker records, 13 controls and 22 native campaign-map
+states. All 2,514 earlier sprite records and 27 native overlays retain their exact
+output bytes. `restoration_update` retains the earlier selection and manifest hash.
 
 Output paths are `ui/{font1-64,font2-64,gui1-64,gui2-64,frontbit,frontft1,frontft2,
-frontft3,frontft4,netfont,pointer64,maphand}.kfui`, `ldata/front.raw`,
+frontft3,frontft4,netfont,pointer64,maphand,lndflag_ens,lndflag_pin}.kfui`, `ldata/front.raw`,
 `data/loading32.raw`, `data/loading64.raw`, `data/gmap32.raw`, `data/gmap64.raw`
-and `campgns/keeporig_lnd/viframe00.dat` through `viframe21.dat`.
+and `campgns/keeporig_lnd/viframe00.dat` through `viframe21.dat`, plus
+`campgns/keeporig_lnd/rgmap00.raw` through `rgmap21.raw`.
 The `maphand` stem is intentional. Omitted native slots stay omitted.
 
 ## Stored inputs and local reconstruction
 
 The asset manifest references content-addressed `objects/<raw-sha256>.zlib` files.
 Objects contain generated glyph alpha, generated registered RGBA, generated
-material RGB float32 fields, generated indexed artwork/alpha, or bounded operator
-metadata. Compression is lossless zlib level 9, with raw and compressed lengths
-and hashes. Identical raw inputs share one object. PNG masters, raw duplicates
+material RGB float32 fields, generated indexed artwork/alpha, generated RGB8
+fields, generated luminance relief, or bounded operator metadata. Compression
+is lossless zlib level 9, with raw and compressed lengths and hashes. Identical
+raw inputs share one object. PNG masters, raw duplicates
 and distribution ZIPs are not included.
 
 Native palettes, coverage, shadows, spatial colour fields, state differences,
@@ -58,6 +61,39 @@ CIELAB palette entries, in explicit float64 arithmetic without BLAS. Frontend bu
 fields contain no native colour transfer. Huge frames retain native coverage and
 joining edges; parchment maps restore the two native flame-backdrop corners.
 
+The restoration operators use only these additional generated inputs:
+
+- Portraits store full-canvas generated RGB resized once to the physical 4x
+  dimensions with Lanczos. Local original colour fields and downsampled generated
+  fields use a 0.35-native-pixel Gaussian blur and bicubic enlargement. The ratio
+  `(source + 2) / (generated + 2)` is bounded to 0.08..4 before RGB rounding and
+  the existing palette quantizer. Native black pixels and coverage remain exact.
+- The 22 landviews share one generated RGB field resized once to 1280x960.
+  Each original state's RGB and palette stay local. The colour fields use a
+  1.25-native-pixel Gaussian blur and a ratio bounded to 0.02..16, followed by
+  RGB rounding and fixed-palette Floyd-Steinberg diffusion. All output bytes
+  match the accepted states. This is a native-resolution background recipe.
+- Campaign markers store only generated luminance high-pass signs: Gaussian
+  radius 4, thresholds above 4.5 or below -4.5, encoded as 0/1/2. These may switch
+  only original wood indices 252/253 inside an eroded native wood mask. Original
+  glyphs, red accents, coverage and the bottom four logical rows remain exact.
+  The glyph/accent/wood indices must agree across all 22 bound campaign palettes.
+  Records 0 and 1 retain native fallback; records 2..45 are present in each bank.
+- Controls store generated signed 16-bit luminance residuals after a Gaussian
+  radius 3 blur. Their contribution is multiplied by 0.32 and capped to 12 RGB
+  levels before quantizing only to indices already present in the original
+  control. The native mask, outer edge, pale icon strokes and active red rims
+  are retained, with additional icon/track guards. Identical native records
+  83..85 share the same generated field. The 13 records include alliance controls
+  as well as the sliders and scrollbar; they are not all options-menu controls.
+
+`restoration_reconstruct.py` contains the explicit operators and bounds. None
+of their stored fields contains the original colour transfer, native palette,
+native mask, glyph or protection map. The new source dependencies are the 22
+original `rgmapNN.raw` files and both `lndflag_ens`/`lndflag_pin` DAT/TAB pairs;
+their palettes were already bound. The complete source snapshot has 105 files.
+The torture tower and unselected UI slots remain outside this update.
+
 Every source is verified before any operation. Decoders bound dimensions,
 decompression, runs, file sizes and total staged output, and verify the complete
 result before writing a fresh output directory. The staging directory must not
@@ -68,8 +104,10 @@ inputs fail rather than falling back to a different appearance.
 
 Sprite sidecars use physical 4x pixels at the original logical size. The large
 backgrounds deliberately keep their supported native canvases: 640x480 and
-320x200 raw images, and 960x720 huge frames. This preserves aspect ratio and
-bounded native loader/map-buffer allocations. No navigation, hotspot, animation
+320x200 raw images, 1280x960 campaign landviews, and 960x720 huge frames. The
+larger RAW exception is restricted to the exact 22 landview paths, dimensions,
+palette bindings and operator; sprite dimension limits remain unchanged. This
+preserves aspect ratio and bounded native loader/map-buffer allocations. No navigation, hotspot, animation
 phase, palette transition, map coordinate or text advance is changed by this
 package.
 
@@ -93,4 +131,5 @@ Run the synthetic bounds/failure checks with:
 
 ```text
 python -B -m unittest discover -s local-dev/world-remaster/frontend-art -p test_ui_publication.py
+python -B -m unittest discover -s local-dev/world-remaster/frontend-art -p test_restoration_reconstruct.py
 ```

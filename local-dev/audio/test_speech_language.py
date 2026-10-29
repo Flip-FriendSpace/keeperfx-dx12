@@ -35,7 +35,8 @@ def main():
 #include <iterator>
 #include <string>
 using TbBool = bool;
-constexpr int COMMAND_WORD_LEN = 256, SMsg_MAX = 200, CnfLd_Standard = 0;
+using LevelNumber = int32_t;
+constexpr int COMMAND_WORD_LEN = 256, SMsg_MAX = 200, CnfLd_RootMod = 16;
 static int text_line_number, warnings;
 static char g_speech_overrides[SMsg_MAX][512];
 static char campaign_speech_overrides[SMsg_MAX][512];
@@ -45,7 +46,12 @@ static int keeper_sounds_file_data;
 #define WARNLOG(...) (++warnings)
 static int speech_desc;
 static int get_id(int, const char*) { return -1; }
-static TbBool load_config(int*, int) { return true; }
+static TbBool load_config_for_level(int*, int, LevelNumber) { return true; }
+static LevelNumber get_selected_level_number() { return 1; }
+static void sound_manager_clear_custom_sounds() {}
+static void sound_manager_clear_registry() {}
+static int g_speech_queue_limit;
+static TbBool load_sounds_config_for_level(LevelNumber);
 static void sound_manager_save_snapshot() {}
 static void sound_save_id_redirect_snapshot() {}
 static void sound_manager_restore_snapshot() {}
@@ -58,7 +64,7 @@ static void cache_common_sound_ids() {}
         "int get_conf_parameter_single("))
     body += "\n" + "\n".join(function(sounds, marker) for marker in (
         "static TbBool parse_speech_section(", "static void parse_language_speech_sections(",
-        "TbBool load_sounds_config(void)", "void sound_save_campaign_snapshot(void)",
+        "TbBool load_sounds_config(void)", "TbBool load_sounds_config_for_level(", "void sound_save_campaign_snapshot(void)",
         "void sound_restore_to_campaign_snapshot(void)"))
     tests = r'''
 static void parse(std::string input, const char* language) {

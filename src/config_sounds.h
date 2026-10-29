@@ -43,6 +43,7 @@ extern const struct ConfigFileData keeper_sounds_file_data;
  * @return true if loaded successfully, false otherwise
  */
 TbBool load_sounds_config(void);
+TbBool load_sounds_config_for_level(LevelNumber lvnum);
 
 /**
  * @brief Load campaign-specific sounds configuration
@@ -67,22 +68,11 @@ TbBool load_campaign_sounds_config(const char* levels_location);
 TbBool load_mod_sounds_config(const char* mod_name);
 
 /**
- * @brief Load level-specific sounds configuration
- *
- * Loads map<NNNNN>.sounds.cfg from the level's file group (respects
- * LEVELS_LOCATION and campaign subdirectories).
- *
- * @param fgroup  File group for this level (from get_level_fgroup())
- * @param lvnum   Level number
- * @return true if the file was found and loaded
- */
-TbBool load_level_sounds_config(short fgroup, LevelNumber lvnum);
-
-/**
  * @brief Reset the entire sound system back to the fxdata baseline.
  *
  * Clears all custom audio buffers, id redirects, and the name registry,
- * then reloads fxdata/sounds.cfg. Call when returning to the main menu so
+ * then reloads fxdata/sounds.cfg and enabled mods' root/fxdata layers.
+ * Campaign/map layers are excluded. Call when returning to the main menu so
  * that GUI sounds are not affected by a previous campaign or level.
  */
 void sound_reset_to_fxdata_baseline(void);
@@ -98,7 +88,7 @@ void sound_save_campaign_snapshot(void);
 /**
  * @brief Restore sound state to the campaign snapshot.
  *
- * Call at the start of each level load (before load_level_sounds_config).
+ * Call at the start of each level load (before load_stats_files).
  * Discards any sounds registered or loaded for the previous level.
  */
 void sound_restore_to_campaign_snapshot(void);

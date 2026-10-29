@@ -156,14 +156,16 @@ def runtime_control_path(workspace, runtime, path):
 
 
 def verify_native_control(workspace, runtime, name, control):
-    require(re.fullmatch(r'(ldata/front\.raw|data/(loading|gmap)(32|64)\.raw|campgns/[a-z0-9_-]+/(rgmap[0-9]+\.raw|viframe[0-9]+\.dat))', name), 'Unsupported native frontend destination: ' + name)
+    require(re.fullmatch(r'(ldata/(front|torture)\.raw|data/(loading|gmap)(32|64)\.raw|campgns/[a-z0-9_-]+/(rgmap[0-9]+\.raw|viframe[0-9]+\.dat))', name), 'Unsupported native frontend destination: ' + name)
     require(set(control) == {'original_sha256', 'palette'}, 'Native baseline contract fields differ')
     require(digest(runtime_control_path(workspace, runtime, runtime / name)) == hash_value(control['original_sha256']), 'Runtime native baseline differs: ' + name)
     palette = control['palette']
     require(set(palette) == {'path', 'expected_sha256', 'current_sha256', 'replace_palette'}, 'Native palette contract fields differ')
     require(palette['replace_palette'] is False and palette['current_sha256'] == palette['expected_sha256'], 'Palette replacement unsupported')
     palette_path = Path(palette['path'])
-    require(palette_path.is_absolute() and palette_path.is_relative_to(runtime) and palette_path.suffix == '.pal', 'Palette must be an unchanged runtime palette')
+    require(palette_path.is_absolute() and palette_path.is_relative_to(runtime) and
+            (palette_path.suffix == '.pal' or palette_path == runtime / 'data/palette.dat'),
+            'Palette must be an unchanged runtime palette')
     require(digest(runtime_control_path(workspace, runtime, palette_path)) == hash_value(palette['expected_sha256']), 'Native palette changed')
 
 

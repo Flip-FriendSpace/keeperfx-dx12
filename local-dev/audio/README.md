@@ -25,11 +25,37 @@ language. A matching `[speechfre]`, `[speechger]`, etc. wins within the same fil
 Speech overrides are cleared on baseline loading and saved/restored with the
 campaign snapshot. This config requires the corresponding updated engine.
 
+Level sound configuration is loaded once, before creature configurations, in
+base / after_base / campaign / after_campaign / map / after_map order. A late
+map-file reload no longer changes the result. Save loading explicitly uses the
+saved map number for sound configuration, even when a different map is selected
+in the frontend. Custom sound buffers, names and redirects are rebuilt before
+creature sounds register, so earlier map entries cannot remain in the registry.
+
+Returning to menus loads only the base and enabled mods' global sound files.
+Campaign/map files, including those inside mods, are excluded. Global mods in
+all three order sections remain enabled; each legacy `mods/<name>/sounds.cfg`
+is a fallback before that mod's `fxdata/sounds.cfg`. The rebuilt menu state also
+replaces the saved sound snapshot, avoiding references to discarded buffers
+when restarting the same campaign. `-NativeAudio` continues to control the
+enabled mod list for its session.
+
+A custom sound name is reused only when its resolved file path also matches.
+A later layer can therefore replace that name with another file; already-loaded
+bank entries retain their indices until the next reset.
+
 `test_speech_language.py` compiles the actual parser under ASan/UBSan and checks
 the 125 English mappings, six fallback codes, section matching and snapshot/reset
 behaviour. Run it with a C++ compiler in `keeperfx-dev`.
 `test_session_audio.ps1` checks the pure mod-order transformation; the remaster
 launcher fixture also checks graphics/audio combinations and restoration.
+
+`test_speech_loading.py` compiles the actual configuration loaders/parsers,
+SoundManager registry/snapshot methods and custom-bank snapshot functions under
+ASan/UBSan. Synthetic file I/O and WAV decoding cover two-map and explicit saved
+map loading, root/fxdata mod priority, menu reset, language/native fallbacks,
+optional map files, freeplay/fallback path roots and custom creature sample IDs.
+It does not exercise playback devices or custom WAV resolution inside map ZIPs.
 
 With Python 3.11 or newer, `audit_original_media.py --original <installation> --runtime <runtime>
 --output <new-report-directory>` verifies six original music tracks and three

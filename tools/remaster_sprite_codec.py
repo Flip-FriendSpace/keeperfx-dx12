@@ -18,6 +18,10 @@ from PIL import Image
 SCHEMA = 2
 IDENTITY = "remaster-v13-sprites"
 AUTHORITY = "dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf"
+PUBLICATION_IDENTITIES = {
+    IDENTITY: AUTHORITY,
+    "remaster-v23-sprites": "9a285bacf69a60ea22bd0974c915ed37f1d5ab1b93bf20b7a0bc93390b0065de",
+}
 HEADER = struct.Struct("<I8Bhh")
 MAX_OBJECT = 64 * 1024 * 1024
 SOURCE_NAMES = ("creature.tab", "creature.jty", "palette.dat", "png_conv_pal.dat")

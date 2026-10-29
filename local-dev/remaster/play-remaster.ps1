@@ -39,6 +39,14 @@ function Get-SessionModOrder([string]$Order,[bool]$UseOriginal,[string]$Mod,[boo
 function Assert-Closed {
   if(Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog,keeperfx-dx12,keeperfx-dx12-hvlog -ErrorAction SilentlyContinue){throw 'Close KeeperFX before switching profiles; no game was stopped.'}
 }
+function Get-ExpectedUiBanks($Profile) {
+  $legacy='dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf'
+  $current='9a285bacf69a60ea22bd0974c915ed37f1d5ab1b93bf20b7a0bc93390b0065de'
+  if($Profile.selection -notin @($legacy,$current) -or $Profile.ui_directory -ne ('remaster/packages/'+$Profile.selection+'/ui') -or $Profile.schema -ne 1 -or $Profile.id -ne 'keeperfx-remaster-v13' -or $Profile.mod -ne 'keeper_remaster_default' -or $Profile.text_percent -ne 80 -or $Profile.api_enabled){throw 'Unsupported remaster profile.'}
+  $banks=@('font1-64','font2-64','gui1-64','gui2-64','frontbit','frontft1','frontft2','frontft3','frontft4','netfont','pointer64','maphand')
+  if($Profile.selection -eq $current){$banks+=@('lndflag_ens','lndflag_pin')}
+  return @($banks|ForEach-Object {$_+'.kfui'}|Sort-Object)
+}
 function Replace-OwnedFile([string]$Source,[string]$Target,[string]$Expected) {
   $temporary=$Target+'.remaster-'+[Guid]::NewGuid().ToString('N')+'.tmp';$created=$false
   try{
@@ -101,12 +109,12 @@ if($Recover){
   return
 }
 $profile=Get-Content -LiteralPath (Path-InRuntime 'remaster/default.json') -Raw|ConvertFrom-Json
-if($profile.selection -ne 'dec01d5ddb2414ffccb98d38c1712996694b00aa639a049c8a776add7533bdbf' -or $profile.ui_directory -ne ('remaster/packages/'+$profile.selection+'/ui') -or $profile.schema -ne 1 -or $profile.id -ne 'keeperfx-remaster-v13' -or $profile.mod -ne 'keeper_remaster_default' -or $profile.text_percent -ne 80 -or $profile.api_enabled){throw 'Unsupported remaster profile.'}
+$selectedUi=@(Get-ExpectedUiBanks $profile)
 foreach($entry in $profile.files){$path=Path-InRuntime $entry.path;if(-not(Test-Path -LiteralPath $path) -or (Hash $path) -ne $entry.sha256){throw "Installed remaster file mismatch: $($entry.path)"}}
 $uiPath=Path-InRuntime $profile.ui_directory
 $expectedUi=@($profile.files|Where-Object {$_.path.StartsWith($profile.ui_directory+'/')}|ForEach-Object {$_.path.Substring($profile.ui_directory.Length+1)}|Sort-Object)
 $actualUi=@(Get-ChildItem -LiteralPath $uiPath -File -Filter '*.kfui'|ForEach-Object {$_.Name}|Sort-Object)
-if($expectedUi.Count -ne 12 -or @(Compare-Object $expectedUi $actualUi).Count){throw 'The installed UI sidecar set differs from the selected profile.'}
+if(@(Compare-Object $selectedUi $expectedUi).Count -or @(Compare-Object $expectedUi $actualUi).Count){throw 'The installed UI sidecar set differs from the selected profile.'}
 $modPrefix='mods/'+$profile.mod+'/'
 $expectedMod=@($profile.files|Where-Object {$_.path.StartsWith($modPrefix)}|ForEach-Object {$_.path.Substring($modPrefix.Length)}|Sort-Object)
 $modPath=Path-InRuntime ('mods/'+$profile.mod)

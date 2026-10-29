@@ -160,5 +160,37 @@
     "ordinaryCampaignPlay": "pending",
     "userVisualAcceptanceManifestSHA256": "375207fccff2e207c8632291df0001ac77d3865883dd812ab40aa19d02fe36a7",
     "currentPackageVisualAcceptance": "roster_visual_review_accepted"
+  },
+  "possessionFollowup": {
+    "date": "2026-10-29",
+    "status": "user_appearance_accepted_runtime_checked",
+    "scope": "Imp possession artwork; historical overhead, held and hero acceptance above remains separate.",
+    "root": "artifacts/restoration-followup-20261029/possession/imp",
+    "package": "candidate-actions-v4/imp-sprites.zip",
+    "packageSHA256": "d241a0afa68386e8c407e3fd58a1f3e94d9ee0830ca94b0cac83d385071d82eb",
+    "sourceFPFrameUses": 191,
+    "enhancedFPFrameUses": 191,
+    "completedActions": ["idle", "walk", "dig", "hit", "relax", "claim", "drag", "smoke", "scream", "death", "slap"],
+    "worldSize": 300,
+    "preservation": "Original archive members, prior enhanced frames, overhead and held metadata remain exact. Native timing, anchors, aliases and gameplay configuration are unchanged.",
+    "registration": "One uniform transform per action/direction, followed by one original-derived tone mapping shared by the complete action. Generated alpha is retained; it is not claimed identical to native masks.",
+    "staticReview": "Independent source/geometry/alpha checks and original-paired native/4x visual review passed. Drag direction 1 required a final face/material consistency repair.",
+    "preservationProof": "candidate-actions-v4/preservation-proof.json",
+    "interactiveReview": "continuation-20261029/review.html",
+    "runtimeStatus": "Exact 191-frame archive passed 464 matched stages with zero DX12 errors, warnings or rejections and exact restoration. Combined v23 Enhanced and Original launch checks passed with the API disabled.",
+    "runtimeEvidence": [
+      "artifacts/restoration-followup-20261029/imp-actions-v4-runtime-comparison.json",
+      "artifacts/restoration-followup-20261029/imp-actions-v4-drag-capture-review.json",
+      "artifacts/restoration-followup-20261029/review-v23-runtime.json"
+    ],
+    "combinedManifestSHA256": "9a285bacf69a60ea22bd0974c915ed37f1d5ab1b93bf20b7a0bc93390b0065de",
+    "combinedReview": "artifacts/restoration-followup-20261029/review.html",
+    "userAppearanceAccepted": true,
+    "userAppearanceAcceptanceDate": "2026-10-29",
+    "userAppearanceAcceptanceQuote": "Ok create the PR for these updates- accepted",
+    "userAppearanceAcceptanceReceipt": "artifacts/restoration-followup-20261029/user-appearance-acceptance-v23.json",
+    "normalArtSelectionChanged": false,
+    "remaining": "Other 29 models retain 3,012 native possession frame uses. Natural job acquisition, hauling, combat and broad campaign play remain separate from directed renderer checks.",
+    "resume": "Publish the accepted v23 artwork through lossless source-bound recipes. Preserve the checked package and its runtime limits; local normal-play selection is unchanged."
   }
 }
