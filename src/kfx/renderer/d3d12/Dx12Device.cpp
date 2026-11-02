@@ -1935,9 +1935,9 @@ RuntimeAssetLease Device::PublishRuntimeAsset(const RuntimeAssetKey& key, const 
         if (desc.width != 511 || desc.height != 511) throw std::invalid_argument("Runtime lightmap must be511x511");
         length *= 2;
     } else if (key.kind == RuntimeAssetKind::RemapRG16UInt) {
-        if (length > 16ull * 1024 * 1024) throw std::invalid_argument("Runtime lens remap exceeds64MiB");
+        if (length > RuntimeMaxNativePixels) throw std::invalid_argument("Runtime lens remap exceeds the native limit");
         length *= 4;
-    } else if (key.kind != RuntimeAssetKind::Indexed8 || length > 16ull * 1024 * 1024)
+    } else if (key.kind != RuntimeAssetKind::Indexed8 || length > RuntimeMaxNativePixels)
         throw std::invalid_argument("Invalid runtime indexed source");
     if (input.size() != length) throw std::invalid_argument("Runtime asset byte length mismatch");
     if (key.kind == RuntimeAssetKind::PaletteRGBA8)
@@ -2257,7 +2257,8 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
         const auto& m=*packet.map_fade;
         if(r.map_fade_current&&r.map_fade_current->id==m.transition_id)map_capture=r.map_fade_current;
         else {
-            if(!m.capture_pending||(r.map_fade_current&&m.transition_id<=r.map_fade_current->id))
+            // A dropped frame can have carried the capture request, so an unknown newer ID captures now.
+            if(r.map_fade_current&&m.transition_id<=r.map_fade_current->id)
                 throw std::invalid_argument("Map-fade transition has no current immutable capture");
             while(map_capture_slot<r.map_fade_captures.size()&&r.map_fade_captures[map_capture_slot])++map_capture_slot;
             if(map_capture_slot==r.map_fade_captures.size())return pressure();
@@ -2433,6 +2434,10 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeWorldFrame(const RuntimeWorldF
     const bool new_heap = !frame.world_heap || frame.world_descriptors < descriptors;
     uint32_t heap_capacity = std::max<uint32_t>(64, frame.world_descriptors);
     while (heap_capacity < descriptors) heap_capacity *= 2;
+    // Over-doubling must not reject a request that fits exactly, or admission would stall for good.
+    if (new_heap && heap_capacity > descriptors
+        && uint64_t(r.runtime_stats.descriptors) + heap_capacity + 4 > r.runtime_budgets.descriptors)
+        heap_capacity = std::max<uint32_t>(64, descriptors);
     const uint64_t geometry_allocation = new_geometry ? r.AllocationSize(BufferDesc(geometry_capacity)) : 0;
     // Retain projected terrain independently of the changing dynamic prefix.
     // Atlas addresses are resolved first, so relocation is part of exact bytes.
@@ -3057,7 +3062,7 @@ RuntimeSubmitResult Device::Impl::TrySubmitRuntimeIndexedFrame(const RuntimeInde
     std::array<std::shared_ptr<RuntimeAssetLease::State>, 2> assets = {
         validate(packet.indices, RuntimeAssetKind::Indexed8), validate(packet.palette, RuntimeAssetKind::PaletteRGBA8)};
     if (!packet.native_width || !packet.native_height || packet.native_width > 16384 || packet.native_height > 16384
-        || uint64_t(packet.native_width) * packet.native_height > 16ull * 1024 * 1024
+        || uint64_t(packet.native_width) * packet.native_height > RuntimeMaxNativePixels
         || packet.x < 0 || packet.y < 0 || !packet.width || !packet.height
         || uint64_t(packet.x) + packet.width > packet.native_width || uint64_t(packet.y) + packet.height > packet.native_height
         || assets[0]->desc.width != packet.width || assets[0]->desc.height != packet.height)

@@ -509,9 +509,10 @@ RuntimeWorldTestResult RunRuntimeWorldTests(Device& device,const Options& option
             for(unsigned i=0;i<3;++i){auto ticket=r.Submit(packet,false);r.Complete(ticket);}const auto warm=device.GetRuntimeResourceDiagnostics();
             for(unsigned i=0;i<6;++i){packet.map_fade->step=float(i)*5;auto ticket=r.Submit(packet,false);r.Complete(ticket);}const auto reused=device.GetRuntimeResourceDiagnostics();
             r.Check(reused.resource_allocations==warm.resource_allocations&&reused.world_upload_bytes==warm.world_upload_bytes&&reused.fence_waits==warm.fence_waits&&reused.global_idle_calls==warm.global_idle_calls,"Map-fade retained steps allocated/uploaded/waited");
-            auto invalid=packet;invalid.map_fade->transition_id=2;r.Reject([&]{device.TrySubmitRuntimeWorldFrame(invalid);},"Map-fade accepted missing transition capture");
-            packet.map_fade->transition_id=2;packet.map_fade->capture_pending=true;auto next=r.Submit(packet,false);r.Complete(next);
+            // A dropped frame can lose the capture request, so a newer ID captures without it.
+            packet.map_fade->transition_id=2;packet.map_fade->capture_pending=false;auto next=r.Submit(packet,false);r.Complete(next);
             r.Check(device.GetRuntimeResourceDiagnostics().resource_allocations==reused.resource_allocations+2,"New map-fade transition did not allocate exactly two capture images");
+            auto invalid=packet;invalid.map_fade->transition_id=1;r.Reject([&]{device.TrySubmitRuntimeWorldFrame(invalid);},"Map-fade accepted a transition older than its capture");
         });
         r.Case("whole-image-revision-reuse-and-held-readers",[&] {
             r.Configure();auto packet=Packet(device,synthetic);
@@ -613,7 +614,7 @@ RuntimeWorldTestResult RunRuntimeWorldTests(Device& device,const Options& option
             const auto after=device.GetRuntimeResourceDiagnostics();
             r.Check(after.publications==before.publications&&after.world_upload_bytes==before.world_upload_bytes,"Unchanged full-frame composition republished or uploaded sources");
             OwnedWorldBridge too_small(device,{1,0x200000000ull});
-            r.Check(too_small.PrepareFrame(packet)==OwnedWorldPrepareStatus::InvalidInput&&!too_small.Stats().pending,"Oversized full-frame gather did not fail permanently");
+            r.Check(too_small.PrepareFrame(packet)==OwnedWorldPrepareStatus::TooManySources&&!too_small.Stats().pending,"Oversized full-frame gather did not fail permanently");
         });
         r.Case("owned-heart-fly-in-sprite-visible-range",[&] {
             r.Configure();device.Resize(96,256);OwnedRenderAssets catalog(1);OwnedFrameMailbox mailbox;
@@ -709,7 +710,7 @@ RuntimeWorldTestResult RunRuntimeWorldTests(Device& device,const Options& option
             for(unsigned i=0;i<unsigned(OwnedFramePhase::Count);++i)builder.FinishPhase(OwnedFramePhase(i));
             auto packet=builder.Seal();r.Check(packet&&packet->Complete(),"Crowd packet incomplete");
             OwnedWorldBridge former(device,{512,0x500000000ull});
-            r.Check(former.PrepareFrame(packet)==OwnedWorldPrepareStatus::InvalidInput&&former.Stats().source_high_water==512,"Crowd fixture fits the former 512-source cap");
+            r.Check(former.PrepareFrame(packet)==OwnedWorldPrepareStatus::TooManySources&&former.Stats().source_high_water==512,"Crowd fixture fits the former 512-source cap");
             OwnedWorldBridge bridge(device);
             r.Check(bridge.PrepareFrame(packet)==OwnedWorldPrepareStatus::Ready,"Default bridge rejected the crowd");
             const auto stats=bridge.Stats();

@@ -14,6 +14,8 @@ param(
   [switch]$WindowUpdates
 )
 $ErrorActionPreference = 'Stop'
+# This test reports validation counts, which need the debug layer.
+$env:KFX_DX12_DEBUG = '1'
 if ($Renderer -eq 'DX12' -and $Architecture -ne 'x64') { throw 'DX12 requires the local Windows x64 executable.' }
 if ($Reloads -gt 0 -and $Renderer -ne 'DX12') { throw 'Reload qualification requires DX12 renderer statistics.' }
 if ($TerrainUpdates -and $Renderer -ne 'DX12') { throw 'Terrain cache updates require DX12 renderer statistics.' }

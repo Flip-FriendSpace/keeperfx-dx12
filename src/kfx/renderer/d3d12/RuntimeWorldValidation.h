@@ -8,11 +8,13 @@
 #include <string>
 
 namespace kfx::render::dx12 {
+// 8K: the largest resolution the frame surfaces are expected to serve.
+inline constexpr uint64_t RuntimeMaxNativePixels = 7680ull * 4320;
 inline void ValidateRuntimeWorldFrame(const RuntimeWorldFrame& p)
 {
     const auto require = [](bool value, const char* why) { if (!value) throw std::invalid_argument(why); };
     require(p.native_width && p.native_height && p.native_width <= 16384 && p.native_height <= 16384
-        && uint64_t(p.native_width) * p.native_height <= 16ull * 1024 * 1024
+        && uint64_t(p.native_width) * p.native_height <= RuntimeMaxNativePixels
         && p.viewport_x >= 0 && p.viewport_y >= 0 && p.viewport_width && p.viewport_height
         && uint64_t(p.viewport_x) + p.viewport_width <= p.native_width
         && uint64_t(p.viewport_y) + p.viewport_height <= p.native_height, "Invalid runtime world viewport");

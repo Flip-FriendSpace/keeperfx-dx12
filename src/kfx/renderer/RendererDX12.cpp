@@ -20,6 +20,7 @@
 #include "WorldSceneCapture.h"
 #include "TerrainColumnPlan.h"
 #include "FrontTerrainPlan.h"
+#include "kfx/renderer/d3d12/StallClock.h"
 #include "d3d12/Dx12Device.h"
 #include "d3d12/OwnedWorldBridge.h"
 #include "kfx/platform/IPlatform.h"
@@ -82,8 +83,8 @@ struct RendererDX12::Impl {
     bool finishing=false;
     bool production_admitted=false; // A write window may outlive several cached palette presentations.
     std::shared_ptr<const WorldScene> finishing_scene;
-    std::optional<std::chrono::steady_clock::time_point> blocked_since;
-    std::optional<std::chrono::steady_clock::time_point> presentation_blocked_since;
+    dx12::StallClock blocked_since;
+    dx12::StallClock presentation_blocked_since;
     std::array<uint8_t,1024> palette{};
     struct Screenshot {
         std::string path;
@@ -201,15 +202,11 @@ struct RendererDX12::Impl {
     bool AdmitPresentation() {
         if(!drawable_w || !drawable_h) { presentation_blocked_since.reset(); return false; }
         if(device.TryAcquireRuntimePresentation()) { presentation_blocked_since.reset(); return true; }
-        const auto now=std::chrono::steady_clock::now();
-        if(!presentation_blocked_since)presentation_blocked_since=now;
-        if(now-*presentation_blocked_since>=std::chrono::seconds(10))
+        if(presentation_blocked_since.Expired(std::chrono::steady_clock::now(),std::chrono::seconds(10)))
             throw std::runtime_error("DX12 presentation admission stalled for ten visible seconds");
         return false;
     }    bool Backpressure(unsigned prepare_status,dx12::RuntimePressureReason pressure) {
-        const auto now=std::chrono::steady_clock::now();
-        if(!blocked_since)blocked_since=now;
-        if(now-*blocked_since<std::chrono::seconds(10))return false;
+        if(!blocked_since.Expired(std::chrono::steady_clock::now(),std::chrono::seconds(10)))return false;
         const auto stats=bridge.Stats();
         const auto resources=device.GetRuntimeResourceDiagnostics();
         ERRORLOG("DX12 frame admission stalled: prepare %u, pressure %u, sources %u/%u, GPU bytes %llu, uploads %llu",
@@ -312,6 +309,14 @@ struct RendererDX12::Impl {
         if(prepared==dx12::OwnedWorldPrepareStatus::WouldBlock) {
             if(benchmark.enabled)benchmark.Attempt((DX12LiveBenchmark::Now()-submission_start)*1000,nullptr);
             return Backpressure(unsigned(prepared),dx12::RuntimePressureReason::None);
+        }
+        if(prepared==dx12::OwnedWorldPrepareStatus::TooManySources) {
+            // A crowd beyond the source table shows the previous image instead of ending the game.
+            const auto mapping=bridge.Stats();
+            if(rejected++<12)
+                ERRORLOG("DX12 dropped a frame with more than %u sprite sources",mapping.source_limit);
+            bridge.Abandon();pending.reset();blocked_since.reset();
+            return true;
         }
         if(prepared!=dx12::OwnedWorldPrepareStatus::Ready) {
             const auto mapping=bridge.Stats();
@@ -452,8 +457,11 @@ bool RendererDX12::Init()
         auto* window=Impl::Window();
         if(!window || !window->GetNativeWindowHandle())throw std::runtime_error("DX12 requires the native Windows game window");
         window->GetDrawableSize(&r.drawable_w,&r.drawable_h);
-        dx12::Options options;options.debug=true;options.vsync=vsync_enabled!=0;
+        dx12::Options options;options.vsync=vsync_enabled!=0;
         options.gpu_validation=std::getenv("KFX_DX12_GPU_VALIDATION")!=nullptr;
+        // The debug layer needs the Windows Graphics Tools feature and slows every frame.
+        const char* debug_layer=std::getenv("KFX_DX12_DEBUG");
+        options.debug=options.gpu_validation || (debug_layer && std::string(debug_layer)=="1");
         const auto lighting_enabled=[](const char* name) {
             const char* value=std::getenv(name);return value && std::string(value)=="1";
         };
