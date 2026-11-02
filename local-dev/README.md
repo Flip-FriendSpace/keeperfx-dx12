@@ -161,6 +161,17 @@ GPU validation needs Windows Graphics Tools. `dx12-install-tools.ps1` explicitly
 
 `render-benchmark.ps1` supports live DX12 workloads, separate warm-up/measurement windows and bounded cycles/reloads. It disables debug/GPU validation and restores its declared test state. VSync-on runs require eligible display-power endpoint checks. Application Present-return intervals are not displayed FPS; independently measure display events before making a pacing claim.
 
+## Staying current with upstream
+
+Merge `upstream/master` about once a month, so each merge stays small. Upstream often changes the code these local checks stub, so expect to repair a few of them each time.
+
+1. Create `sync/upstream-<date>` from a refreshed `main`.
+2. Run `git merge upstream/master`. For a large gap, merge in stages at upstream commits you choose, so each stage can be built.
+3. Run `test.ps1 -Tier all`, then `test.ps1 -Tier live` in a disposable workspace.
+4. Merge the PR with a merge commit. A squash or rebase loses the record of what has been merged, and the next merge has to resolve the same conflicts again.
+
+Multiplayer is not covered by the live tier. Check it by hand when a merge touches `src/net_*` or the lobby.
+
 ## Compatibility and known limits
 
 - Back up old saves and start a fresh campaign. Saves and replays from before the KFXS format (`src/kfx/save/FORMAT.txt`) are rejected without migration. Mixed-architecture replay/network sessions and incompatible Lua bytecode frames are deliberately rejected.
