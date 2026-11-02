@@ -70,8 +70,8 @@ try {
   if ($TemporalUpdates) { $env:KFX_SCENE_LIVE_SURFACES = '1' }
   $phase = 'listener-readiness'
   $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -WindowStyle Hidden -PassThru `
-  $null = $game.Handle
     -ArgumentList "-config keeperfx-live-renderer.cfg -nointro -skipheartzoom -campaign keeporig -level $Level -nosound -alex"
+  $null = $game.Handle
   $timer = [Diagnostics.Stopwatch]::StartNew()
   while ($timer.Elapsed.TotalSeconds -lt 30) {
     if ($game.HasExited) { throw "KeeperFX exited before API readiness ($($game.ExitCode))." }
@@ -98,8 +98,8 @@ try {
   }
   if ($Reloads -gt 0) { $arguments += "--reloads=$Reloads", ('"--runtime=' + $runtime + '"') }
   $client = Start-Process -FilePath $nodeExecutable -ArgumentList $arguments -WindowStyle Hidden -PassThru `
-  $null = $client.Handle
     -RedirectStandardOutput (Join-Path $output 'client.stdout.log') -RedirectStandardError (Join-Path $output 'client.stderr.log')
+  $null = $client.Handle
   $timer.Restart()
   $clientLimit = 120 + $Reloads * 60 + $(if ($TerrainUpdates) { 900 } else { 0 }) + $(if ($TemporalUpdates) { 600 } else { 0 }) + $(if ($WindowUpdates) { 180 } else { 0 })
   while (-not $client.WaitForExit(100)) {

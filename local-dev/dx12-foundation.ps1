@@ -134,8 +134,8 @@ if ($AdapterLuid) { $arguments += @('--adapter-luid', $AdapterLuid.ToLowerInvari
 if ($NoVSync) { $arguments += '--no-vsync' }
 $exe = Join-Path $bin 'keeperfx-dx12.exe'
 $process = Start-Process -FilePath $exe -ArgumentList $arguments -WorkingDirectory $bin -WindowStyle Hidden -PassThru `
-$null = $process.Handle
     -RedirectStandardOutput (Join-Path $run 'stdout.log') -RedirectStandardError (Join-Path $run 'stderr.log')
+$null = $process.Handle
 $manifest = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     executablePath = $exe
