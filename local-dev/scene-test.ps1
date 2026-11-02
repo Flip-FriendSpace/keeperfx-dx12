@@ -14,7 +14,7 @@ $workspace = Resolve-KeeperWorkspace $WorkspacePath
 if (-not $SkipUnit) {
   $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'scene-test.sh')).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'keeperfx-dev is unavailable.' }
-  & wsl.exe -d keeperfx-dev --exec bash $script
+  & wsl.exe -d keeperfx-dev --exec bash $script (& wsl.exe -d keeperfx-dev --exec wslpath -a $workspace).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Scene test compilation failed.' }
   foreach ($arch in @('i686', 'x86_64')) {
     & (Join-Path $workspace "artifacts/scene/scene-$arch.exe")

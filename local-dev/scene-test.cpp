@@ -9,7 +9,6 @@
 #include "engine_arrays.h"
 #include "engine_textures.h"
 #include "bflib_video.h"
-#include "roomspace_prediction.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>

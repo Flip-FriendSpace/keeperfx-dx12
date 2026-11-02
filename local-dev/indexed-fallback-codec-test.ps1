@@ -7,7 +7,7 @@ $workspace = Resolve-KeeperWorkspace $WorkspacePath
 $output = Join-Path $workspace 'artifacts/indexed-fallback-codec'
 $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'indexed-fallback-codec-test.sh')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'keeperfx-dev is unavailable.' }
-& wsl.exe -d keeperfx-dev --exec bash $script
+& wsl.exe -d keeperfx-dev --exec bash $script (& wsl.exe -d keeperfx-dev --exec wslpath -a $workspace).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Indexed fallback codec compilation failed.' }
 $tests = @{}
 foreach ($arch in @('i686','x86_64')) {

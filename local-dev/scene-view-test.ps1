@@ -7,7 +7,7 @@ $workspace = Resolve-KeeperWorkspace $WorkspacePath
 $output = Join-Path $workspace 'artifacts/scene-view'
 $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'scene-view-test.sh')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'keeperfx-dev unavailable.' }
-& wsl.exe -d keeperfx-dev --exec bash $script
+& wsl.exe -d keeperfx-dev --exec bash $script (& wsl.exe -d keeperfx-dev --exec wslpath -a $workspace).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Scene view test compilation failed.' }
 foreach ($arch in @('i686','x86_64')) {
     & (Join-Path $output "scene-view-$arch.exe")

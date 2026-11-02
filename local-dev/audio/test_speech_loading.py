@@ -27,7 +27,7 @@ def main():
     files = {p: (ROOT / p).read_text() for p in (
         "src/config.c", "src/config.h", "src/config_sounds.c", "src/gui_soundmsgs.h",
         "src/sound_manager.cpp", "src/bflib_sndlib.cpp", "src/dungeon_stats.c",
-        "src/lvl_filesdk1.c", "src/game_saves.c")}
+        "src/lvl_filesdk1.c", "src/kfx/save/SaveManager.cpp")}
     config, sounds = files["src/config.c"], files["src/config_sounds.c"]
     manager, bank = files["src/sound_manager.cpp"], files["src/bflib_sndlib.cpp"]
     prefix = r'''
@@ -55,6 +55,7 @@ static int text_line_number, warnings, errors, g_speech_queue_limit = 4;
 #define ERRORLOG(...) (++errors)
 #define set_flag(value, flags) ((value) |= (flags))
 #define MODS_DIR_NAME "mods"
+constexpr int FULLPATH_SIZE = 4096, DISKPATH_SIZE = 144;
 struct NamedCommand { const char* name; int num; };
 struct ConfigFileData {
  const char* filename; TbBool (*load_func)(const char*, unsigned short);
@@ -83,13 +84,13 @@ static char* path(const char* mod, int group, const char* name) {
 }
 static char* prepare_file_path(int group, const char* name) { return path("", group, name); }
 static char* prepare_file_path_mod(const char* mod, int group, const char* name) { return path(mod, group, name); }
-static char* get_game_file_path_fmt(int group, const char* format, ...) {
- char name[128]; va_list ap; va_start(ap, format); vsnprintf(name,sizeof(name),format,ap); va_end(ap);
- return path("",group,name);
+static char* prepare_file_path_buf(char* dst, int size, short group, const char* name) {
+    snprintf(dst, size, "%s", prepare_file_path(group, name));
+    return dst;
 }
-static char* get_mod_file_path_fmt(const char* mod, int group, const char* format, ...) {
- char name[128]; va_list ap; va_start(ap, format); vsnprintf(name,sizeof(name),format,ap); va_end(ap);
- return path(mod,group,name);
+static char* prepare_file_path_buf_mod(char* dst, int size, const char* mod, short group, const char* name) {
+    snprintf(dst, size, "%s", prepare_file_path_mod(mod, group, name));
+    return dst;
 }
 static long LbFileLengthRnc(const char* name) {
  loaded.emplace_back(name); auto it=fixture_files.find(name); return it == fixture_files.end() ? -1 : it->second.size();
@@ -264,7 +265,9 @@ int main() {
     assert "load_level_sounds_config(" not in block(files["src/lvl_filesdk1.c"], "static TbBool load_level_file(")
     stats = block(files["src/dungeon_stats.c"], "TbBool load_stats_files_for_level(")
     assert stats.index("load_sounds_config_for_level(sound_level)") < stats.index("load_default_creaturemodel_config(")
-    assert "load_stats_files_for_level(centry->level_num)" in block(files["src/game_saves.c"], "int load_game_chunks(")
+    # The selected frontend map can differ from the saved map, so a load selects the saved one first.
+    restore = block(files["src/kfx/save/SaveManager.cpp"], "static TbBool apply_game_kfxs(")
+    assert restore.index("game.selected_level_number = centry->level_num") < restore.index("load_stats_files()")
     with tempfile.TemporaryDirectory(prefix="keeperfx-speech-loading-") as directory:
         out = args.output.resolve() if args.output else Path(directory)/"report"
         out.mkdir(parents=True, exist_ok=False)

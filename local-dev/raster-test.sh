@@ -3,7 +3,7 @@
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-out="$(dirname -- "$repo")/artifacts/x64-port"
+out="${1:-$(dirname -- "$repo")}/artifacts/x64-port"
 mkdir -p "$out"
 for arch in i686 x86_64; do
   sdl=(/opt/keeperfx-build/RelWithDebInfo/deps/sdl3/SDL3-*/"$arch-w64-mingw32/include")

@@ -12,9 +12,10 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 
 repo = Path(__file__).resolve().parent.parent
-out = repo.parent / "artifacts" / "reference" / "selector-room-cpu"
+out = Path(sys.argv[1]) if len(sys.argv) > 1 else repo.parent / "artifacts" / "reference" / "selector-room-cpu"
 out.mkdir(parents=True, exist_ok=True)
 engine = (repo / "src/engine_render.c").read_text()
 cursor = (repo / "src/cursor_tag.c").read_text()
@@ -32,7 +33,7 @@ typedef int PlayerNumber;
 enum { GOF_Paused=1, PSt_CtrlDungeon=3, PCtr_MapCoordsValid=4, PSt_Sell=5, PSt_BuildRoom=6, SLC_RED=0, SLC_GREEN=1, SLC_BROWN=3, SLC_REDYELLOW=5, STL_PER_SLB=3 };
 struct RoomSpace { int centreX,centreY,width,height,left,top,plyr_idx,user,rkind,slab_count,invalid_slabs_count,is_active,is_roomspace_a_box,render_roomspace_as_box,is_roomspace_a_single_subtile; };
 struct PlayerInfo { int work_state,id_number; struct RoomSpace roomspace,render_roomspace; } player={.work_state=PSt_CtrlDungeon},local_observer_player;
-struct UserState { int chosen_room_kind; } user_state={2};
+struct UserState { int chosen_room_kind; int work_state; struct RoomSpace render_roomspace; } user_state={.chosen_room_kind=2,.work_state=PSt_CtrlDungeon};
 struct MapVolumeBox { int visible,color,beg_x,beg_y,end_x,end_y,floor_height_z; } map_volume_box;
 struct EngineReferenceRoomProof { int active,room_kind,busy,valid_slabs,invalid_slabs,colour,hidden_slabs,process_calls,busy_branches,basic_calls,fancy_calls,emitted_lines; };
 typedef int RoomKind; typedef int NetUserId; typedef int MapSubtlCoord; typedef int MapSlabCoord;
@@ -49,6 +50,11 @@ static struct { int cost; } room_stats={50};
 static bool local_camera_reference_enabled(void){return optin;}
 static bool flag_is_set(int value,int mask){return (value&mask)!=0;}
 static struct PlayerInfo *get_my_player(void){return &player;}
+static struct UserState *get_local_user_state(void){return &user_state;}
+static const struct UserState *get_user_state_prediction(int n){(void)n;return &user_state;}
+static int get_displayed_user(void){return 0;}
+static bool is_my_player_number(int n){return displayed&&n==my_player_number;}
+static bool gameplay_cursor_is_over_gui(void){return busy;}
 static bool is_player_displayed(int id){(void)id;return displayed;}
 static bool is_observer_camera_active(void){return observer;}
 static bool game_is_busy_doing_gui(void){return busy;}
@@ -97,7 +103,7 @@ int main(void){
  begin_engine_reference_selector();
  CHECK(reference_selector_drawing);CHECK(map_volume_box.visible);
  CHECK(should_draw_cursor_box(0));CHECK(!should_draw_cursor_box(1));
- CHECK(busy&&player.work_state==PSt_CtrlDungeon&&game.operation_flags==GOF_Paused);
+ CHECK(busy&&user_state.work_state==PSt_CtrlDungeon&&game.operation_flags==GOF_Paused);
  displayed=false;CHECK(!should_draw_cursor_box(0));displayed=true;
  game.small_map_state=2;CHECK(!should_draw_cursor_box(0));game.small_map_state=0;
  observer=true;CHECK(!should_draw_cursor_box(0));observer=false;
@@ -113,11 +119,11 @@ int main(void){
  }
  for(int i=0;i<4;i++){
   CHECK(set_engine_reference_selector(10,10,1,1));
-  if(i==0)optin=false;if(i==1)game.operation_flags=0;if(i==2)player.work_state=99;if(i==3)lens_mode=1;
+  if(i==0)optin=false;if(i==1)game.operation_flags=0;if(i==2)user_state.work_state=99;if(i==3)lens_mode=1;
   if(i<3)CHECK(!set_engine_reference_selector(10,10,1,1));
   const int before=tag_calls;begin_engine_reference_selector();
   CHECK(!reference_selector_drawing&&!reference_selector_enabled);CHECK(tag_calls==before);CHECK(!should_draw_cursor_box(0));
-  optin=true;game.operation_flags=GOF_Paused;player.work_state=PSt_CtrlDungeon;lens_mode=0;
+  optin=true;game.operation_flags=GOF_Paused;user_state.work_state=PSt_CtrlDungeon;lens_mode=0;
  }
  CHECK(set_engine_reference_selector(10,10,1,1));begin_engine_reference_selector();
  CHECK(!set_engine_reference_selector(11,11,1,1));end_engine_reference_selector();clear_engine_reference_selector();
@@ -138,13 +144,13 @@ int main(void){
  clear_engine_reference_selector();CHECK(!set_engine_reference_room_preview(0,10,10,1,1,0));CHECK(!set_engine_reference_room_preview(20,10,10,1,1,0));CHECK(!set_engine_reference_room_preview(2,10,10,1,1,2));
  for(int context=0;context<3;context++){
   CHECK(set_engine_reference_room_preview(2,10,10,1,1,1));
-  if(context==0)optin=false;if(context==1)game.operation_flags=0;if(context==2)player.work_state=99;
+  if(context==0)optin=false;if(context==1)game.operation_flags=0;if(context==2)user_state.work_state=99;
   CHECK(!set_engine_reference_room_preview(2,10,10,1,1,1));begin_engine_reference_selector();CHECK(!reference_selector_drawing);
-  optin=true;game.operation_flags=GOF_Paused;player.work_state=PSt_CtrlDungeon;
+  optin=true;game.operation_flags=GOF_Paused;user_state.work_state=PSt_CtrlDungeon;
  }
- busy=false;buildable=1;player.render_roomspace=create_box_roomspace((struct RoomSpace){0},1,1,10,10);player.render_roomspace.is_roomspace_a_single_subtile=true;
- CHECK(tag_cursor_blocks_place_room(0,31,31,true));CHECK(!player.render_roomspace.is_roomspace_a_single_subtile);
- player.work_state=PSt_BuildRoom;player.roomspace.is_active=true;
+ busy=false;buildable=1;user_state.render_roomspace=create_box_roomspace((struct RoomSpace){0},1,1,10,10);user_state.render_roomspace.is_roomspace_a_single_subtile=true;
+ CHECK(tag_cursor_blocks_place_room(0,31,31,true));CHECK(!user_state.render_roomspace.is_roomspace_a_single_subtile);
+ user_state.work_state=PSt_BuildRoom;player.roomspace.is_active=true;
  process_isometric_map_volume_box(0,0,0,0);CHECK(actual_colour==SLC_REDYELLOW);
  printf("%d selector/room scope and original cursor/geometry-branch CPU checks passed\n",checks);return 0;
 }
@@ -152,15 +158,17 @@ int main(void){
 generated = out / "selector-guard-test.c"
 generated.write_text(source)
 exe = out / "selector-guard-test"
-subprocess.run(["gcc", "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-misleading-indentation",
+subprocess.run(["gcc", "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-misleading-indentation", "-Wno-unused-function",
                 str(generated), "-o", str(exe)], check=True)
 result = subprocess.check_output([str(exe)], text=True)
 print(result, end="")
 checked = []
-for architecture, build, triple in (
+# The production flags belong to whichever checkout last configured those build folders.
+builds = () if "--no-syntax" in sys.argv else (
     ("x64", Path("/opt/keeperfx-build/x64/RelWithDebInfo"), "x86_64-w64-mingw32"),
     ("x86", Path("/opt/keeperfx-build/RelWithDebInfo"), "i686-w64-mingw32"),
-):
+)
+for architecture, build, triple in builds:
     ninja = (build / "build.ninja").read_text()
     for name in ("src/cursor_tag.c", "src/engine_render.c", "src/console_cmd.c", "src/kfx/renderer/SceneAssetCapture.cpp"):
         match = re.search(r"^build CMakeFiles/keeperfx\.dir/" + re.escape(name) + r"\.obj:.*\n((?:  .*\n)+)", ninja, re.M)

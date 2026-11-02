@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+param([string]$WorkspacePath)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'workspace.ps1')
 $repo = Split-Path -Parent $PSScriptRoot
-$workspace = Split-Path -Parent $repo
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $artifacts = Join-Path $workspace 'artifacts'
 New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
 $linuxRepo = (& wsl.exe -d keeperfx-dev --exec wslpath -a $repo).Trim()

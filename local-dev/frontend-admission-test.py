@@ -13,7 +13,7 @@ def block(source, signature):
         depth += (source[end] == '{') - (source[end] == '}')
         end += 1
     return source[start:end]
-loop = block((root/'src/game_loop.c').read_text(), 'if ((!finish_menu) && (LbIsActive()))')
+loop = block((root/'src/game_loop.c').read_text(), 'if ((!finish_menu) && (LbIsActive() || !freeze_game_on_focus_lost()))')
 yield_draw = block((root/'src/main.cpp').read_text(), 'extern "C" void network_yield_draw_frontend()\n{')
 join_draw = block((root/'src/front_network.c').read_text(), 'void display_attempting_to_join_message(int remaining_s)\n{')
 prefix = r'''
@@ -24,6 +24,7 @@ static bool finish_menu, attempting_to_join_cancelled;
 static int frontend_menu_state;
 enum { FeSt_NETLAND_VIEW=1, FeSt_TORTURE=2, FeSt_NET_START=3, KC_ESCAPE=1, KMod_DONTCARE=0, GUIStr_NetAttemptingToJoin=1 };
 static int LbIsActive() { return 1; }
+static int freeze_game_on_focus_lost() { return 1; }
 static short frontend_draw() { ++calls; return mode; }
 static void RendererPresentFrame() { ++presents; }
 static bool RendererBeginFrame() { ++begins; return true; }

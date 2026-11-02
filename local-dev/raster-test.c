@@ -15,6 +15,12 @@ unsigned char vec_mode = VM_QuadTextured;
 unsigned long vec_screen_width = 96;
 long vec_window_width = 80, vec_window_height = 64;
 GameTurn get_gameturn(void) { return 0; }
+TbPixel vec_colour;
+void WorldSceneTraceTriangle(unsigned int rasterizer, const struct PolyPoint* a, const struct PolyPoint* b,
+    const struct PolyPoint* c, unsigned int mode, unsigned int colour, const unsigned char* texture)
+{
+    (void)rasterizer; (void)a; (void)b; (void)c; (void)mode; (void)colour; (void)texture;
+}
 int LbErrorLog(const char *format, ...) { (void)format; abort(); }
 
 int main(void)

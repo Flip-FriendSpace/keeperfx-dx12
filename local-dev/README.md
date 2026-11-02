@@ -119,6 +119,25 @@ Config sync only seeds `mods/load_order.cfg` in a new runtime. An existing mod o
 
 ## Checks and measurements
 
+`test.ps1` runs every check registered in `tests.json`:
+
+```powershell
+./local-dev/test.ps1 -Tier unit -WorkspacePath <workspace>
+./local-dev/test.ps1 -Tier native -WorkspacePath <workspace>
+./local-dev/test.ps1 -Tier live -WorkspacePath <disposable workspace>
+```
+
+| Tier | Needs | Covers |
+| --- | --- | --- |
+| `unit` | Windows tools | Installers, launchers, packaging and review logic |
+| `native` | `keeperfx-dev` | Decoders, layouts, save tables and engine code built on its own |
+| `data` | Your own artwork or media | Currently only documents what each audit needs |
+| `live` | A prepared runtime and a GPU | Game smoke, state and replay runs, and the DX12 runtime tests |
+
+`-Tier all` runs everything except `live`. A check that did not run is reported as `not-run` with its reason and is never counted as passed; `-Strict` makes one fail the run. Reports go to `artifacts/test-runner/` in the workspace.
+
+A file under `local-dev/` or `tests/` that is named like a test has to be registered, or every run stops with an error.
+
 Live campaign checks require your prepared runtime and original assets. They temporarily enable the loopback API for their own session:
 
 ```powershell
@@ -141,6 +160,17 @@ tracks to initialize; a disabled-audio fallback cannot pass.
 GPU validation needs Windows Graphics Tools. `dx12-install-tools.ps1` explicitly installs that development prerequisite with administrator privileges; ordinary preview play does not enable validation. Procedural GPU/CPU fixtures and source tests are in `local-dev/`. Reference workflows must generate their captured inputs locally; no historical capture corpus or test report is supplied.
 
 `render-benchmark.ps1` supports live DX12 workloads, separate warm-up/measurement windows and bounded cycles/reloads. It disables debug/GPU validation and restores its declared test state. VSync-on runs require eligible display-power endpoint checks. Application Present-return intervals are not displayed FPS; independently measure display events before making a pacing claim.
+
+## Staying current with upstream
+
+Merge `upstream/master` about once a month, so each merge stays small. Upstream often changes the code these local checks stub, so expect to repair a few of them each time.
+
+1. Create `sync/upstream-<date>` from a refreshed `main`.
+2. Run `git merge upstream/master`. For a large gap, merge in stages at upstream commits you choose, so each stage can be built.
+3. Run `test.ps1 -Tier all`, then `test.ps1 -Tier live` in a disposable workspace.
+4. Merge the PR with a merge commit. A squash or rebase loses the record of what has been merged, and the next merge has to resolve the same conflicts again.
+
+Multiplayer is not covered by the live tier. Check it by hand when a merge touches `src/net_*` or the lobby.
 
 ## Compatibility and known limits
 

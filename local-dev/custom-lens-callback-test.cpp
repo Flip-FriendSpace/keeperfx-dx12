@@ -6,6 +6,9 @@
 #include "lua_api_lens.h"
 #include "lens_api.h"
 #include "globals.h"
+struct UserState;
+extern "C" struct UserState *get_user_state(int) { return nullptr; }
+extern "C" void set_all_users_lens(int, const char *) {}
 extern "C" {
 #include <lauxlib.h>
 #include <lualib.h>

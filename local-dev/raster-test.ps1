@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $workspace = Resolve-KeeperWorkspace $WorkspacePath
 $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'raster-test.sh')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'keeperfx-dev is unavailable.' }
-& wsl.exe -d keeperfx-dev --exec bash $script
+& wsl.exe -d keeperfx-dev --exec bash $script (& wsl.exe -d keeperfx-dev --exec wslpath -a $workspace).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Rasterizer test compilation failed.' }
 $results = @()
 foreach ($arch in @('i686', 'x86_64')) {
