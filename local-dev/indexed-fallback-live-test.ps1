@@ -2,6 +2,8 @@
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param([ValidateSet('x86','x64')][string]$Architecture = 'x64', [ValidateSet('OPENGL','DX12')][string]$Renderer = 'OPENGL', [string]$PythonExecutable)
 $ErrorActionPreference = 'Stop'
+# This test reports validation counts, which need the debug layer.
+$env:KFX_DX12_DEBUG = '1'
 if ($Renderer -eq 'DX12' -and $Architecture -ne 'x64') { throw 'DX12 requires the local Windows x64 executable.' }
 if ($Renderer -eq 'DX12' -and -not $PythonExecutable) {
   $PythonExecutable = (Get-Command python -ErrorAction Stop).Source

@@ -53,7 +53,8 @@ struct RuntimeWorldLens {
     RuntimeAssetLease palette, fade, rgb6, density, remap, overlay;
 };
 // Immutable captures are keyed by runtime epoch plus producer transition ID.
-// Only a new ID with capture_pending creates them; repeated packets reuse them.
+// A newer ID creates them, with or without capture_pending because a dropped frame can
+// lose the request. Repeated packets reuse them and an older ID is an error.
 struct RuntimeWorldMapFade {
     uint64_t transition_id=0;
     bool capture_pending=false;

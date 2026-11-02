@@ -6,6 +6,8 @@ param(
   [ValidateSet('OPENGL', 'SOFTWARE', 'DX12')][string]$Renderer = 'OPENGL'
 )
 $ErrorActionPreference = 'Stop'
+# This test reports validation counts, which need the debug layer.
+$env:KFX_DX12_DEBUG = '1'
 if ($Renderer -eq 'DX12' -and $Architecture -ne 'x64') { throw 'DX12 requires x64.' }
 if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
 $workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
