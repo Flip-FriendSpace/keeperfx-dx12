@@ -24,7 +24,10 @@ for source in ['local-dev/remaster/ui-pack-test.cpp','local-dev/remaster/raw-ind
                     '-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',
                     '-I'+str(root/'src'),str(s),'-o',str(output)],check=True)
     args=[str(output.resolve())]
-    if s.stem=='ui-pack-test' and a.ui_packs: args += [str(f) for f in sorted(a.ui_packs.glob('*.kfui'))]
+    if s.stem=='ui-pack-test' and a.ui_packs:
+        packs=sorted(a.ui_packs.glob('*.kfui'))
+        if not packs: raise SystemExit('No .kfui packs in '+str(a.ui_packs))
+        args += [str(f) for f in packs]
     run=subprocess.run(args,check=True,text=True,capture_output=True)
     print(run.stdout,end='')
     results.append({'source':source,'sha256':hashlib.sha256(s.read_bytes()).hexdigest(),'passed':True,'output':run.stdout})

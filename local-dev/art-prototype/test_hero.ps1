@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-param([Parameter(Mandatory=$true)][ValidatePattern('^[a-z_]+$')][string]$Hero)
+param([string]$WorkspacePath,[Parameter(Mandatory=$true)][ValidatePattern('^[a-z_]+$')][string]$Hero)
 $Mode='HeroValidation';$Variant='HD'
 $ErrorActionPreference='Stop'
-$workspace=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime=Join-Path $workspace 'runtime/keeperfx-x64'
 $art=Join-Path $workspace ('artifacts/art-prototype/heroes/'+$Hero)
 $executable=Join-Path $runtime 'keeperfx-dx12.exe'
@@ -20,6 +21,7 @@ $backups=@{}
 foreach ($path in @($testConfig,$loadOrder,(Join-Path $runtime 'keeperfx.cfg'),(Join-Path $runtime 'save/settings.toml'),(Join-Path $runtime 'save/fx1lastf.sav'),(Join-Path $env:APPDATA 'keeperfx/keeperfx/renderer_prefs.ini'))) {
   $backups[$path]=if (Test-Path -LiteralPath $path) { [IO.File]::ReadAllBytes($path) } else { $null }
 }
+Save-TestBackup $backups $output $workspace
 $oldScene=$env:KFX_SCENE_TEST_DIR
 $oldReference=$env:KFX_SCENE_REFERENCE
 $oldLive=$env:KFX_SCENE_LIVE_SURFACES
@@ -47,6 +49,7 @@ try {
     $env:KFX_RENDER_BENCHMARK_DIR=$output;$env:KFX_RENDER_BENCHMARK_WARMUP_SECONDS='5';$env:KFX_RENDER_BENCHMARK_SAMPLE_SECONDS='20';$env:KFX_DX12_PERFORMANCE='1'
   }
   $game=Start-Process -FilePath $executable -WorkingDirectory $runtime -WindowStyle Hidden -PassThru -ArgumentList '-config keeperfx-hero-art.cfg -nointro -skipheartzoom -campaign keeporig -level 1 -nosound -alex'
+  $null = $game.Handle
   $timer=[Diagnostics.Stopwatch]::StartNew()
   while ($timer.Elapsed.TotalSeconds -lt 30) {
     if ($game.HasExited) {throw 'Game exited before API readiness.'}
@@ -60,6 +63,7 @@ try {
   if (-not $apiOwnerVerified) {throw 'No owned loopback API listener within 30 seconds.'}
   $clientScript='test_hero.mjs'
   $client=Start-Process -FilePath $nodeExecutable -WindowStyle Hidden -PassThru -ArgumentList @(('"'+(Join-Path $PSScriptRoot $clientScript)+'"'),('"'+$output+'"'),$Hero) -RedirectStandardOutput (Join-Path $output 'client.stdout.log') -RedirectStandardError (Join-Path $output 'client.stderr.log')
+  $null = $client.Handle
   $timer.Restart()
   while (-not $client.WaitForExit(100)) {
     if ($timer.Elapsed.TotalSeconds -gt 480) {throw 'Sprite fixture exceeded its time bound.'}
@@ -91,6 +95,7 @@ finally {
     if ($null -eq $backups[$path]) {$restored=$restored -and -not (Test-Path -LiteralPath $path)}
     else {$restored=$restored -and ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -eq [Convert]::ToBase64String($backups[$path]))}
   }
+  if ($restored) {Clear-TestBackup $workspace}
   if (Test-Path -LiteralPath (Join-Path $runtime 'keeperfx.log')) {Copy-Item -LiteralPath (Join-Path $runtime 'keeperfx.log') -Destination (Join-Path $output 'keeperfx.log') -Force}
   @{passed=$passed;error=$failure;apiOwnerVerified=$apiOwnerVerified;settingsRestored=$restored;modEnabledAfterTest=$false;dx12=$validation;executable=$executable;packageSHA256=(Get-FileHash (Join-Path $art ('mod/'+$modName+'/fxdata/'+$Hero+'-sprites.zip'))).Hash} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'run-report.json') -Encoding utf8
   Write-Output "Hero sprite evidence: $output"

@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
+param([string]$WorkspacePath)
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $output = Join-Path $workspace 'artifacts/indexed-fallback-codec'
 $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'indexed-fallback-codec-test.sh')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'keeperfx-dev is unavailable.' }

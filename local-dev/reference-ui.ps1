@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+  [string]$WorkspacePath,
   [ValidateSet('OPENGL','SOFTWARE')][string]$Renderer = 'OPENGL',
   [ValidateSet('ENG','FRE','GER','JPN')][string]$Language = 'ENG',
   [ValidateSet('menu','level','movie')][string]$Start = 'menu'
 )
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $repo = Split-Path -Parent $PSScriptRoot
 $runtime = Join-Path $workspace 'runtime/keeperfx-x64'
 if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog -ErrorAction SilentlyContinue) {
@@ -43,6 +45,7 @@ try {
   if ($Start -ne 'movie') { $arguments += @('-nointro','-skipheartzoom') }
   if ($Start -eq 'level') { $arguments += @('-campaign','keeporig','-level','1') }
   $process = Start-Process -FilePath (Join-Path $runtime 'keeperfx-local.exe') -WorkingDirectory $runtime -ArgumentList $arguments -WindowStyle Hidden -PassThru
+  $null = $process.Handle
   Write-Output "UI reference session: $output"
   Write-Output "Process: $($process.Id)"
   $process.WaitForExit()

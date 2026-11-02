@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 param(
+  [string]$WorkspacePath,
   [ValidateSet('Diagnostic')][string]$Mode='Diagnostic',
   [ValidateSet('Original','HD')][string]$Variant='HD'
 )
 $ErrorActionPreference='Stop'
-$workspace=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime=Join-Path $workspace 'runtime/keeperfx-x64'
 $art=Join-Path $workspace 'artifacts/art-prototype/heroes'
 $executable=Join-Path $runtime 'keeperfx-dx12.exe'
@@ -21,6 +23,7 @@ $backups=@{}
 foreach ($path in @($testConfig,$loadOrder,(Join-Path $runtime 'keeperfx.cfg'),(Join-Path $runtime 'save/settings.toml'),(Join-Path $runtime 'save/fx1lastf.sav'),(Join-Path $env:APPDATA 'keeperfx/keeperfx/renderer_prefs.ini'))) {
   $backups[$path]=if (Test-Path -LiteralPath $path) { [IO.File]::ReadAllBytes($path) } else { $null }
 }
+Save-TestBackup $backups $output $workspace
 $oldScene=$env:KFX_SCENE_TEST_DIR
 $oldReference=$env:KFX_SCENE_REFERENCE
 $oldLive=$env:KFX_SCENE_LIVE_SURFACES
@@ -62,6 +65,7 @@ try {
   }
   $env:KFX_DX12_GPU_VALIDATION='1'
   $game=Start-Process -FilePath $executable -WorkingDirectory $runtime -WindowStyle Hidden -PassThru -ArgumentList '-config keeperfx-heroes-diagnostic.cfg -nointro -skipheartzoom -campaign keeporig -level 1 -nosound -alex'
+  $null = $game.Handle
   $timer=[Diagnostics.Stopwatch]::StartNew()
   while ($timer.Elapsed.TotalSeconds -lt 30) {
     if ($game.HasExited) {throw 'Game exited before API readiness.'}
@@ -75,6 +79,7 @@ try {
   if (-not $apiOwnerVerified) {throw 'No owned loopback API listener within 30 seconds.'}
   $clientScript='test_heroes_diagnostic.mjs'
   $client=Start-Process -FilePath $nodeExecutable -WindowStyle Hidden -PassThru -ArgumentList @(('"'+(Join-Path $PSScriptRoot $clientScript)+'"'),('"'+$output+'"'),$Mode,$Variant) -RedirectStandardOutput (Join-Path $output 'client.stdout.log') -RedirectStandardError (Join-Path $output 'client.stderr.log')
+  $null = $client.Handle
   $timer.Restart()
   while (-not $client.WaitForExit(100)) {
     if ($timer.Elapsed.TotalSeconds -gt 300) {throw 'Sprite fixture exceeded its time bound.'}
@@ -106,6 +111,7 @@ finally {
     if ($null -eq $backups[$path]) {$restored=$restored -and -not (Test-Path -LiteralPath $path)}
     else {$restored=$restored -and ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -eq [Convert]::ToBase64String($backups[$path]))}
   }
+  if ($restored) {Clear-TestBackup $workspace}
   if (Test-Path -LiteralPath (Join-Path $runtime 'keeperfx.log')) {Copy-Item -LiteralPath (Join-Path $runtime 'keeperfx.log') -Destination (Join-Path $output 'keeperfx.log') -Force}
   @{passed=$passed;error=$failure;apiOwnerVerified=$apiOwnerVerified;settingsRestored=$restored;modEnabledAfterTest=$false;dx12=$validation;executable=$executable;packageHashes=@(Get-ChildItem -LiteralPath (Join-Path $art 'mod/heroes_art_prototype/fxdata') -Filter '*.zip' | ForEach-Object {@{file=$_.Name;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}});comparison='Both variants keep HD archives loaded; original overrides only sprite mappings, not archive residency.'} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'run-report.json') -Encoding utf8
   Write-Output "Heroes sprite evidence: $output"

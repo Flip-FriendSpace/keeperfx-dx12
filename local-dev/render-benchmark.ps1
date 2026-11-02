@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+    [string]$WorkspacePath,
     [ValidateSet('ON','OFF')][string]$VSync = 'OFF',
     [ValidateSet('x86','x64')][string]$Architecture = 'x64',
     [ValidateSet('OPENGL','DX12')][string]$Renderer = 'OPENGL',
@@ -26,7 +27,8 @@ if ($Reloads -gt 0 -and $Cycles -lt 3) { throw 'Reloads require at least three c
 $clientLimit = if ($Renderer -eq 'DX12') { $Cycles * ($WarmupSeconds + $SampleSeconds + $(if($Cycles -gt 1){5}else{0})) + $Reloads * 35 + $(if($ObserveScript){$WarmupSeconds}else{0}) + 90 } else { 450 }
 if ($Renderer -eq 'DX12' -and ($clientLimit + $(if($AwaitMeasurementStart){120}else{0})) -gt ($SessionLimitMinutes * 60 - 50)) { throw "Requested cycles/warm-up/reloads/start handoff exceed the $SessionLimitMinutes-minute total run budget." }
 if ($Renderer -eq 'OPENGL' -and ($Campaign -ne 'keeporig' -or $Level -ne 1 -or $SetupScript -or $PSBoundParameters.ContainsKey('WarmupSeconds') -or $PSBoundParameters.ContainsKey('SampleSeconds'))) { throw 'The existing OpenGL baseline uses paused keeporig level 1 and fixed frame counts; live controls require DX12.' }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime = Join-Path $workspace 'runtime/keeperfx'
 if ($Architecture -eq 'x64') { $runtime += '-x64' }
 $testSave = Join-Path $runtime 'save/fx1g9997.sav'
@@ -68,6 +70,7 @@ function Get-BenchmarkDisplayState([string]$phase) {
         if (-not (Test-Path -LiteralPath $checker)) { throw "Display-state checker missing: $checker" }
         $session.executableSHA256 = (Get-FileHash -LiteralPath $checker -Algorithm SHA256).Hash
         $check = Start-Process -FilePath $checker -WorkingDirectory $workspace -WindowStyle Hidden -PassThru -ArgumentList @('--display-power-check','--output',('"' + $checkDirectory + '"')) -RedirectStandardOutput (Join-Path $checkDirectory 'stdout.log') -RedirectStandardError (Join-Path $checkDirectory 'stderr.log')
+        $null = $check.Handle
         $session.processId = $check.Id
         $session | ConvertTo-Json | Set-Content -LiteralPath $sessionPath -Encoding utf8
         if (-not $check.WaitForExit(5000)) { throw 'Display-state checker exceeded its 5-second startup/observation bound.' }
@@ -152,6 +155,7 @@ try {
     if ($Renderer -eq 'OPENGL') { $arguments += ' -pause_at_gameturn 120' }
     if ($setupHash -or $Cycles -gt 1) { $env:KFX_SCENE_REFERENCE='1';$env:KFX_SCENE_TEST_DIR=$out;$arguments += ' -alex' }
     $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -WindowStyle Hidden -PassThru -ArgumentList $arguments
+    $null = $game.Handle
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while ($timer.Elapsed.TotalSeconds -lt 30) {
         if ($game.HasExited) { throw 'KeeperFX exited before the benchmark API started.' }
@@ -203,6 +207,7 @@ try {
     }
     $quotedArgs = @($nodeArgs | ForEach-Object { '"' + $_ + '"' })
     $client = Start-Process -FilePath $nodeExecutable -ArgumentList $quotedArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $out 'api.stdout.log') -RedirectStandardError (Join-Path $out 'api.stderr.log')
+    $null = $client.Handle
     if ($Cycles -gt 1) {
         $clientTimer=[Diagnostics.Stopwatch]::StartNew()
         $lastMemorySequence=0

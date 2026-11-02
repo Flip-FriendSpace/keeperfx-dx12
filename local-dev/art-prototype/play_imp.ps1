@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-param([switch]$QuickStart, [ValidateSet('imp-set','imp-actions')][string]$AssetSet='imp-actions')
+param([string]$WorkspacePath,[switch]$QuickStart, [ValidateSet('imp-set','imp-actions')][string]$AssetSet='imp-actions')
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime = Join-Path $workspace 'runtime/keeperfx-x64'
 $source = Join-Path $workspace ('artifacts/art-prototype/'+$AssetSet+'/mod/imp_art_prototype')
 $target = Join-Path $runtime 'mods/imp_art_prototype'

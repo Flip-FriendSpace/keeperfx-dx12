@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-param([switch]$QuickStart)
+param([string]$WorkspacePath,[switch]$QuickStart)
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime = Join-Path $workspace 'runtime/keeperfx-x64'
 $artifacts = Join-Path $workspace 'artifacts/art-prototype/heroes'
 $source = Join-Path $artifacts 'mod/heroes_art_prototype'

@@ -28,6 +28,8 @@ $profileRuntime = if ($RuntimePath) { $RuntimePath } else { Join-Path $Workspace
 $installedProfile = Join-Path $profileRuntime 'remaster/default.json'
 if (-not $NativeProfile -and -not $Upstream -and -not $HeavyLog -and $Architecture -eq 'x64' -and (Test-Path -LiteralPath $installedProfile)) {
   if ($PassThru) { throw 'The installed remaster owns its launch/restoration lifecycle. Use -NativeProfile for direct diagnostic launches.' }
+  $ignored = @('HdTerrainPack', 'NativeTerrain', 'HdUiOverrideDir', 'UiTextPercent', 'RemasterLighting', 'RemasterEmissive') | Where-Object { $PSBoundParameters.ContainsKey($_) }
+  if ($ignored) { throw "The installed remaster session chooses these itself: $($ignored -join ', '). Use -NativeProfile for direct diagnostic launches." }
   & (Join-Path $PSScriptRoot 'remaster/play-remaster.ps1') -WorkspacePath $WorkspacePath -RuntimePath $profileRuntime -Original:$Original -NativeAudio:$NativeAudio -QuickStart:$QuickStart -OpenGLFallback:$OpenGLFallback -Hidden:$Hidden -GpuValidation:$GpuValidation
   return
 }

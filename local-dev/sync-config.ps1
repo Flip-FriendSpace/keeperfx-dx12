@@ -9,6 +9,8 @@ $runtime = Join-Path $workspace 'runtime/keeperfx'
 if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog,keeperfx-dx12,keeperfx-dx12-hvlog -ErrorAction SilentlyContinue) {
   throw 'Close running KeeperFX instances before syncing definitions.'
 }
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+Assert-NoRuntimeSession $workspace
 if (-not (Test-Path -LiteralPath (Join-Path $runtime 'keeperfx.exe'))) { throw 'Runtime is missing.' }
 # Copy editable game definitions; retain generated assets and user settings.
 foreach ($folder in @('creatrs', 'fxdata', 'mods')) {
@@ -19,8 +21,10 @@ foreach ($folder in @('creatrs', 'fxdata', 'mods')) {
   Get-ChildItem -LiteralPath $from -File -Recurse | ForEach-Object {
     $relative = $_.FullName.Substring($from.Length).TrimStart('\', '/')
     $destination = Join-Path $to $relative
+    # The checked-in mod order only seeds a new runtime; the local choices belong to the player.
+    if ($folder -eq 'mods' -and $relative -eq 'load_order.cfg' -and (Test-Path -LiteralPath $destination)) { return }
     New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
     Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
   }
 }
-Write-Output 'Synced source config/creatrs, config/fxdata and config/mods into the runtime.'
+Write-Output 'Synced source config/creatrs, config/fxdata and config/mods into the runtime. An existing mods/load_order.cfg is kept.'

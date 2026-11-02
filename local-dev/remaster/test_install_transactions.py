@@ -293,6 +293,46 @@ class InstallerTransactions(unittest.TestCase):
         self.assertTrue(injected)
         self.assert_rolled_back()
 
+    def killed_install(self):
+        # A kill bypasses the handler, so the journal stays 'prepared' and the lock stays behind.
+        real_replace = self.module.os.replace
+        new_target = self.game / self.new_path
+        def killed(*args):
+            raise SystemExit('Synthetic kill')
+        def fail(source, destination):
+            result = real_replace(source, destination)
+            if Path(destination) == new_target:
+                raise InjectedFailure('Synthetic failure')
+            return result
+        with mock.patch.object(self.module.os, 'replace', fail), mock.patch.object(self.module, 'roll_back', killed):
+            with self.assertRaises(SystemExit):
+                self.install()
+        for path, journal in self.journals():
+            journal['state'] = 'prepared'
+            path.write_text(json.dumps(journal), encoding='utf8')
+        self.assertTrue(new_target.exists(), 'The fixture must leave a half-installed file')
+        (self.game / 'remaster/operation.lock').write_text('installation pid 1', encoding='utf8')
+
+    def test_recover_rolls_back_a_killed_installation(self):
+        self.killed_install()
+        with mock.patch.object(self.module, 'assert_closed'):
+            result = self.module.recover(self.game, 'unused')
+        self.assertEqual(result, {'recovered': True, 'rolled_back': 1})
+        self.assert_rolled_back()
+        self.assertFalse((self.game / 'remaster/operation.lock').exists())
+
+    def test_recover_refuses_a_play_session_lock(self):
+        lock = self.game / 'remaster/operation.lock'
+        lock.write_text('C:/somewhere/journal.json', encoding='utf8')
+        with mock.patch.object(self.module, 'assert_closed'):
+            with self.assertRaises(ValueError):
+                self.module.recover(self.game, 'unused')
+        self.assertTrue(lock.exists())
+
+    def test_recover_without_a_lock_changes_nothing(self):
+        with mock.patch.object(self.module, 'assert_closed'):
+            self.assertFalse(self.module.recover(self.game, 'unused')['recovered'])
+
     def test_final_journal_failure_does_not_skip_temporary_cleanup(self):
         if not hasattr(self.module, 'dump'):
             self.skipTest('Installer dump injection helper changed; adapt this focused case')

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+  [string]$WorkspacePath,
   [ValidateSet('OPENGL','SOFTWARE')][string]$Renderer = 'OPENGL',
   [ValidateSet('x86','x64')][string]$Architecture = 'x64',
   [ValidateSet(1,5,20)][int[]]$Levels = @(1,5,20),
@@ -16,7 +17,8 @@ $selected = @($catalog.scenes | Where-Object { $Levels -contains $_.level -and (
 if ($selected.Count -eq 0) { throw 'No reference cases match the requested levels and suite.' }
 foreach ($id in $Cases) { if ($selected.id -notcontains $id) { throw "Unknown reference case for the requested levels and suite: $id" } }
 foreach ($scene in $selected) { if ($scene.continuationOf -and $selected.id -notcontains $scene.continuationOf) { throw "Frozen variant $($scene.id) requires $($scene.continuationOf)." } }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime = Join-Path $workspace $(if ($Architecture -eq 'x64') { 'runtime/keeperfx-x64' } else { 'runtime/keeperfx' })
 if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog -ErrorAction SilentlyContinue) {
   throw 'Close KeeperFX before capturing reference scenes.'
@@ -77,6 +79,7 @@ try {
     $env:KFX_SCENE_TEST_DIR = $levelOutput
     $env:KFX_SCENE_REFERENCE = '1'
     $process = Start-Process -FilePath (Join-Path $runtime 'keeperfx-local.exe') -WorkingDirectory $runtime -WindowStyle Hidden -PassThru -ArgumentList "-config keeperfx-reference-test.cfg -nointro -skipheartzoom -campaign keeporig -level $level -nosound -alex"
+    $null = $process.Handle
     try {
       $ready = $false
       for ($attempt=0; $attempt -lt 60; $attempt++) {

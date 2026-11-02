@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+    [string]$WorkspacePath,
     [switch]$BuildOnly,
     [switch]$SkipBuild,
     [switch]$Interactive,
@@ -65,7 +66,8 @@ if ($WorldOverlayTest -and ($SceneCapture -or $Interactive -or $Terrain -or $Wor
 if ($CompositionTest -and ($SceneCapture -or $Interactive -or $Terrain -or $World -or $FullWalls -or $Palette -or $SpriteReplay -or $TerrainReplay -or $OutlineReplay -or $FrozenWorld -or $FrozenFrameTest -or $EnhancedSpriteTest -or $EnhancedSpriteReplay -or $EnhancedWorldTest -or $EnhancedWorld -or $LensTest -or $WorldOverlayTest)) { throw 'CompositionTest cannot be combined with other rendering modes.' }
 if ($FullWalls -and -not ($Terrain -or $World)) { throw 'FullWalls requires -Terrain or -World.' }
 if (($IndexedFallback -or $IndexedFallbackTest) -and ($SceneCapture -or $Terrain -or $World -or $FullWalls -or $Palette -or $SpriteReplay -or $TerrainReplay -or $OutlineReplay -or $FrozenWorld -or $FrozenFrameTest -or $EnhancedSpriteTest -or $EnhancedSpriteReplay -or $EnhancedWorldTest -or $EnhancedWorld -or $EnhancedWorldNativeOrigin -or $LensTest -or $WorldOverlayTest -or $CompositionTest -or ($IndexedFallbackTest -and ($IndexedFallback -or $Interactive)))) { throw 'IndexedFallback requires its own file or IndexedFallbackTest fixture and cannot be combined with other rendering modes.' }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $cache = Join-Path $workspace 'downloads/keeperfx-dx12'
 $artifacts = Join-Path $workspace 'artifacts/dx12'
 New-Item -ItemType Directory -Path $cache,$artifacts -Force | Out-Null
@@ -132,6 +134,7 @@ if ($NoVSync) { $arguments += '--no-vsync' }
 $exe = Join-Path $bin 'keeperfx-dx12.exe'
 $process = Start-Process -FilePath $exe -ArgumentList $arguments -WorkingDirectory $bin -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $run 'stdout.log') -RedirectStandardError (Join-Path $run 'stderr.log')
+$null = $process.Handle
 $manifest = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     executablePath = $exe
