@@ -1003,6 +1003,9 @@ TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry)
         return false;
     }
     memcpy(&intralvl, &ilvl, sizeof(intralvl));
+    // The file's names reach %s formats and the UI.
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++)
+        replay.head.user_names[user][sizeof(replay.head.user_names[user]) - 1] = '\0';
     replay.snapshot_loaded = (snapshot.save_data != NULL);
     if (replay.snapshot_loaded)
     {
