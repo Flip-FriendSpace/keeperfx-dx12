@@ -37,6 +37,7 @@
 #include "packets.h"
 #include "player_data.h"
 #include "roomspace.h"
+#include "config_keeperfx.h"
 #include "keeperfx.hpp"
 #include "api.h"
 #include "lvl_filesdk1.h"
@@ -249,7 +250,7 @@ static TbBool apply_game_kfxs(const char *fname, struct LoadedSave *loaded_save,
     if (read_result->lua_len > 0)
     {
         // has to be loaded here as level num only filled while gamestruct loaded, and need it for setting serialised_data
-        if (!open_lua_script(get_loaded_level_number()) || !lua_set_serialised_data(read_result->lua_data, read_result->lua_len))
+        if (!open_lua_script(get_loaded_level_number()) || !lua_set_serialised_data(read_result->lua_data, read_result->lua_len, lua_bytecode_in_saves))
         {
             SAVEWARN("can't restore the Lua state of \"%s\"", fname);
             return false;

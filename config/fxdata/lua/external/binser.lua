@@ -369,6 +369,13 @@ local function newbinser()
 
     types.thread = function() error("Cannot serialize threads.") end
 
+    -- KeeperFX: LuaJIT has no bytecode verifier, so crafted bytecode can corrupt memory.
+    -- Compiled functions are refused unless the caller trusts where the data came from.
+    local bytecode_allowed = false
+    local function setBytecodeAllowed(allowed)
+        bytecode_allowed = allowed == true
+    end
+
     local function deserialize_value(str, index, visited)
         local t = byte(str, index)
         if not t then
@@ -393,6 +400,9 @@ local function newbinser()
             local nextindex = dataindex + length
             local ret = sub(str, dataindex, nextindex - 1)
             if t == 210 then
+                if not bytecode_allowed then
+                    error("Refused a compiled Lua function in serialized data")
+                end
                 local err
                 ret, err = load(ret, nil, "b")
                 if not ret then
@@ -732,6 +742,7 @@ local function newbinser()
         registerResource = registerResource,
         unregisterResource = unregisterResource,
         registerClass = registerClass,
+        setBytecodeAllowed = setBytecodeAllowed,
 
         newbinser = newbinser
     }

@@ -64,6 +64,7 @@ TbBool AssignCpuKeepers = 0;
 struct InstallInfo install_info;
 char keeper_runtime_directory[152];
 short api_enabled = false;
+TbBool lua_bytecode_in_saves = false;
 uint16_t api_port = 5599;
 uint32_t packetsave_max_kb = 131072;
 TbBool replays_enabled = true;
@@ -185,6 +186,7 @@ const struct NamedCommand conf_commands[] = {
   {"REPLAY_MAX_SIZE"               , 54},
   {"CHAT_FONT_SIZE"                , 55},
   {"REPLAY_REWIND_BUFFER_SIZE"     , 56},
+  {"LUA_BYTECODE_IN_SAVES"         , 57},
   {NULL,                   0},
   };
 
@@ -848,6 +850,16 @@ static void load_string_configuration(const char *buf, int32_t len, const char *
             break;
           }
           api_enabled = (i == 1);
+          break;
+      case 57: // LUA_BYTECODE_IN_SAVES
+          i = recognize_conf_parameter(buf,&pos,len,logicval_type);
+          if (i <= 0)
+          {
+              CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
+                COMMAND_TEXT(cmd_num),config_textname);
+            break;
+          }
+          lua_bytecode_in_saves = (i == 1);
           break;
       case 34: // API_PORT
           if (get_conf_parameter_single(buf,&pos,len,word_buf,sizeof(word_buf)) > 0)
