@@ -516,7 +516,7 @@ static TbBool apply_resync_game_data(const char * full_resync_data, size_t full_
             ERRORLOG("Resync game decode failed: %s", save_err.message);
         } else if (!validate_navigation_snapshot(navigation)) {
             ERRORLOG("Received navigation data contains invalid allocator or index references");
-        } else if (Lvl_script == NULL || lua_set_serialised_data(full_resync_data + lua_data_offset, lua_data_len)) {
+        } else if (Lvl_script == NULL || lua_set_serialised_data(full_resync_data + lua_data_offset, lua_data_len, false)) {
             memcpy(&game, staged, sizeof(struct Game));
             WorldSceneReset();
             apply_navigation_snapshot(navigation);

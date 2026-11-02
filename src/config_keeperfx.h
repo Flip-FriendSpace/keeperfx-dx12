@@ -130,6 +130,7 @@ extern const struct NamedCommand lang_type[];
 extern const struct NamedCommand scrshot_type[];
 extern char cmd_char;
 extern short api_enabled;
+extern TbBool lua_bytecode_in_saves;
 extern uint16_t api_port;
 extern TbBool exit_on_lua_error;
 extern uint32_t packetsave_max_kb;

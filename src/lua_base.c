@@ -460,6 +460,7 @@ struct LuaSerialization {
     const char *input;
     char *output;
     size_t length;
+    TbBool allow_bytecode;
 };
 
 static int process_lua_serialization(lua_State *L)
@@ -471,7 +472,8 @@ static int process_lua_serialization(lua_State *L)
     }
     if (operation->input != NULL) {
         lua_pushlstring(L, operation->input, operation->length);
-        lua_call(L, 1, 0);
+        lua_pushboolean(L, operation->allow_bytecode);
+        lua_call(L, 2, 0);
         return 0;
     }
     lua_call(L, 0, 1);
@@ -503,7 +505,7 @@ static TbBool call_lua_serialization(struct LuaSerialization *operation)
 char *lua_get_serialised_data(size_t *len)
 {
     *len = 0;
-    struct LuaSerialization operation = {"GetSerializedData", NULL, NULL, 0};
+    struct LuaSerialization operation = {"GetSerializedData", NULL, NULL, 0, false};
     if (!call_lua_serialization(&operation)) {
         free(operation.output);
         return NULL;
@@ -512,13 +514,13 @@ char *lua_get_serialised_data(size_t *len)
     return operation.output;
 }
 
-TbBool lua_set_serialised_data(const char *data, size_t len)
+TbBool lua_set_serialised_data(const char *data, size_t len, TbBool allow_bytecode)
 {
     if (data == NULL) {
         ERRORLOG("Missing serialized Lua data");
         return false;
     }
-    struct LuaSerialization operation = {"SetSerializedData", data, NULL, len};
+    struct LuaSerialization operation = {"SetSerializedData", data, NULL, len, allow_bytecode};
     return call_lua_serialization(&operation);
 }
 
@@ -535,7 +537,9 @@ TbBool lua_state_self_test(void)
         "Game = {probe = {value = 123456789, text = 'x64\\0state', native = math.abs, "
         "fn = function(x) return x * 2 + 1 end}}; "
         "Game.probe.self = Game.probe; Game.alias = Game.probe; "
-        "local data = GetSerializedData(); Game = {}; SetSerializedData(data); "
+        "local data = GetSerializedData(); Game = {}; local empty = Game; "
+        "assert(not pcall(SetSerializedData, data)); assert(Game == empty); "
+        "SetSerializedData(data, true); "
         "assert(Game.probe.value == 123456789 and Game.probe.text == 'x64\\0state'); "
         "assert(Game.probe.fn(20) == 41 and Game.probe.native(-7) == 7); "
         "assert(Game.alias == Game.probe and Game.probe.self == Game.probe); "

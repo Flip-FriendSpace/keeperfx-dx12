@@ -13,6 +13,7 @@ local OPENERS = { ["function"] = true, ["if"] = true, ["do"] = true }
 
 local sources
 local stats
+local bytecode_allowed = false
 
 -- Splits Lua source into the word tokens and the . : ( ) punctuation the matching needs.
 -- Strings, comments and numbers are stepped over, so a keyword inside one is never seen.
@@ -215,7 +216,8 @@ local function summary(counts)
 end
 
 -- Starts a save or a load: forgets the scripts read last time, so edits are seen, and the counts.
-function M.begin()
+function M.begin(allow_bytecode)
+    bytecode_allowed = allow_bytecode == true
     sources = {}
     stats = { by_script = 0, by_bytecode = 0, reasons = {} }
 end
@@ -357,7 +359,11 @@ function M.decode(spec)
     else
         local loaded, err
         if spec.bytecode then
-            loaded, err = load(spec.bytecode, "=" .. spec.file, "b", _G)
+            if bytecode_allowed then
+                loaded, err = load(spec.bytecode, "=" .. spec.file, "b", _G)
+            else
+                err = "compiled functions are refused in this data"
+            end
         end
         if not loaded then
             error(("Can't restore the function at '%s':%d: %s%s"):format(

@@ -1071,8 +1071,8 @@ static int read_png_data(unzFile zip, const char *path, struct SpriteContext *co
 
     int fmt = SPNG_FMT_RGBA8; // for indexed should be SPNG_FMT_PNG
 
-    spng_decoded_image_size(ctx, fmt, &out_size);
-    if (limit < out_size) // Image is too big
+    r = spng_decoded_image_size(ctx, fmt, &out_size);
+    if (r != 0 || limit < out_size) // Image is too big or unsupported.
     {
         ERRORLOG("Unable to decode %s error: %s", path, spng_strerror(r));
         spng_ctx_free(ctx);

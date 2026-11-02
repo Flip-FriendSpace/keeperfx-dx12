@@ -455,7 +455,7 @@ static TbBool restore_lua(const struct RewindKeyframe *kf)
             return false;
         uLongf len = kf->lua_raw_len;
         TbBool ok = (uncompress((Bytef *)data, &len, ring + kf->lua_off, kf->lua_len) == Z_OK) && (len == kf->lua_raw_len)
-            && lua_set_serialised_data(data, len);
+            && lua_set_serialised_data(data, len, true); // Made by this process moments ago.
         free(data);
         if (!ok)
             return false;
