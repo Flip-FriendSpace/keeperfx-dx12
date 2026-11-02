@@ -216,7 +216,7 @@ static TbBool read_state_chunk(TbFileHandle file, const struct FileChunkHeader *
 static TbBool write_lua_chunk(TbFileHandle file)
 {
     size_t length = 0;
-    const char *data = lua_get_serialised_data(&length);
+    char *data = lua_get_serialised_data(&length);
     unsigned char *framed = NULL;
     if (data != NULL && length <= 16u * 1024u * 1024u)
         framed = (unsigned char *)malloc(length + 4);
@@ -227,7 +227,7 @@ static TbBool write_lua_chunk(TbFileHandle file)
         result = write_chunk(file, SGC_LuaData, 1, framed, (uint32_t)length + 4);
     }
     free(framed);
-    cleanup_serialized_data();
+    free(data);
     return result;
 }
 
@@ -360,14 +360,14 @@ TbBool state_packet_self_test(void)
             }
             else if (header.id == SGC_LuaData && midgame) {
                 size_t length = 0;
-                const char *expected = lua_get_serialised_data(&length);
+                char *expected = lua_get_serialised_data(&length);
                 char *actual = (char *)malloc(header.len ? header.len : 1);
                 result = expected != NULL && actual != NULL && header.len == length + 4 && header.ver == 1
                     && LbFileRead(file, actual, header.len) == header.len
                     && kfx_state_read_u32(actual) == kfx_state_checksum(expected, length)
                     && memcmp(actual + 4, expected, length) == 0;
                 free(actual);
-                cleanup_serialized_data();
+                free(expected);
                 seen |= 8;
                 continue;
             } else { result = false; break; }
@@ -591,7 +591,7 @@ done:
 
 int load_game_chunks(TbFileHandle fhandle, struct CatalogueEntry *centry)
 {
-    long chunks_done = 0;
+    int32_t chunks_done = 0;
     while (LbFilePosition(fhandle) < LbFileLengthHandle(fhandle))
     {
         struct FileChunkHeader hdr;
@@ -686,8 +686,9 @@ int load_game_chunks(TbFileHandle fhandle, struct CatalogueEntry *centry)
                 TbBool loaded = false;
                 if (LbFileRead(fhandle, lua_data, hdr.len) == hdr.len
                     && kfx_state_read_u32(lua_data) == kfx_state_checksum(lua_data + 4, hdr.len - 4)) {
-                    open_lua_script(get_loaded_level_number());
-                    loaded = lua_set_serialised_data(lua_data + 4, hdr.len - 4);
+                    // Lua needs the level number from the loaded game structure.
+                    loaded = open_lua_script(get_loaded_level_number())
+                        && lua_set_serialised_data(lua_data + 4, hdr.len - 4);
                 }
                 free(lua_data);
                 if (!loaded)
@@ -850,6 +851,7 @@ TbBool load_game(long slot_num)
     clear_flag(ustate->additional_flags, UsrAF_LightningPaletteIsActive);
     clear_flag(ustate->additional_flags, UsrAF_FreezePaletteIsActive);
     local_state.view_type = PVT_None;
+    local_state.show_panel = true;
     local_state.palette_fade_step_pain = 0;
     local_state.palette_fade_step_possession = 0;
     local_state.lens_palette = 0;
@@ -859,7 +861,7 @@ TbBool load_game(long slot_num)
     // Reinitialize lens first (restores lens_palette pointer from config)
     reinitialise_eye_lens(game.applied_lens_type);
     // Apply the appropriate palette (lens palette if active, otherwise engine default)
-    PaletteSetUserPalette(player->user_id, local_state.lens_palette ? local_state.lens_palette : engine_palette);
+    PaletteSetUserPalette(get_local_user(), local_state.lens_palette ? local_state.lens_palette : engine_palette);
     apply_local_user_preferences(get_local_user(), UPF_ApplyOnLoad);
     init_local_cameras(player);
     // Update the lights system state

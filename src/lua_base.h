@@ -20,7 +20,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_basics.h"
 #include <lua.h>
 
 #ifdef __cplusplus
@@ -31,15 +30,11 @@ TbBool CheckLua(lua_State *L, int result,const char* func);
 TbBool open_lua_script(LevelNumber lvnum);
 void close_lua_script();
 
-const char* get_lua_serialized_data(size_t *len);
-void set_lua_serialized_data(const char* data, size_t len);
-
 TbBool execute_lua_code_from_console(const char* code);
 TbBool execute_lua_code_from_script(const char* code);
 
-const char* lua_get_serialised_data(size_t *len);
+char *lua_get_serialised_data(size_t *len);
 TbBool lua_set_serialised_data(const char *data, size_t len);
-void cleanup_serialized_data();
 TbBool lua_state_self_test(void);
 
 void lua_set_random_seed(unsigned int seed);

@@ -9,7 +9,7 @@
 #include "engine_arrays.h"
 #include "engine_textures.h"
 #include "bflib_video.h"
-#include "roomspace_prediction.h"
+#include "roomspace_input.h"
 #include "thing_objects.h"
 #include "thing_doors.h"
 #include "thing_list.h"
@@ -85,7 +85,7 @@ void capture_cell(int32_t x, int32_t y, bool in_view)
     c.orientation = column->orient;
     if (c.revealed) {
         c.texture_variation = game.slab_ext_data[get_slab_number(subtile_slab(x), subtile_slab(y))] & 31;
-        c.map_flags = get_local_dig_prediction_render_flags(x, y, map->flags);
+        c.map_flags = get_dig_prediction_render_flags(x, y, map->flags);
         c.wibble = map->wibble_value;
         c.ceiling_subtiles = map->filled_subtiles;
         for (int dy = 0; dy < 2; ++dy) for (int dx = 0; dx < 2; ++dx) {
@@ -271,8 +271,9 @@ std::shared_ptr<const WorldScene> WorldSceneSeal()
         };
         input.local_hover=identity(thing_get(local_state.local_thing_under_hand));
         if(const auto* player=get_my_player();!player_invalid(player)) {
-            input.view_type=get_local_view_type(player);input.work_state=player->work_state;
-            input.player_hover=identity(thing_get(player->thing_under_hand));
+            const auto* ustate=get_local_user_state();
+            input.view_type=get_local_view_type(player);input.work_state=ustate->work_state;
+            input.player_hover=identity(thing_get(ustate->thing_under_hand));
         }
         input.consumed=consumed_packet;input.last_button=last_button_packet;
         // Snapshot only revealed slab centres in this exact frame. Completion

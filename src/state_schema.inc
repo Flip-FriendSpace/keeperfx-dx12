@@ -10,7 +10,7 @@ using StateType2 = std::remove_reference_t<decltype(std::declval<Game&>().player
 static void visit2(Codec& c, StateType2& v);
 using StateType3 = std::remove_reference_t<decltype(std::declval<Game&>().players[0].wandr_within.points[0])>;
 static void visit3(Codec& c, StateType3& v);
-using StateType4 = std::remove_reference_t<decltype(std::declval<Game&>().players[0].render_roomspace)>;
+using StateType4 = std::remove_reference_t<decltype(std::declval<Game&>().players[0].roomspace)>;
 static void visit4(Codec& c, StateType4& v);
 using StateType5 = std::remove_reference_t<decltype(std::declval<Game&>().user_states[0])>;
 static void visit5(Codec& c, StateType5& v);
@@ -889,26 +889,28 @@ using StateType131 = std::remove_reference_t<decltype(std::declval<Game&>().log_
 static void visit131(Codec& c, StateType131& v);
 using StateType132 = std::remove_reference_t<decltype(std::declval<Game&>().log_snapshot.players[0])>;
 static void visit132(Codec& c, StateType132& v);
-using StateType133 = std::remove_reference_t<decltype(std::declval<Game&>().log_snapshot.rooms[0])>;
+using StateType133 = std::remove_reference_t<decltype(std::declval<Game&>().log_snapshot.users[0])>;
 static void visit133(Codec& c, StateType133& v);
-using StateType134 = std::remove_reference_t<decltype(std::declval<IntralevelData&>())>;
+using StateType134 = std::remove_reference_t<decltype(std::declval<Game&>().log_snapshot.rooms[0])>;
 static void visit134(Codec& c, StateType134& v);
-using StateType135 = std::remove_reference_t<decltype(std::declval<IntralevelData&>().ensign_overrides[0])>;
+using StateType135 = std::remove_reference_t<decltype(std::declval<IntralevelData&>())>;
 static void visit135(Codec& c, StateType135& v);
-using StateType136 = std::remove_reference_t<decltype(std::declval<CatalogueEntry&>())>;
+using StateType136 = std::remove_reference_t<decltype(std::declval<IntralevelData&>().ensign_overrides[0])>;
 static void visit136(Codec& c, StateType136& v);
-using StateType137 = std::remove_reference_t<decltype(std::declval<PacketSaveHead&>())>;
+using StateType137 = std::remove_reference_t<decltype(std::declval<CatalogueEntry&>())>;
 static void visit137(Codec& c, StateType137& v);
-using StateType138 = std::remove_reference_t<decltype(std::declval<ContinueData&>())>;
+using StateType138 = std::remove_reference_t<decltype(std::declval<PacketSaveHead&>())>;
 static void visit138(Codec& c, StateType138& v);
-using StateType139 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>())>;
+using StateType139 = std::remove_reference_t<decltype(std::declval<ContinueData&>())>;
 static void visit139(Codec& c, StateType139& v);
-using StateType140 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>().points[0])>;
+using StateType140 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>())>;
 static void visit140(Codec& c, StateType140& v);
-using StateType141 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>().triangles[0])>;
+using StateType141 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>().points[0])>;
 static void visit141(Codec& c, StateType141& v);
-using StateType142 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>().regions[0])>;
+using StateType142 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>().triangles[0])>;
 static void visit142(Codec& c, StateType142& v);
+using StateType143 = std::remove_reference_t<decltype(std::declval<NavigationSnapshot&>().regions[0])>;
+static void visit143(Codec& c, StateType143& v);
 static void visit0(Codec& c, StateType0& v)
 {
     c.scalars(&v.continue_level_number, sizeof(v.continue_level_number), 1, 4, true);
@@ -1003,7 +1005,6 @@ static void visit0(Codec& c, StateType0& v)
     c.scalars(&v.sound_random_seed, sizeof(v.sound_random_seed), 1, 4, false);
     c.scalars(&v.something_light_x, sizeof(v.something_light_x), 1, 4, true);
     c.scalars(&v.something_light_y, sizeof(v.something_light_y), 1, 4, true);
-    c.scalars(&v.time_delta, sizeof(v.time_delta), 1, 4, false);
     c.scalars(&v.top_cube, sizeof(v.top_cube) / 1544, 1544, 2, true);
     c.scalars(&v.small_map_state, sizeof(v.small_map_state), 1, 1, false);
     visit14(c, v.mouse_light_pos);
@@ -1030,7 +1031,6 @@ static void visit0(Codec& c, StateType0& v)
     visit54(c, v.bookmark[i0]);
     }
     visit55(c, v.pool);
-    c.scalars(&v.fast_forward, sizeof(v.fast_forward), 1, 4, true);
     c.scalars(&v.frame_step, sizeof(v.frame_step), 1, 1, false);
     c.scalars(&v.paused_at_gameturn, sizeof(v.paused_at_gameturn), 1, 1, false);
     c.scalars(&v.pay_day_progress, sizeof(v.pay_day_progress) / 9, 9, 4, true);
@@ -1042,6 +1042,7 @@ static void visit0(Codec& c, StateType0& v)
     c.scalars(&v.evntbox_text_buffer, sizeof(v.evntbox_text_buffer) / 1024, 1024, 1, true);
     visit58(c, v.evntbox_scroll_window);
     c.scalars(&v.flash_button_index, sizeof(v.flash_button_index), 1, 4, true);
+    c.scalars(&v.flash_button_time, sizeof(v.flash_button_time), 1, 4, false);
     c.scalars(&v.loaded_swipe_idx, sizeof(v.loaded_swipe_idx), 1, 1, true);
     c.scalars(&v.active_messages_count, sizeof(v.active_messages_count), 1, 1, false);
     c.scalars(&v.active_script_var_count, sizeof(v.active_script_var_count), 1, 1, false);
@@ -1103,8 +1104,6 @@ static void visit0(Codec& c, StateType0& v)
     c.scalars(&v.heart_lost_message_target, sizeof(v.heart_lost_message_target), 1, 4, true);
     c.scalars(&v.slab_ext_data, sizeof(v.slab_ext_data) / 28900, 28900, 1, false);
     c.scalars(&v.slab_ext_data_initial, sizeof(v.slab_ext_data_initial) / 28900, 28900, 1, false);
-    c.scalars(&v.delta_time, sizeof(v.delta_time), 1, 4, false);
-    c.scalars(&v.flash_button_time, sizeof(v.flash_button_time), 1, 4, false);
     c.scalars(&v.map_subtiles_x, sizeof(v.map_subtiles_x), 1, 4, true);
     c.scalars(&v.map_subtiles_y, sizeof(v.map_subtiles_y), 1, 4, true);
     c.scalars(&v.map_tiles_x, sizeof(v.map_tiles_x), 1, 2, true);
@@ -1124,8 +1123,6 @@ static void visit1(Codec& c, StateType1& v)
 {
     c.scalars(&v.allocflags, sizeof(v.allocflags), 1, 1, false);
     c.scalars(&v.display_flags, sizeof(v.display_flags), 1, 1, false);
-    c.scalars(&v.user_id, sizeof(v.user_id), 1, 4, true);
-    c.scalars(&v.hand_animationId, sizeof(v.hand_animationId), 1, 4, true);
     c.scalars(&v.hand_busy_until_turn, sizeof(v.hand_busy_until_turn), 1, 4, false);
     c.scalars(&v.player_name, sizeof(v.player_name) / 20, 20, 1, true);
     c.scalars(&v.victory_state, sizeof(v.victory_state), 1, 1, false);
@@ -1135,18 +1132,14 @@ static void visit1(Codec& c, StateType1& v)
     c.scalars(&v.unused, sizeof(v.unused), 1, 1, false);
     c.scalars(&v.controlled_thing_idx, sizeof(v.controlled_thing_idx), 1, 2, true);
     c.scalars(&v.controlled_thing_creatrn, sizeof(v.controlled_thing_creatrn), 1, 4, false);
-    c.scalars(&v.thing_under_hand, sizeof(v.thing_under_hand), 1, 2, true);
     c.scalars(&v.possession_lock, sizeof(v.possession_lock), 1, 1, false);
     c.scalars(&v.zoom_to_pos_x, sizeof(v.zoom_to_pos_x), 1, 4, true);
     c.scalars(&v.zoom_to_pos_y, sizeof(v.zoom_to_pos_y), 1, 4, true);
     visit2(c, v.wandr_within);
     visit2(c, v.wandr_outside);
-    c.scalars(&v.hand_thing_idx, sizeof(v.hand_thing_idx), 1, 2, true);
     c.scalars(&v.cta_flag_idx, sizeof(v.cta_flag_idx), 1, 2, true);
     c.scalars(&v.influenced_thing_idx, sizeof(v.influenced_thing_idx), 1, 2, true);
     c.scalars(&v.influenced_thing_creation, sizeof(v.influenced_thing_creation), 1, 4, false);
-    c.scalars(&v.work_state, sizeof(v.work_state), 1, 1, false);
-    c.scalars(&v.continue_work_state, sizeof(v.continue_work_state), 1, 1, false);
     c.scalars(&v.mp_message_text, sizeof(v.mp_message_text) / 64, 64, 1, true);
     c.scalars(&v.mp_pending_message, sizeof(v.mp_pending_message) / 64, 64, 1, true);
     c.scalars(&v.mp_message_text_last, sizeof(v.mp_message_text_last) / 64, 64, 1, true);
@@ -1157,16 +1150,7 @@ static void visit1(Codec& c, StateType1& v)
     c.scalars(&v.game_version, sizeof(v.game_version), 1, 4, true);
     c.scalars(&v.display_objective_turn, sizeof(v.display_objective_turn), 1, 4, false);
     c.scalars(&v.hand_idx, sizeof(v.hand_idx), 1, 1, false);
-    visit4(c, v.render_roomspace);
     visit4(c, v.roomspace);
-    c.scalars(&v.roomspace_mode, sizeof(v.roomspace_mode), 1, 1, false);
-    c.scalars(&v.roomspace_detection_looseness, sizeof(v.roomspace_detection_looseness), 1, 4, true);
-    c.scalars(&v.roomspace_width, sizeof(v.roomspace_width), 1, 4, true);
-    c.scalars(&v.roomspace_height, sizeof(v.roomspace_height), 1, 4, true);
-    c.scalars(&v.roomspace_highlight_mode, sizeof(v.roomspace_highlight_mode), 1, 1, false);
-    c.scalars(&v.roomspace_drag_paint_mode, sizeof(v.roomspace_drag_paint_mode), 1, 1, false);
-    c.scalars(&v.roomspace_l_shape, sizeof(v.roomspace_l_shape), 1, 1, false);
-    c.scalars(&v.roomspace_horizontal_first, sizeof(v.roomspace_horizontal_first), 1, 1, false);
     c.scalars(&v.player_type, sizeof(v.player_type), 1, 1, false);
     c.scalars(&v.special_digger, sizeof(v.special_digger), 1, 2, true);
     c.scalars(&v.generate_speed, sizeof(v.generate_speed), 1, 2, false);
@@ -1231,6 +1215,7 @@ static void visit4(Codec& c, StateType4& v)
 
 static void visit5(Codec& c, StateType5& v)
 {
+    c.scalars(&v.player_id, sizeof(v.player_id), 1, 1, true);
     c.scalars(&v.init_flags, sizeof(v.init_flags), 1, 1, false);
     c.scalars(&v.additional_flags, sizeof(v.additional_flags), 1, 1, false);
     c.scalars(&v.input_crtr_control, sizeof(v.input_crtr_control), 1, 1, false);
@@ -1251,7 +1236,6 @@ static void visit5(Codec& c, StateType5& v)
     c.scalars(&v.ignore_next_PCtr_RBtnRelease, sizeof(v.ignore_next_PCtr_RBtnRelease), 1, 1, false);
     c.scalars(&v.ignore_next_PCtr_LBtnRelease, sizeof(v.ignore_next_PCtr_LBtnRelease), 1, 1, false);
     c.scalars(&v.swap_to_untag_mode, sizeof(v.swap_to_untag_mode), 1, 1, true);
-    c.scalars(&v.interpolated_tagging, sizeof(v.interpolated_tagging), 1, 1, false);
     c.scalars(&v.first_person_dig_claim_mode, sizeof(v.first_person_dig_claim_mode), 1, 1, false);
     c.scalars(&v.selected_fp_thing_pickup, sizeof(v.selected_fp_thing_pickup), 1, 2, false);
     c.scalars(&v.teleport_destination, sizeof(v.teleport_destination), 1, 1, false);
@@ -1268,6 +1252,20 @@ static void visit5(Codec& c, StateType5& v)
     c.scalars(&v.view_type, sizeof(v.view_type), 1, 1, false);
     visit7(c, v.dungeon_camera);
     c.scalars(&v.prefs, sizeof(v.prefs) / 23, 23, 4, false);
+    c.scalars(&v.work_state, sizeof(v.work_state), 1, 1, false);
+    c.scalars(&v.continue_work_state, sizeof(v.continue_work_state), 1, 1, false);
+    c.scalars(&v.thing_under_hand, sizeof(v.thing_under_hand), 1, 2, true);
+    c.scalars(&v.hand_thing_idx, sizeof(v.hand_thing_idx), 1, 2, true);
+    c.scalars(&v.hand_animationId, sizeof(v.hand_animationId), 1, 4, true);
+    visit4(c, v.render_roomspace);
+    c.scalars(&v.roomspace_mode, sizeof(v.roomspace_mode), 1, 1, false);
+    c.scalars(&v.roomspace_detection_looseness, sizeof(v.roomspace_detection_looseness), 1, 4, true);
+    c.scalars(&v.roomspace_width, sizeof(v.roomspace_width), 1, 4, true);
+    c.scalars(&v.roomspace_height, sizeof(v.roomspace_height), 1, 4, true);
+    c.scalars(&v.roomspace_highlight_mode, sizeof(v.roomspace_highlight_mode), 1, 1, false);
+    c.scalars(&v.roomspace_drag_paint_mode, sizeof(v.roomspace_drag_paint_mode), 1, 1, false);
+    c.scalars(&v.roomspace_l_shape, sizeof(v.roomspace_l_shape), 1, 1, false);
+    c.scalars(&v.roomspace_horizontal_first, sizeof(v.roomspace_horizontal_first), 1, 1, false);
 }
 
 static void visit6(Codec& c, StateType6& v)
@@ -1314,6 +1312,7 @@ static void visit10(Codec& c, StateType10& v)
     c.scalars(&v.class_id, sizeof(v.class_id), 1, 1, false);
     c.scalars(&v.model, sizeof(v.model), 1, 2, true);
     c.scalars(&v.range, sizeof(v.range), 1, 1, false);
+    c.scalars(&v.orientation, sizeof(v.orientation), 1, 2, true);
 }
 
 static void visit11(Codec& c, StateType11& v)
@@ -2393,7 +2392,7 @@ static void visit64(Codec& c, StateType64& v)
 static void visit65(Codec& c, StateType65& v)
 {
     c.scalars(&v.code_name, sizeof(v.code_name) / 64, 64, 1, true);
-    c.scalars(&v.anim_idx, sizeof(v.anim_idx) / 7, 7, 2, true);
+    c.scalars(&v.anim_idx, sizeof(v.anim_idx) / 7, 7, 2, false);
     c.scalars(&v.anim_speed, sizeof(v.anim_speed) / 7, 7, 2, true);
 }
 
@@ -2828,7 +2827,7 @@ static void visit88(Codec& c, StateType88& v)
     c.scalars(&v.unanimated, sizeof(v.unanimated), 1, 1, false);
     c.scalars(&v.lifespan, sizeof(v.lifespan), 1, 2, true);
     c.scalars(&v.lifespan_random, sizeof(v.lifespan_random), 1, 2, true);
-    c.scalars(&v.sprite_idx, sizeof(v.sprite_idx), 1, 2, true);
+    c.scalars(&v.sprite_idx, sizeof(v.sprite_idx), 1, 2, false);
     c.scalars(&v.sprite_size_min, sizeof(v.sprite_size_min), 1, 2, true);
     c.scalars(&v.sprite_size_max, sizeof(v.sprite_size_max), 1, 2, true);
     c.scalars(&v.animate_once, sizeof(v.animate_once), 1, 1, false);
@@ -2895,7 +2894,7 @@ static void visit89(Codec& c, StateType89& v)
     c.scalars(&v.special_digger_good, sizeof(v.special_digger_good), 1, 2, true);
     c.scalars(&v.special_digger_evil, sizeof(v.special_digger_evil), 1, 2, true);
     c.scalars(&v.spectator_breed, sizeof(v.spectator_breed), 1, 2, true);
-    c.scalars(&v.creature_graphics, sizeof(v.creature_graphics) / 3200, 3200, 2, true);
+    c.scalars(&v.creature_graphics, sizeof(v.creature_graphics) / 3200, 3200, 2, false);
     c.scalars(&v.sprite_size, sizeof(v.sprite_size), 1, 4, true);
     for (size_t i0 = 0; i0 < 128; ++i0) {
     visit98(c, v.creature_sounds[i0]);
@@ -3158,8 +3157,8 @@ static void visit101(Codec& c, StateType101& v)
     c.scalars(&v.light_unaffected, sizeof(v.light_unaffected), 1, 1, true);
     c.scalars(&v.immobile, sizeof(v.immobile), 1, 1, true);
     visit86(c, v.ilght);
-    c.scalars(&v.sprite_anim_idx, sizeof(v.sprite_anim_idx), 1, 2, true);
-    c.scalars(&v.sprite_anim_idx_in_hand, sizeof(v.sprite_anim_idx_in_hand), 1, 2, true);
+    c.scalars(&v.sprite_anim_idx, sizeof(v.sprite_anim_idx), 1, 2, false);
+    c.scalars(&v.sprite_anim_idx_in_hand, sizeof(v.sprite_anim_idx_in_hand), 1, 2, false);
     c.scalars(&v.anim_speed, sizeof(v.anim_speed), 1, 2, true);
     c.scalars(&v.size_xy, sizeof(v.size_xy), 1, 2, true);
     c.scalars(&v.size_z, sizeof(v.size_z), 1, 2, true);
@@ -3542,6 +3541,7 @@ static void visit129(Codec& c, StateType129& v)
     c.scalars(&v.rooms, sizeof(v.rooms), 1, 4, false);
     c.scalars(&v.players, sizeof(v.players), 1, 4, false);
     c.scalars(&v.dig_tasks, sizeof(v.dig_tasks), 1, 4, false);
+    c.scalars(&v.users, sizeof(v.users), 1, 4, false);
     c.scalars(&v.action_seed, sizeof(v.action_seed), 1, 4, false);
     c.scalars(&v.ai_seed, sizeof(v.ai_seed), 1, 4, false);
     c.scalars(&v.player_seed, sizeof(v.player_seed), 1, 4, false);
@@ -3558,8 +3558,12 @@ static void visit130(Codec& c, StateType130& v)
     visit132(c, v.players[i0]);
     }
     c.scalars(&v.player_count, sizeof(v.player_count), 1, 4, true);
+    for (size_t i0 = 0; i0 < 4; ++i0) {
+    visit133(c, v.users[i0]);
+    }
+    c.scalars(&v.user_count, sizeof(v.user_count), 1, 4, true);
     for (size_t i0 = 0; i0 < 511; ++i0) {
-    visit133(c, v.rooms[i0]);
+    visit134(c, v.rooms[i0]);
     }
     c.scalars(&v.room_count, sizeof(v.room_count), 1, 4, true);
     for (size_t i0 = 0; i0 < 9; ++i0) {
@@ -3619,11 +3623,18 @@ static void visit132(Codec& c, StateType132& v)
     c.scalars(&v.id, sizeof(v.id), 1, 1, true);
     c.scalars(&v.instance_num, sizeof(v.instance_num), 1, 1, false);
     c.scalars(&v.instance_remain_turns, sizeof(v.instance_remain_turns), 1, 4, false);
-    visit14(c, v.mappos);
     c.scalars(&v.checksum, sizeof(v.checksum), 1, 4, false);
 }
 
 static void visit133(Codec& c, StateType133& v)
+{
+    c.scalars(&v.user, sizeof(v.user), 1, 4, true);
+    c.scalars(&v.player_id, sizeof(v.player_id), 1, 1, true);
+    visit14(c, v.mappos);
+    c.scalars(&v.checksum, sizeof(v.checksum), 1, 4, false);
+}
+
+static void visit134(Codec& c, StateType134& v)
 {
     c.scalars(&v.index, sizeof(v.index), 1, 2, false);
     c.scalars(&v.slabs_count, sizeof(v.slabs_count), 1, 2, false);
@@ -3634,7 +3645,7 @@ static void visit133(Codec& c, StateType133& v)
     c.scalars(&v.checksum, sizeof(v.checksum), 1, 4, false);
 }
 
-static void visit134(Codec& c, StateType134& v)
+static void visit135(Codec& c, StateType135& v)
 {
     c.scalars(&v.bonuses_found, sizeof(v.bonuses_found) / 6, 6, 1, false);
     for (size_t i0 = 0; i0 < 9; ++i0) {
@@ -3645,20 +3656,20 @@ static void visit134(Codec& c, StateType134& v)
     c.scalars(&v.campaign_flags, sizeof(v.campaign_flags) / 40, 40, 4, true);
     c.scalars(&v.next_level, sizeof(v.next_level), 1, 4, true);
     for (size_t i0 = 0; i0 < 64; ++i0) {
-    visit135(c, v.ensign_overrides[i0]);
+    visit136(c, v.ensign_overrides[i0]);
     }
     c.scalars(&v.continue_level, sizeof(v.continue_level), 1, 4, false);
     c.scalars(&v.levels_completed, sizeof(v.levels_completed) / 110, 110, 4, false);
 }
 
-static void visit135(Codec& c, StateType135& v)
+static void visit136(Codec& c, StateType136& v)
 {
     c.scalars(&v.lvnum, sizeof(v.lvnum), 1, 4, true);
     c.scalars(&v.active, sizeof(v.active), 1, 1, false);
     c.scalars(&v.ensign_type, sizeof(v.ensign_type), 1, 2, false);
 }
 
-static void visit136(Codec& c, StateType136& v)
+static void visit137(Codec& c, StateType137& v)
 {
     c.scalars(&v.flags, sizeof(v.flags), 1, 2, false);
     c.scalars(&v.textname, sizeof(v.textname) / 30, 30, 1, true);
@@ -3672,7 +3683,7 @@ static void visit136(Codec& c, StateType136& v)
     c.scalars(&v.game_ver_build, sizeof(v.game_ver_build), 1, 2, false);
 }
 
-static void visit137(Codec& c, StateType137& v)
+static void visit138(Codec& c, StateType138& v)
 {
     c.scalars(&v.game_ver_major, sizeof(v.game_ver_major), 1, 2, false);
     c.scalars(&v.game_ver_minor, sizeof(v.game_ver_minor), 1, 2, false);
@@ -3681,6 +3692,7 @@ static void visit137(Codec& c, StateType137& v)
     c.scalars(&v.level_num, sizeof(v.level_num), 1, 4, false);
     c.scalars(&v.players_exist, sizeof(v.players_exist), 1, 2, false);
     c.scalars(&v.players_comp, sizeof(v.players_comp), 1, 2, false);
+    c.scalars(&v.players_seat, sizeof(v.players_seat), 1, 2, false);
     c.scalars(&v.flags, sizeof(v.flags), 1, 1, false);
     c.scalars(&v.action_seed, sizeof(v.action_seed), 1, 4, false);
     c.scalars(&v.timestamp, sizeof(v.timestamp), 1, 8, true);
@@ -3694,39 +3706,39 @@ static void visit137(Codec& c, StateType137& v)
     c.scalars(&v.user_names, sizeof(v.user_names) / 80, 80, 1, true);
 }
 
-static void visit138(Codec& c, StateType138& v)
+static void visit139(Codec& c, StateType139& v)
 {
     c.scalars(&v.reserved, sizeof(v.reserved), 1, 4, false);
     c.scalars(&v.link_fname, sizeof(v.link_fname) / 64, 64, 1, true);
 }
 
-static void visit139(Codec& c, StateType139& v)
+static void visit140(Codec& c, StateType140& v)
 {
     for (size_t i0 = 0; i0 < 30000; ++i0) {
-    visit140(c, v.points[i0]);
+    visit141(c, v.points[i0]);
     }
     c.scalars(&v.point_count, sizeof(v.point_count), 1, 4, true);
     c.scalars(&v.point_index, sizeof(v.point_index), 1, 4, true);
     c.scalars(&v.point_free, sizeof(v.point_free), 1, 4, true);
     for (size_t i0 = 0; i0 < 100000; ++i0) {
-    visit141(c, v.triangles[i0]);
+    visit142(c, v.triangles[i0]);
     }
     c.scalars(&v.triangle_count, sizeof(v.triangle_count), 1, 4, true);
     c.scalars(&v.triangle_index, sizeof(v.triangle_index), 1, 4, true);
     c.scalars(&v.triangle_free, sizeof(v.triangle_free), 1, 4, true);
     for (size_t i0 = 0; i0 < 300; ++i0) {
-    visit142(c, v.regions[i0]);
+    visit143(c, v.regions[i0]);
     }
     c.scalars(&v.cache, sizeof(v.cache) / 16, 16, 4, true);
 }
 
-static void visit140(Codec& c, StateType140& v)
+static void visit141(Codec& c, StateType141& v)
 {
     c.scalars(&v.x, sizeof(v.x), 1, 2, true);
     c.scalars(&v.y, sizeof(v.y), 1, 2, true);
 }
 
-static void visit141(Codec& c, StateType141& v)
+static void visit142(Codec& c, StateType142& v)
 {
     c.scalars(&v.points, sizeof(v.points) / 3, 3, 2, true);
     c.scalars(&v.tags, sizeof(v.tags) / 3, 3, 4, true);
@@ -3735,19 +3747,19 @@ static void visit141(Codec& c, StateType141& v)
     c.scalars(&v.region_and_edgelen, sizeof(v.region_and_edgelen), 1, 2, false);
 }
 
-static void visit142(Codec& c, StateType142& v)
+static void visit143(Codec& c, StateType143& v)
 {
     c.scalars(&v.num_triangles, sizeof(v.num_triangles), 1, 2, false);
     c.scalars(&v.is_connected, sizeof(v.is_connected), 1, 1, false);
 }
 
-static constexpr uint64_t schemaFingerprint = UINT64_C(0xef91f160f7716848);
+static constexpr uint64_t schemaFingerprint = UINT64_C(0x616cc4025b7d6b39);
 static const Schema schemas[] = {
     {},
-    {52785181, sizeof(Game), [](Codec& c, void* p) { visit0(c, *static_cast<Game*>(p)); }},
-    {67617, sizeof(IntralevelData), [](Codec& c, void* p) { visit134(c, *static_cast<IntralevelData*>(p)); }},
-    {412, sizeof(CatalogueEntry), [](Codec& c, void* p) { visit136(c, *static_cast<CatalogueEntry*>(p)); }},
-    {559, sizeof(PacketSaveHead), [](Codec& c, void* p) { visit137(c, *static_cast<PacketSaveHead*>(p)); }},
-    {68, sizeof(ContinueData), [](Codec& c, void* p) { visit138(c, *static_cast<ContinueData*>(p)); }},
-    {2420988, sizeof(NavigationSnapshot), [](Codec& c, void* p) { visit139(c, *static_cast<NavigationSnapshot*>(p)); }},
+    {52784730, sizeof(Game), [](Codec& c, void* p) { visit0(c, *static_cast<Game*>(p)); }},
+    {67617, sizeof(IntralevelData), [](Codec& c, void* p) { visit135(c, *static_cast<IntralevelData*>(p)); }},
+    {412, sizeof(CatalogueEntry), [](Codec& c, void* p) { visit137(c, *static_cast<CatalogueEntry*>(p)); }},
+    {561, sizeof(PacketSaveHead), [](Codec& c, void* p) { visit138(c, *static_cast<PacketSaveHead*>(p)); }},
+    {68, sizeof(ContinueData), [](Codec& c, void* p) { visit139(c, *static_cast<ContinueData*>(p)); }},
+    {2420988, sizeof(NavigationSnapshot), [](Codec& c, void* p) { visit140(c, *static_cast<NavigationSnapshot*>(p)); }},
 };

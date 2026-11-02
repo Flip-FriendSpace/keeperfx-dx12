@@ -425,16 +425,19 @@ TbBool LbNetwork_Resync(void * data_buffer, size_t buffer_length)
 static char *build_resync_game_data(size_t *full_resync_len)
 {
     *full_resync_len = 0;
-    const char *lua_data = "";
+    char *lua_data = NULL;
     size_t lua_size = 0;
-    if (Lvl_script != NULL)
+    if (Lvl_script != NULL) {
         lua_data = lua_get_serialised_data(&lua_size);
+        if (lua_data == NULL)
+            return NULL;
+    }
     unsigned char *game_data = NULL;
     unsigned char *nav_data = NULL;
     size_t game_size = 0, nav_size = 0;
     struct NavigationSnapshot *nav = (struct NavigationSnapshot *)malloc(sizeof(*nav));
     char *result = NULL;
-    if (nav != NULL && lua_data != NULL && lua_size <= 16u * 1024u * 1024u) {
+    if (nav != NULL && lua_size <= 16u * 1024u * 1024u) {
         capture_navigation_snapshot(nav);
         if (kfx_state_encode(KfxState_Game, &game, &game_data, &game_size)
             && kfx_state_encode(KfxState_Navigation, nav, &nav_data, &nav_size)) {
@@ -448,7 +451,8 @@ static char *build_resync_game_data(size_t *full_resync_len)
                 kfx_state_write_u32(result + 12, (uint32_t)lua_size);
                 kfx_state_write_u32(result + 16, (uint32_t)nav_size);
                 memcpy(result + RESYNC_STATE_HEADER_SIZE, game_data, game_size);
-                memcpy(result + RESYNC_STATE_HEADER_SIZE + game_size, lua_data, lua_size);
+                if (lua_size > 0)
+                    memcpy(result + RESYNC_STATE_HEADER_SIZE + game_size, lua_data, lua_size);
                 memcpy(result + RESYNC_STATE_HEADER_SIZE + game_size + lua_size, nav_data, nav_size);
                 *full_resync_len = total;
             }
@@ -457,7 +461,7 @@ static char *build_resync_game_data(size_t *full_resync_len)
     free(nav);
     free(nav_data);
     free(game_data);
-    cleanup_serialized_data();
+    free(lua_data);
     return result;
 }
 
@@ -640,7 +644,6 @@ static void finish_resync(const struct Packet *saved_packets)
         lua_set_random_seed(game.action_random_seed);
     }
     recall_localised_game_structure();
-    rebuild_net_user_player_numbers();
     reinit_level_after_load();
     if (network_is_active() && net_join_role == NetRole_Spectator) {
         reinitialise_eye_lens(game.applied_lens_type);

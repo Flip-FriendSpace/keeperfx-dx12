@@ -43,6 +43,7 @@
 #include "sound_manager.h"
 #include "net_exchange_gameplay.h"
 #include "replay.h"
+#include "replay_rewind.h"
 #include "game_merge.h"
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
@@ -270,6 +271,7 @@ static TbBool init_level(void)
     battle_initialise();
     ambient_sound_prepare();
     zero_messages();
+    render_onscreen_msg_time = 0;
     game.armageddon_cast_turn = 0;
     game.armageddon_over_turn = 0;
     clear_messages();
@@ -350,7 +352,7 @@ static TbBool restore_packet_snapshot(void)
     local_state.palette_fade_step_possession = 0;
     reinitialise_eye_lens(game.applied_lens_type);
     struct PlayerInfo *player = get_my_player();
-    PaletteSetUserPalette(player->user_id, local_state.lens_palette ? local_state.lens_palette : engine_palette);
+    PaletteSetUserPalette(get_local_user(), local_state.lens_palette ? local_state.lens_palette : engine_palette);
     init_local_cameras(player);
     return true;
 }
@@ -359,6 +361,7 @@ TbBool startup_saved_packet_game(void)
 {
     struct CatalogueEntry centry;
     clear_packets();
+    replay_rewind_reset();
     if (!open_packet_file_for_load(replay.fname,&centry))
     {
         ERRORLOG("Cannot replay \"%s\": unreadable, or written by an incompatible version",
@@ -562,6 +565,15 @@ void clear_complete_game(void)
 {
     WorldSceneReset();
     memset(&game, 0, sizeof(struct Game));
+    local_state.fast_forward = 0;
+    local_state.process_turn_time = 0;
+    local_state.delta_time = 0;
+    local_state.time_delta = 0;
+    local_state.show_gui = false;
+    local_state.show_panel = false;
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
+        game.user_states[user].player_id = PLAYER_NONE;
+    }
     memset(&intralvl, 0, sizeof(struct IntralevelData));
     replay.turns_packetoff = -1;
     game.local_plyr_idx = default_loc_player;

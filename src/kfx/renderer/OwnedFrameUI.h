@@ -20,7 +20,7 @@ public:
     void Unbind() noexcept;
     bool Bound() const noexcept {return bool(sink_);}
     bool SetParchmentCapture(bool active) noexcept;
-    bool SubmitMapFadeStep(int tick,float step,float warp,bool fading_in,const uint8_t* ghost,const OwnedAssetLease& fade);
+    bool SubmitMapFadeStep(bool starting,float step,float warp,const uint8_t* ghost,const OwnedAssetLease& fade);
     bool SubmitZoomBoxTiles(const uint16_t* ids,int nx,int ny,int x,int y,int w,int h);
     bool HasImagePresents() const noexcept {return image_slot_!=0 || zoom_submitted_;}
     size_t ScratchBytes() const noexcept;

@@ -46,26 +46,18 @@ register_cfunctions(_G, "global:")
 register_cfunctions(registry, "registry:")
 
 function GetSerializedData()
-    local ok, result = pcall(function()
-        return state_prefix .. binser.serialize(Game, serialization_version)
-    end)
-    print("GetSerializedData ok: " .. tostring(ok))
-    if not ok then
-        error("binser failed: " .. result)
-    end
-    return result
+    assert(type(Game) == "table", "Game state must be a table")
+    return state_prefix .. binser.serialize(Game, serialization_version)
 end
 
 function SetSerializedData(serialized_data)
-    local ok, result = pcall(function()
-        assert(serialized_data:sub(1, #state_prefix) == state_prefix, 'Incompatible Lua state format or VM')
-        local values = binser.deserialize(serialized_data:sub(#state_prefix + 1))
-        assert(values[2] == serialization_version, 'Incompatible Lua state version')
-        assert(type(values[1]) == 'table', 'Invalid Lua Game state')
-        return values[1]
-    end)
-    if not ok then
-        error("binser load failed: " .. result)
+    assert(serialized_data:sub(1, #state_prefix) == state_prefix, 'Incompatible Lua state format or VM')
+    local values, count = binser.deserialize(serialized_data:sub(#state_prefix + 1))
+    local restored = values[1]
+    assert(type(restored) == "table", "Serialized game state must be a table")
+    if count ~= 2 or values[2] ~= serialization_version then
+        error("Unsupported serialized game state version")
     end
-    Game = result
+    assert(type(restored) == "table", "Restored game state must be a table")
+    Game = restored
 end

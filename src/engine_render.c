@@ -73,7 +73,7 @@
 #include "kjm_input.h"
 #include "player_instances.h"
 #include "packets.h"
-#include "roomspace_prediction.h"
+#include "roomspace_input.h"
 #include "slab_data.h"
 #include "sprites.h"
 #include "thing_stats.h"
@@ -315,7 +315,7 @@ TbBool engine_reference_selector_is_drawing_for_player(PlayerNumber plyr_idx)
 TbBool set_engine_reference_selector(int slab_x, int slab_y, int width, int height)
 {
     if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
-        || get_my_player()->work_state != PSt_CtrlDungeon || reference_selector_drawing
+        || get_local_user_state()->work_state != PSt_CtrlDungeon || reference_selector_drawing
         || width < 1 || width > 9 || height < 1 || height > 9
         || slab_x < 0 || slab_y < 0 || slab_x >= game.map_tiles_x || slab_y >= game.map_tiles_y)
         return false;
@@ -343,7 +343,7 @@ static void begin_engine_reference_selector(void)
 {
     if (!reference_selector_enabled) return;
     if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
-        || get_my_player()->work_state != PSt_CtrlDungeon || lens_mode != 0) {
+        || get_local_user_state()->work_state != PSt_CtrlDungeon || lens_mode != 0) {
         clear_engine_reference_selector();
         return;
     }
@@ -404,7 +404,7 @@ struct EngineReferenceSelectorProof get_engine_reference_selector_proof(void)
     struct EngineReferenceSelectorProof proof = {0};
     if (reference_selector_drawing) {
         proof.drawing = 1;
-        proof.displayed = is_player_displayed(my_player_number);
+        proof.displayed = get_displayed_player()->id_number == my_player_number;
         proof.minimap_drag = game.small_map_state == 2;
         proof.observer = is_observer_camera_active();
         proof.gui_busy = game_is_busy_doing_gui();
@@ -430,7 +430,8 @@ static TbBool map_volume_box_build_in_progress(const struct PlayerInfo *player)
 {
     if (reference_selector_drawing && reference_selector_room_kind && player->id_number == my_player_number)
         return reference_selector_room_busy;
-    return player->roomspace.is_active && (player->work_state == PSt_Sell || player->work_state == PSt_BuildRoom);
+    const struct UserState *ustate = get_local_user_state();
+    return player->roomspace.is_active && (ustate->work_state == PSt_Sell || ustate->work_state == PSt_BuildRoom);
 }
 
 static void begin_reference_room_geometry(PlayerNumber plyr_idx, const struct RoomSpace *roomspace, int colour, TbBool busy)
@@ -455,7 +456,7 @@ void clear_engine_reference_hover(void)
 TbBool set_engine_reference_hover(int owner, int model, int stl_x, int stl_y, int hovered, int blink_on)
 {
     if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
-        || get_my_player()->work_state != PSt_CtrlDungeon || reference_hover_drawing
+        || get_local_user_state()->work_state != PSt_CtrlDungeon || reference_hover_drawing
         || owner < 0 || owner >= PLAYERS_COUNT || model <= 0 || model > 65535
         || stl_x < 0 || stl_y < 0 || stl_x >= game.map_subtiles_x || stl_y >= game.map_subtiles_y
         || hovered < 0 || hovered > 1 || blink_on < 0 || blink_on > 1)
@@ -489,7 +490,7 @@ static void begin_engine_reference_hover(void)
     if (!reference_hover_enabled) return;
     struct Thing *thing = thing_get(reference_hover.target_slot);
     if (!local_camera_reference_enabled() || !flag_is_set(game.operation_flags, GOF_Paused)
-        || get_my_player()->work_state != PSt_CtrlDungeon || lens_mode != 0
+        || get_local_user_state()->work_state != PSt_CtrlDungeon || lens_mode != 0
         || !thing_exists(thing) || thing->class_id != TCls_Creature
         || thing->owner != reference_hover.owner || thing->model != reference_hover.model
         || thing->creation_turn != reference_hover.target_creation_turn
@@ -1748,7 +1749,7 @@ void frame_wibble_generate(void)
     const char *live_surfaces = getenv("KFX_SCENE_LIVE_SURFACES");
     const TbBool live_reference_surfaces = live_surfaces && strcmp(live_surfaces, "1") == 0;
     const float surface_delta = flag_is_set(game.operation_flags, GOF_Paused)
-        && local_camera_reference_enabled() && !live_reference_surfaces ? 0.0f : game.delta_time;
+        && local_camera_reference_enabled() && !live_reference_surfaces ? 0.0f : local_state.delta_time;
     render_water_wibble += DEGREES_8_18 * surface_delta;
     water_wibble_angle = (int)render_water_wibble & ANGLE_MASK;
     render_abyss_lava_scroll += ABYSS_LAVA_SCROLL_SPEED * surface_delta;
@@ -3033,8 +3034,9 @@ static void process_isometric_map_volume_box(long x, long y, long z, PlayerNumbe
     unsigned char default_color = map_volume_box.color;
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
-    struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
-        : get_local_dig_prediction_render_roomspace(&current_player->render_roomspace);
+    struct UserState* ustate = get_local_user_state();
+    const struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
+        : get_dig_prediction_render_roomspace(&ustate->render_roomspace);
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
     const TbBool build_in_progress = map_volume_box_build_in_progress(current_player);
@@ -4821,7 +4823,7 @@ static void do_a_plane_of_engine_columns_cluedo(long stl_x, long stl_y, long pla
         struct Map *cur_mapblk;
         cur_mapblk = get_map_block_at(stl_x + xaval + xidx, stl_y);
         WorldSceneCaptureCell(stl_x + xaval + xidx, stl_y);
-        unsigned char render_map_flags = get_local_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
+        unsigned char render_map_flags = get_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
         // Get solidmasks of sibling columns
         unsigned short solidmsk_cur_raw;
         unsigned short solidmsk_cur;
@@ -4946,7 +4948,7 @@ static void do_a_plane_of_engine_columns_isometric(long stl_x, long stl_y, long 
         struct Map *cur_mapblk;
         cur_mapblk = get_map_block_at(stl_x + xaval + xidx, stl_y);
         WorldSceneCaptureCell(stl_x + xaval + xidx, stl_y);
-        unsigned char render_map_flags = get_local_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
+        unsigned char render_map_flags = get_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
         // Get column to be drawn
         const struct Column *cur_colmn;
         cur_colmn = unrev_colmn;
@@ -5126,6 +5128,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
     unsigned short flg_mem;
     unsigned char alpha_mem;
     const struct PlayerInfo *player = get_displayed_player();
+    const struct UserState *ustate = get_player_user_state(player);
     struct ObjectConfigStats* objst;
     struct Thing *thing = jspr->thing;
     WorldSceneTraceObject(thing->index);
@@ -5199,7 +5202,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
     if ((thing->class_id == TCls_Creature)
         || (thing->class_id == TCls_Object)
         || (thing->class_id == TCls_DeadCreature)
-        || (player->work_state == PSt_QueryAll))
+        || (ustate->work_state == PSt_QueryAll))
     {
         if (render_thing_is_hovered(thing) && render_hover_blink_on()) {
             RendererAddDrawFlags(Lb_SPRITE_REMAP);
@@ -5221,7 +5224,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
     record_engine_reference_hover_remap(thing);
     {
         int wants_outline = (g_renderer_settings.creature_outline_class_mask >> thing->class_id) & 1u;
-        if ((get_player_view_type(player) == PVT_CreatureContrl) || (get_player_view_type(player) == PVT_CreaturePasngr))
+        if ((ustate->view_type == PVT_CreatureContrl) || (ustate->view_type == PVT_CreaturePasngr))
             wants_outline = 0;
         RendererSetCurrentSpriteContext((int)thing->owner, wants_outline);
     }
@@ -8352,6 +8355,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
     unsigned short flg_mem;
     unsigned char alpha_mem;
     const struct PlayerInfo *player = get_displayed_player();
+    const struct UserState *ustate = get_player_user_state(player);
     struct Thing *thing = jspr->thing;
     WorldSceneTraceObject(thing->index);
     unsigned short animation_sprite;
@@ -8442,7 +8446,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
     record_engine_reference_hover_remap(thing);
     {
         int wants_outline = (g_renderer_settings.creature_outline_class_mask >> thing->class_id) & 1u;
-        if ((get_player_view_type(player) == PVT_CreatureContrl) || (get_player_view_type(player) == PVT_CreaturePasngr))
+        if ((ustate->view_type == PVT_CreatureContrl) || (ustate->view_type == PVT_CreaturePasngr))
             wants_outline = 0;
         RendererSetCurrentSpriteContext((int)thing->owner, wants_outline);
     }
@@ -9115,8 +9119,9 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
     unsigned char default_color = map_volume_box.color;
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
-    struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
-        : get_local_dig_prediction_render_roomspace(&current_player->render_roomspace);
+    struct UserState* ustate = get_local_user_state();
+    const struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
+        : get_dig_prediction_render_roomspace(&ustate->render_roomspace);
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
     const TbBool build_in_progress = map_volume_box_build_in_progress(current_player);

@@ -21,6 +21,7 @@ typedef int RendererType;
 typedef int OverlayCaptureKind;
 #  define OVERLAY_CAPTURE_PARCHMENT 0
 #  define OVERLAY_CAPTURE_SWIPE     1
+#  define OVERLAY_CAPTURE_TOOLTIP   2
 #endif
 
 // UIRenderer_Submit*/Begin*/End* free-function wrappers, implemented in
@@ -264,7 +265,7 @@ TbBool RendererIsSoftwareLensFallbackActive(void);
 unsigned long long RendererSoftwareLensFallbackFrames(void);
 
 /** @param ghost_table the 256x256 map-fade ghost table used for this transition. */
-void RendererSubmitMapFadeStep(int tick_step, float display_step, float warp_scale, TbBool fading_in,
+void RendererSubmitMapFadeStep(TbBool starting, float display_step, float warp_scale,
                                const unsigned char *ghost_table);
 TbBool MapFadePass_SupportsNativeResolution(void);
 

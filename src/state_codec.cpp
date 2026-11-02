@@ -125,7 +125,6 @@ void preserve_local_fields(Game* destination, const Game* source)
     destination->sound_settings.sound_data_path = source->sound_settings.sound_data_path;
     destination->sound_settings.music_data_path = source->sound_settings.music_data_path;
     destination->sound_settings.dir3 = source->sound_settings.dir3;
-    destination->process_turn_time = 0;
 }
 }
 
@@ -205,7 +204,6 @@ extern "C" void kfx_state_copy_game(Game* destination, const Game* source)
         destination->computer[i].dungeon = dungeon == INVALID_DUNGEON ? INVALID_DUNGEON :
             dungeon ? &destination->dungeon[dungeon - source->dungeon] : nullptr;
     }
-    destination->process_turn_time = 0;
 }
 
 extern "C" int kfx_state_decode(KfxStateKind kind, void* state, const void* data, size_t length)

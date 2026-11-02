@@ -713,14 +713,16 @@ bool RendererDX12::WriteDiagnostics(const char* path)
         return bool(out);
     }catch(const std::exception& e){ERRORLOG("DX12 diagnostic snapshot failed: %s",e.what());return false;}
 }
-void RendererDX12::SubmitMapFadeStep(int tick,float step,float warp,bool in,const unsigned char* ghost)
+void RendererDX12::SubmitMapFadeStep(bool starting,float step,float warp,const unsigned char* ghost)
 {
     if(!BeginFrame())return;
-    try { impl_->ui.SubmitMapFadeStep(tick,step,warp,in,ghost,impl_->builder.Fade()); }
+    try { impl_->ui.SubmitMapFadeStep(starting,step,warp,ghost,impl_->builder.Fade()); }
     catch(const std::exception& e){impl_->Fail(e);}
 }
 void RendererDX12::BeginOverlayCapture(OverlayCaptureKind kind)
 {
+    // Tooltips stay in the normal UI pass here; only OpenGL redirects them.
+    if(kind==OVERLAY_CAPTURE_TOOLTIP)return;
     if(!BeginFrame())return;
     if(kind==OVERLAY_CAPTURE_SWIPE) {
         if(impl_->swipe)impl_->builder.Unsupported(OwnedFramePhase::Swipe);
@@ -731,6 +733,7 @@ void RendererDX12::BeginOverlayCapture(OverlayCaptureKind kind)
 }
 void RendererDX12::EndOverlayCapture(OverlayCaptureKind kind)
 {
+    if(kind==OVERLAY_CAPTURE_TOOLTIP)return;
     if(!impl_ || !impl_->builder)return;
     if(kind==OVERLAY_CAPTURE_SWIPE) {
         if(impl_->swipe){impl_->swipe->Complete();impl_->swipe.reset();}
