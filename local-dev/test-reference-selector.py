@@ -53,8 +53,8 @@ static struct PlayerInfo *get_my_player(void){return &player;}
 static struct UserState *get_local_user_state(void){return &user_state;}
 static const struct UserState *get_user_state_prediction(int n){(void)n;return &user_state;}
 static int get_displayed_user(void){return 0;}
-static bool is_my_player_number(int n){return n==my_player_number;}
-static bool gameplay_cursor_is_over_gui(void){return false;}
+static bool is_my_player_number(int n){return displayed&&n==my_player_number;}
+static bool gameplay_cursor_is_over_gui(void){return busy;}
 static bool is_player_displayed(int id){(void)id;return displayed;}
 static bool is_observer_camera_active(void){return observer;}
 static bool game_is_busy_doing_gui(void){return busy;}
