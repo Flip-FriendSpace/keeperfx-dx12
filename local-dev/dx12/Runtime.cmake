@@ -25,7 +25,7 @@ target_include_directories(dx12_allocator SYSTEM PRIVATE
 # MinGW rpcndr.h reports 475. Official DirectX-Headers provide the MinGW COM
 # struct-return ABI; never substitute MSVC ABI declarations.
 target_compile_definitions(dx12_allocator PRIVATE __REQUIRED_RPCNDR_H_VERSION__=475 WIN32_LEAN_AND_MEAN NOMINMAX)
-add_library(kfx_dx12 STATIC "${DX12_SOURCE}/Dx12Device.cpp"
+add_library(kfx_dx12 STATIC "${DX12_SOURCE}/Dx12Device.cpp" "${DX12_SOURCE}/Dx12DeviceRuntime.cpp" "${DX12_SOURCE}/Dx12DeviceWorld.cpp"
     "${DX12_SOURCE}/SceneIndexedFrame.cpp" "${DX12_SOURCE}/OwnedWorldBridge.cpp")
 if(KFX_DX12_EMBED_OWNED_ASSETS)
     target_sources(kfx_dx12 PRIVATE
