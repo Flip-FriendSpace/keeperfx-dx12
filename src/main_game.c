@@ -215,6 +215,10 @@ static TbBool init_level(void)
     load_stats_files();
     level_load_time_phase(LevelLoadTime_GameSetup);
     check_and_auto_fix_stats();
+    // Config is fully loaded and fixed up here, and the level script hasn't run
+    // any commands yet: this is the baseline the save-time config overlay diffs
+    // against (save-format spec 5.3/13.1 P5.3).
+    take_conf_baseline();
 
     // We should do this after 'load stats'
     update_room_tab_to_config();
@@ -324,7 +328,7 @@ static void post_init_level(void)
 
 /******************************************************************************/
 
-/* Game and Lua have already been restored by load_game_chunks. Rebuild only
+/* Game and Lua have already been restored by SaveManager_ApplyReplaySnapshot. Rebuild only
  * session-local resources and derived caches; new-game hooks would destroy the
  * saved turn, script state, player input state and running player instances. */
 static TbBool restore_packet_snapshot(void)
@@ -341,7 +345,7 @@ static TbBool restore_packet_snapshot(void)
     // one keeper; PlayerInfo::user_id alone cannot reconstruct that mapping.
     restore_users_from_packet_save(false);
     sound_manager_reapply_creature_sounds();
-    // load_replay_chunks installed the exact saved navigation graph.
+    // SaveManager_ApplyReplaySnapshot installed the exact saved navigation graph.
     reinit_level_after_load();
     initialize_packet_history();
     clear_packets();

@@ -23,7 +23,6 @@
 #include "bflib_basics.h"
 #include "bflib_netsession.h"
 #include "ver_defs.h"
-#include "state_codec.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -114,6 +113,13 @@ enum NetUserProgress {
     USER_LOGGEDIN,
 };
 
+// Rejects peers whose engine state or simulation can't be exchanged with this build.
+#if defined(_WIN64)
+#define KFX_NET_PROTOCOL UINT32_C(0x4b466402)
+#else
+#define KFX_NET_PROTOCOL UINT32_C(0x4b465802)
+#endif
+
 struct GameVersionPacket {
     uint32_t state_protocol;
     int32_t major;
@@ -176,7 +182,7 @@ enum TbNetworkService {
 extern struct NetState netstate;
 extern enum NetConnectionRole net_join_role;
 
-static const struct GameVersionPacket net_current_version = { KFX_STATE_PROTOCOL, VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD };
+static const struct GameVersionPacket net_current_version = { KFX_NET_PROTOCOL, VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD };
 
 static inline TbBool net_versions_match(const struct GameVersionPacket *version_a, const struct GameVersionPacket *version_b)
 {

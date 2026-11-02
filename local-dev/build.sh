@@ -58,12 +58,15 @@ cd "$source_dir"
 dependencies=(sdl3 sdl3_mixer sdl3_image enet6 zlib spng astronomy centijson ffmpeg luajit miniupnpc libnatpmp libcurl openal)
 if [[ "$architecture" == x64 ]]; then dependencies+=(zlib-source); fi
 for name in "${dependencies[@]}"; do
-  if [[ ! -f "$build_dir/deps/$name/.local-complete" ]]; then
-    archive="$cache_dir/$name.tar.gz"
+  archive="$cache_dir/$name.tar.gz"
+  # The marker names the extracted archive, so a changed pin replaces the old tree.
+  archive_hash="$(sha256sum "$archive" | cut -d' ' -f1)"
+  if [[ "$(cat "$build_dir/deps/$name/.local-complete" 2>/dev/null)" != "$archive_hash" ]]; then
+    rm -rf "${build_dir:?}/deps/${name:?}"
     mkdir -p "$build_dir/deps/$name"
     tar -tzf "$archive" > /dev/null
     tar -xzf "$archive" -C "$build_dir/deps/$name"
-    touch "$build_dir/deps/$name/.local-complete"
+    printf '%s\n' "$archive_hash" > "$build_dir/deps/$name/.local-complete"
   fi
 done
 if [[ ! -f "$source_dir/tools/png2ico/Linux/png2ico" ]]; then
@@ -75,8 +78,6 @@ cmake -S "$source_dir" -B "$build_dir" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$source_dir/build/cmake/toolchains/$toolchain.cmake" \
   -DCMAKE_BUILD_TYPE="$configuration" \
   -DBUILD_NUMBER=5491 -DPACKAGE_SUFFIX=Local "${dx12_options[@]}"
-# Configure first: the schema parser includes generated src/ver_defs.h.
-/usr/bin/python3 "$source_dir/local-dev/state-schema.py" --check --deps-dir "$build_dir/deps"
 cmake --build "$build_dir" --target "$target" --parallel "$jobs"
 
 if [[ "$target" == keeperfx ]]; then output=keeperfx-local; else output=keeperfx-local-hvlog; fi

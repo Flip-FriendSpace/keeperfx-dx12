@@ -132,7 +132,7 @@ GPU validation needs Windows Graphics Tools. `dx12-install-tools.ps1` explicitly
 
 ## Compatibility and known limits
 
-- Back up old saves and start a fresh campaign. Legacy raw-memory saves and old replay versions are rejected without migration. Current replays use version 9. Mixed-architecture replay/network sessions and incompatible Lua bytecode frames are deliberately rejected.
+- Back up old saves and start a fresh campaign. Saves and replays from before the KFXS format (`src/kfx/save/FORMAT.txt`) are rejected without migration. Mixed-architecture replay/network sessions and incompatible Lua bytecode frames are deliberately rejected.
 - The preview enforces a 128 MiB replay cap. Existing normal configurations can retain an older cap; a mid-game snapshot can exceed a smaller limit.
 - Replay integrity covers additive thing-position/heading/owner, slab and dig-task data, not full simulation-state equality. Only Lua `Game` table data is serialized; arbitrary VM random state, other globals and upvalues are not preserved.
 - Native 3840 x 2160 training and combat measurements on the RX 7900 GRE met the scoped 60 FPS target in 120-second and 10-second display windows. The 120 FPS stretch target, wider hardware and all-map performance are unqualified. Outliers still occur.

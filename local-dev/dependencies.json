@@ -1,8 +1,8 @@
 [
   {
     "name": "sdl3",
-    "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.12/SDL3-devel-3.4.12-mingw.tar.gz",
-    "sha256": "EA8071241B934E1FEEC0337F7D78807A5004DE9A500DBA1942AAF615A988D7A2"
+    "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-mingw.tar.gz",
+    "sha256": "049B9DD711E3FB3F8D84FEB998DFEC54A75E17CF539C4A80FF4D058D839771CF"
   },
   {
     "name": "sdl3_mixer",
@@ -11,8 +11,8 @@
   },
   {
     "name": "sdl3_image",
-    "url": "https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.4/SDL3_image-devel-3.4.4-mingw.tar.gz",
-    "sha256": "F9E3B3E0B74F7C1FFD8BCBDEDA40EB2FC0D56D0AFC874A804BEB2B8DF471B6A4"
+    "url": "https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.6/SDL3_image-devel-3.4.6-mingw.tar.gz",
+    "sha256": "F5B1C0D68533DFED50109E109F911EE82A58653F488EE8F0F2C19E56F560EA5E"
   },
   {
     "name": "enet6",

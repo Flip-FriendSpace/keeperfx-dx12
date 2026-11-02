@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+  [string]$WorkspacePath,
   [ValidateSet('x86', 'x64')][string]$Architecture = 'x64',
   [ValidateSet('OPENGL','SOFTWARE','DX12')][string]$Renderer = 'OPENGL',
   [ValidateSet('OPENGL','SOFTWARE','DX12')][string]$PlaybackRenderer = 'OPENGL',
@@ -82,7 +83,8 @@ if ($existingReplay) {
   $sourcePacketHash = (Get-FileHash -LiteralPath $ReplayFile -Algorithm SHA256).Hash
   $sourceLogHash = (Get-FileHash -LiteralPath $sourceLogPath -Algorithm SHA256).Hash
 }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
 $runtime = Join-Path $workspace 'runtime/keeperfx'
 if ($Architecture -eq 'x64') { $runtime += '-x64' }
 if (-not $existingReplay) {
@@ -154,6 +156,7 @@ try {
     }
     else { $arguments += ' -packetload "' + $packet + '" -fps ' + $PlaybackTurnsPerSecond; $target = if ($existingReplay) { $TargetTurn } else { $recordBaseTurn + $playbackTurnCount } }
     $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -ArgumentList $arguments -WindowStyle Hidden -PassThru
+    $null = $game.Handle
     $forced = $false
     try {
       $ready = $false
@@ -180,6 +183,7 @@ try {
       $nodeExecutable = (Get-Command node -ErrorAction Stop).Source
       $quotedArguments = @($clientArguments | ForEach-Object { '"' + $_ + '"' })
       $client = Start-Process -FilePath $nodeExecutable -ArgumentList $quotedArguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $output "$mode-api.stdout.log") -RedirectStandardError (Join-Path $output "$mode-api.stderr.log")
+      $null = $client.Handle
       try {
         if (-not $client.WaitForExit($clientTimeout * 1000)) { throw "Replay $mode client exceeded its $clientTimeout-second bound." }
         $client.WaitForExit()

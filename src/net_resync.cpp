@@ -18,10 +18,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
-#include "kfx/renderer/WorldSceneCapture.h"
 #include "net_resync.h"
-#include "state_codec.h"
-#include "state_navigation.h"
 #include "bflib_datetm.h"
 #include "bflib_enet.h"
 #include "net_exchange_gameplay.h"
@@ -36,12 +33,16 @@
 #include "net_lobby.h"
 #include "game_legacy.h"
 #include "lens_api.h"
+#include "light_data.h"
 #include "lua_base.h"
 #include "net_input_lag.h"
 #include "net_checksums.h"
 #include "net_spectator.h"
 #include "ariadne_update.h"
 #include "keeperfx.hpp"
+#include "kfx/save/core/save_resync.h"
+#include "kfx/renderer/WorldSceneCapture.h"
+#include "state_navigation.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -76,27 +77,14 @@ static struct Boing boing;
 TbBool detailed_multiplayer_logging = false;
 
 #define RESYNC_RECEIVE_TIMEOUT_MS 30000
-#define RESYNC_HEADER_SIZE 21
-#define RESYNC_STATE_HEADER_SIZE 20
 
 struct ResyncHeader {
     unsigned char message_type;
-    uint32_t protocol;
     uint32_t compressed_length;
     uint32_t original_length;
     uint32_t data_checksum;
     uint32_t gameplay_generation;
 };
-
-static void read_resync_header(const char *data, struct ResyncHeader *header)
-{
-    header->message_type = (unsigned char)data[0];
-    header->protocol = kfx_state_read_u32(data + 1);
-    header->compressed_length = kfx_state_read_u32(data + 5);
-    header->original_length = kfx_state_read_u32(data + 9);
-    header->data_checksum = kfx_state_read_u32(data + 13);
-    header->gameplay_generation = kfx_state_read_u32(data + 17);
-}
 
 // function to intentionally desync the game state for testing purposes
 void intentional_desync()
@@ -188,24 +176,24 @@ void recall_localised_game_structure(void)
 static char *encode_resync_message(const void * buffer, size_t total_length, size_t *message_size)
 {
     TbClockMSec start_time = LbTimerClock();
-    if (total_length > KFX_STATE_MAX_SIZE) {
+    if (total_length > UINT32_MAX) {
         ERRORLOG("Resync data too large");
         return NULL;
     }
 
     uLongf compressed_size = compressBound(total_length);
-    if (compressed_size > UINT32_MAX - RESYNC_HEADER_SIZE) {
+    if (compressed_size > UINT32_MAX - sizeof(ResyncHeader)) {
         ERRORLOG("Compressed resync data too large");
         return NULL;
     }
 
-    char * message_buffer = (char *) malloc(RESYNC_HEADER_SIZE + compressed_size);
+    char * message_buffer = (char *) malloc(sizeof(ResyncHeader) + compressed_size);
     if (message_buffer == NULL) {
         ERRORLOG("Failed to allocate message buffer");
         return NULL;
     }
 
-    int compress_result = compress2((Bytef *)(message_buffer + RESYNC_HEADER_SIZE), &compressed_size, (const Bytef *)buffer, total_length, Z_BEST_SPEED);
+    int compress_result = compress2((Bytef *)(message_buffer + sizeof(ResyncHeader)), &compressed_size, (const Bytef *)buffer, total_length, Z_BEST_SPEED);
     if (compress_result != Z_OK) {
         ERRORLOG("Compression failed: zlib error %d", compress_result);
         free(message_buffer);
@@ -216,13 +204,15 @@ static char *encode_resync_message(const void * buffer, size_t total_length, siz
     data_crc = crc32(data_crc, (const Bytef *)buffer, total_length);
     NETLOG("Compression successful: %u -> %u bytes in %u ms", (uint32_t)total_length, (uint32_t)compressed_size, (uint32_t)(LbTimerClock() - start_time));
 
-    message_buffer[0] = NETMSG_RESYNC_DATA;
-    kfx_state_write_u32(message_buffer + 1, KFX_STATE_PROTOCOL);
-    kfx_state_write_u32(message_buffer + 5, (uint32_t)compressed_size);
-    kfx_state_write_u32(message_buffer + 9, (uint32_t)total_length);
-    kfx_state_write_u32(message_buffer + 13, (uint32_t)data_crc);
-    kfx_state_write_u32(message_buffer + 17, netstate.gameplay_generation);
-    *message_size = RESYNC_HEADER_SIZE + compressed_size;
+    ResyncHeader header;
+    memset(&header, 0, sizeof(header));
+    header.message_type = NETMSG_RESYNC_DATA;
+    header.compressed_length = (uint32_t)compressed_size;
+    header.original_length = (uint32_t)total_length;
+    header.data_checksum = (uint32_t)data_crc;
+    header.gameplay_generation = netstate.gameplay_generation;
+    memcpy(message_buffer, &header, sizeof(ResyncHeader));
+    *message_size = sizeof(ResyncHeader) + compressed_size;
     return message_buffer;
 }
 
@@ -251,19 +241,19 @@ static TbBool send_resync_data(const void * buffer, size_t total_length)
 
 static TbBool decode_resync_message(const char * message_buffer, size_t message_size, size_t expected_length, char ** data_buffer, size_t * data_length)
 {
-    if (message_size < RESYNC_HEADER_SIZE) {
+    if (message_size < sizeof(ResyncHeader)) {
         ERRORLOG("Resync message too small: %u bytes", (uint32_t)message_size);
         return false;
     }
     ResyncHeader header;
-    read_resync_header(message_buffer, &header);
-    if (header.message_type != NETMSG_RESYNC_DATA || header.protocol != KFX_STATE_PROTOCOL) {
+    memcpy(&header, message_buffer, sizeof(ResyncHeader));
+    if (header.message_type != NETMSG_RESYNC_DATA) {
         ERRORLOG("Resync message has wrong type: %d", header.message_type);
         return false;
     }
-    if (header.compressed_length != message_size - RESYNC_HEADER_SIZE) {
+    if (header.compressed_length != message_size - sizeof(ResyncHeader)) {
         ERRORLOG("Resync message size mismatch: %u != %u",
-            (uint32_t)(message_size - RESYNC_HEADER_SIZE), header.compressed_length);
+            (uint32_t)(message_size - sizeof(ResyncHeader)), header.compressed_length);
         return false;
     }
     if (expected_length != 0 && header.original_length != expected_length) {
@@ -272,7 +262,7 @@ static TbBool decode_resync_message(const char * message_buffer, size_t message_
     }
 
     size_t output_size = header.original_length;
-    if (output_size > KFX_STATE_MAX_SIZE) {
+    if (output_size > sizeof(game) + 16 * 1024 * 1024) {
         return false;
     }
     if (output_size == 0) {
@@ -286,7 +276,7 @@ static TbBool decode_resync_message(const char * message_buffer, size_t message_
 
     uLongf dest_len = output_size;
     int uncompress_result = uncompress((Bytef *)output_buffer, &dest_len,
-        (const Bytef *)(message_buffer + RESYNC_HEADER_SIZE), header.compressed_length);
+        (const Bytef *)(message_buffer + sizeof(ResyncHeader)), header.compressed_length);
     if (uncompress_result != Z_OK || dest_len != header.original_length) {
         ERRORLOG("Decompression failed: zlib error %d, expected %u bytes, got %u bytes",
             uncompress_result, header.original_length, (uint32_t)dest_len);
@@ -353,7 +343,7 @@ static TbBool receive_resync_message(char **message_out, size_t *message_size_ou
             free(message_buffer);
             continue;
         }
-        if (received_size < RESYNC_HEADER_SIZE) {
+        if (received_size < sizeof(ResyncHeader)) {
             if (received_size > 0 && message_buffer[0] == NETMSG_RESYNC_DATA) {
                 ERRORLOG("Received incomplete resync data: %u bytes", (uint32_t)received_size);
             } else {
@@ -422,79 +412,124 @@ TbBool LbNetwork_Resync(void * data_buffer, size_t buffer_length)
     return true;
 }
 
+// The full resync data: [u32 game_len][game bytes][u32 lua_len][lua bytes]
 static char *build_resync_game_data(size_t *full_resync_len)
 {
-    *full_resync_len = 0;
-    char *lua_data = NULL;
-    size_t lua_size = 0;
-    if (Lvl_script != NULL) {
-        lua_data = lua_get_serialised_data(&lua_size);
-        if (lua_data == NULL)
-            return NULL;
+    // Light system state lives outside Game; the same as for a savegame
+    light_export_system_state(&game.lightst);
+
+    // Field-table encode, not a raw memcpy: lets host and client resync even when
+    // their struct Game layouts differ (mixed Windows/Linux, x86/x64 lobbies).
+    struct SaveBuffer game_buf = {};
+    struct SaveError save_err;
+    if (save_resync_encode_game(&game_buf, &game, &save_err) != SVR_Ok) {
+        ERRORLOG("Resync game encode failed: %s", save_err.message);
+        return NULL;
     }
-    unsigned char *game_data = NULL;
-    unsigned char *nav_data = NULL;
-    size_t game_size = 0, nav_size = 0;
-    struct NavigationSnapshot *nav = (struct NavigationSnapshot *)malloc(sizeof(*nav));
-    char *result = NULL;
-    if (nav != NULL && lua_size <= 16u * 1024u * 1024u) {
-        capture_navigation_snapshot(nav);
-        if (kfx_state_encode(KfxState_Game, &game, &game_data, &game_size)
-            && kfx_state_encode(KfxState_Navigation, nav, &nav_data, &nav_size)) {
-            size_t total = RESYNC_STATE_HEADER_SIZE + game_size + lua_size + nav_size;
-            if (total <= KFX_STATE_MAX_SIZE)
-                result = (char *)malloc(total);
-            if (result != NULL) {
-                memcpy(result, "KFXR", 4);
-                kfx_state_write_u32(result + 4, KFX_STATE_PROTOCOL);
-                kfx_state_write_u32(result + 8, (uint32_t)game_size);
-                kfx_state_write_u32(result + 12, (uint32_t)lua_size);
-                kfx_state_write_u32(result + 16, (uint32_t)nav_size);
-                memcpy(result + RESYNC_STATE_HEADER_SIZE, game_data, game_size);
-                if (lua_size > 0)
-                    memcpy(result + RESYNC_STATE_HEADER_SIZE + game_size, lua_data, lua_size);
-                memcpy(result + RESYNC_STATE_HEADER_SIZE + game_size + lua_size, nav_data, nav_size);
-                *full_resync_len = total;
-            }
+
+    char *lua_data = NULL;
+    size_t lua_data_len = 0;
+    if (Lvl_script != NULL) {
+        lua_data = lua_get_serialised_data(&lua_data_len);
+        if (lua_data == NULL) {
+            save_buf_free(&game_buf);
+            return NULL;
         }
     }
-    free(nav);
-    free(nav_data);
-    free(game_data);
+    size_t lua_data_offset = sizeof(uint32_t) + game_buf.len + sizeof(uint32_t);
+    const size_t navigation_size = sizeof(struct NavigationSnapshot);
+    struct NavigationSnapshot *navigation = (struct NavigationSnapshot *)malloc(navigation_size);
+    if (navigation == NULL) {
+        ERRORLOG("Failed to allocate navigation snapshot");
+        save_buf_free(&game_buf);
+        free(lua_data);
+        return NULL;
+    }
+    if (lua_data_len > UINT32_MAX - lua_data_offset - navigation_size) {
+        ERRORLOG("Full resync data too large");
+        save_buf_free(&game_buf);
+        free(navigation);
+        free(lua_data);
+        return NULL;
+    }
+
+    *full_resync_len = lua_data_offset + lua_data_len + navigation_size;
+    char * full_resync_data = (char *) malloc(*full_resync_len);
+    if (full_resync_data == NULL) {
+        ERRORLOG("Failed to allocate full resync buffer");
+        save_buf_free(&game_buf);
+        free(navigation);
+        free(lua_data);
+        return NULL;
+    }
+
+    uint32_t game_len32 = (uint32_t)game_buf.len;
+    uint32_t lua_data_len32 = (uint32_t)lua_data_len;
+    memcpy(full_resync_data, &game_len32, sizeof(game_len32));
+    memcpy(full_resync_data + sizeof(game_len32), game_buf.data, game_buf.len);
+    memcpy(full_resync_data + sizeof(game_len32) + game_buf.len, &lua_data_len32, sizeof(lua_data_len32));
+    if (lua_data_len > 0) {
+        memcpy(full_resync_data + lua_data_offset, lua_data, lua_data_len);
+    }
+    save_buf_free(&game_buf);
+    capture_navigation_snapshot(navigation);
+    memcpy(full_resync_data + lua_data_offset + lua_data_len, navigation, navigation_size);
+    free(navigation);
     free(lua_data);
-    return result;
+    return full_resync_data;
 }
 
-static TbBool apply_resync_game_data(const char *data, size_t length)
+static TbBool apply_resync_game_data(const char * full_resync_data, size_t full_resync_len)
 {
-    if (length < RESYNC_STATE_HEADER_SIZE || length > KFX_STATE_MAX_SIZE
-        || memcmp(data, "KFXR", 4) != 0 || kfx_state_read_u32(data + 4) != KFX_STATE_PROTOCOL)
+    if (full_resync_len < sizeof(uint32_t)) {
+        ERRORLOG("Full resync data too small: %u bytes", (uint32_t)full_resync_len);
         return false;
-    size_t game_size = kfx_state_read_u32(data + 8);
-    size_t lua_size = kfx_state_read_u32(data + 12);
-    size_t nav_size = kfx_state_read_u32(data + 16);
-    if (game_size != kfx_state_size(KfxState_Game) || nav_size != kfx_state_size(KfxState_Navigation)
-        || lua_size > 16u * 1024u * 1024u
-        || length != RESYNC_STATE_HEADER_SIZE + game_size + lua_size + nav_size
-        || (Lvl_script == NULL && lua_size != 0))
-        return false;
-    const char *game_data = data + RESYNC_STATE_HEADER_SIZE;
-    const char *lua_data = game_data + game_size;
-    const char *nav_data = lua_data + lua_size;
-    // Validate and stage both snapshots before touching live simulation or Lua.
-    struct Game *staged = (struct Game *)calloc(1, sizeof(*staged));
-    struct NavigationSnapshot *nav = (struct NavigationSnapshot *)calloc(1, sizeof(*nav));
-    TbBool result = false;
-    if (staged != NULL && nav != NULL
-        && kfx_state_decode(KfxState_Game, staged, game_data, game_size)
-        && kfx_state_decode(KfxState_Navigation, nav, nav_data, nav_size)
-        && (Lvl_script == NULL || lua_set_serialised_data(lua_data, lua_size))) {
-        kfx_state_copy_game(&game, staged);
-        WorldSceneReset();
-        apply_navigation_snapshot(nav);
-        result = true;
     }
-    free(nav);
+    uint32_t game_len = 0;
+    memcpy(&game_len, full_resync_data, sizeof(game_len));
+    size_t lua_len_offset = sizeof(uint32_t) + (size_t)game_len;
+    if (full_resync_len < lua_len_offset + sizeof(uint32_t)) {
+        ERRORLOG("Full resync data too small: %u bytes", (uint32_t)full_resync_len);
+        return false;
+    }
+    uint32_t lua_data_len = 0;
+    memcpy(&lua_data_len, full_resync_data + lua_len_offset, sizeof(lua_data_len));
+    size_t lua_data_offset = lua_len_offset + sizeof(uint32_t);
+    if (lua_data_len > full_resync_len - lua_data_offset) {
+        ERRORLOG("Received lua data with wrong size: %u != %u", lua_data_len, (uint32_t)(full_resync_len - lua_data_offset));
+        return false;
+    }
+    const size_t navigation_size = full_resync_len - lua_data_offset - lua_data_len;
+    if (navigation_size != sizeof(struct NavigationSnapshot)) {
+        ERRORLOG("Received navigation data with wrong size: %u", (uint32_t)navigation_size);
+        return false;
+    }
+    if (Lvl_script == NULL && lua_data_len > 0) {
+        ERRORLOG("Lua state is not initialized");
+        return false;
+    }
+    // Validate and stage both snapshots before touching live simulation or Lua.
+    // Decoded over a copy of game: fields the table excludes from sync (local UI/per-player
+    // state -- see save_resync_decode_game) keep their current values, not zeroed.
+    struct Game *staged = (struct Game *)malloc(sizeof(struct Game));
+    struct NavigationSnapshot *navigation = (struct NavigationSnapshot *)malloc(sizeof(struct NavigationSnapshot));
+    TbBool result = false;
+    if (staged != NULL && navigation != NULL) {
+        struct SaveError save_err;
+        memcpy(staged, &game, sizeof(struct Game));
+        memcpy(navigation, full_resync_data + lua_data_offset + lua_data_len, sizeof(struct NavigationSnapshot));
+        if (save_resync_decode_game((const uint8_t *)(full_resync_data + sizeof(uint32_t)), game_len, staged, &save_err) != SVR_Ok) {
+            ERRORLOG("Resync game decode failed: %s", save_err.message);
+        } else if (!validate_navigation_snapshot(navigation)) {
+            ERRORLOG("Received navigation data contains invalid allocator or index references");
+        } else if (Lvl_script == NULL || lua_set_serialised_data(full_resync_data + lua_data_offset, lua_data_len)) {
+            memcpy(&game, staged, sizeof(struct Game));
+            WorldSceneReset();
+            apply_navigation_snapshot(navigation);
+            result = true;
+        }
+    }
+    free(navigation);
     free(staged);
     return result;
 }
@@ -511,23 +546,11 @@ static TbBool apply_resync_game_message(const char * message_buffer, size_t mess
     free(full_resync_data);
     if (result) {
         ResyncHeader header;
-        read_resync_header(message_buffer, &header);
+        memcpy(&header, message_buffer, sizeof(header));
         netstate.gameplay_generation = header.gameplay_generation;
     }
     NETLOG("Resync decompression and state application took %u ms", (uint32_t)(LbTimerClock() - start_time));
     return result;
-}
-
-static char *create_resync_game_message(size_t *message_size)
-{
-    size_t full_resync_len = 0;
-    char * full_resync_data = build_resync_game_data(&full_resync_len);
-    if (full_resync_data == NULL) {
-        return NULL;
-    }
-    char *message_buffer = encode_resync_message(full_resync_data, full_resync_len, message_size);
-    free(full_resync_data);
-    return message_buffer;
 }
 
 TbBool state_resync_self_test(void)
@@ -542,11 +565,8 @@ TbBool state_resync_self_test(void)
     char *message = encode_resync_message(before, before_size, &message_size);
     TbBool ok = message != NULL;
     if (ok) {
-        // Framing, protocol and compressed-data failures must be harmless.
-        ok = !apply_resync_game_message(message, RESYNC_HEADER_SIZE - 1);
-        message[1] ^= 1;
-        ok = !apply_resync_game_message(message, message_size) && ok;
-        message[1] ^= 1;
+        // Framing and compressed-data failures must be harmless.
+        ok = !apply_resync_game_message(message, sizeof(ResyncHeader) - 1);
         message[message_size - 1] ^= 1;
         ok = !apply_resync_game_message(message, message_size) && ok;
         message[message_size - 1] ^= 1;
@@ -559,12 +579,16 @@ TbBool state_resync_self_test(void)
     size_t after_size = 0;
     char *after = build_resync_game_data(&after_size);
     // Lua tables are serialized with pairs(), whose key order may change after
-    // re-creation. Compare the two canonical C snapshots independently of that
+    // re-creation. Compare the Game and navigation blocks independently of that
     // byte ordering; Lua application itself must have succeeded above.
-    const size_t game_size = kfx_state_size(KfxState_Game);
-    const size_t nav_size = kfx_state_size(KfxState_Navigation);
-    const TbBool game_equal = after != NULL && after_size >= RESYNC_STATE_HEADER_SIZE + game_size + nav_size
-        && memcmp(before + RESYNC_STATE_HEADER_SIZE, after + RESYNC_STATE_HEADER_SIZE, game_size) == 0;
+    uint32_t game_size = 0, after_game_size = 0;
+    memcpy(&game_size, before, sizeof(game_size));
+    const size_t nav_size = sizeof(struct NavigationSnapshot);
+    if (after != NULL && after_size >= sizeof(after_game_size))
+        memcpy(&after_game_size, after, sizeof(after_game_size));
+    const TbBool game_equal = after != NULL && after_game_size == game_size
+        && after_size >= sizeof(uint32_t) + game_size + nav_size
+        && memcmp(before + sizeof(uint32_t), after + sizeof(uint32_t), game_size) == 0;
     const TbBool nav_equal = after != NULL && after_size >= nav_size
         && memcmp(before + before_size - nav_size, after + after_size - nav_size, nav_size) == 0;
     ok = ok && game_equal && nav_equal;
@@ -575,6 +599,18 @@ TbBool state_resync_self_test(void)
     free(message);
     free(before);
     return ok;
+}
+
+static char *create_resync_game_message(size_t *message_size)
+{
+    size_t full_resync_len = 0;
+    char * full_resync_data = build_resync_game_data(&full_resync_len);
+    if (full_resync_data == NULL) {
+        return NULL;
+    }
+    char *message_buffer = encode_resync_message(full_resync_data, full_resync_len, message_size);
+    free(full_resync_data);
+    return message_buffer;
 }
 
 TbBool send_spectator_resync(uint64_t user_mask)
@@ -645,6 +681,7 @@ static void finish_resync(const struct Packet *saved_packets)
     }
     recall_localised_game_structure();
     reinit_level_after_load();
+    light_import_system_state(&game.lightst);
     if (network_is_active() && net_join_role == NetRole_Spectator) {
         reinitialise_eye_lens(game.applied_lens_type);
     }

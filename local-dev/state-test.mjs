@@ -46,25 +46,17 @@ try {
   await request('console_command', { command: 'game.save 9998 State-format-test' });
   const afterSave = await request('get_current_game_info');
   const file = await readFile(join(runtime, 'save/fx1g9998.sav'));
+  // src/kfx/save/FORMAT.txt: a 20-byte header, then chunks with 20-byte headers.
+  assert.equal(file.toString('latin1', 0, 8), 'KFXS\0\xff\x1a\n');
   const chunks = [];
-  for (let offset = 0; offset < file.length;) {
-    assert.ok(offset + 12 <= file.length);
-    const length = file.readUInt32LE(offset), id = file.toString('ascii', offset + 4, offset + 8), version = file.readUInt32LE(offset + 8);
-    offset += 12;
-    assert.ok(offset + length <= file.length);
-    if (id !== 'LUA ') {
-      assert.equal(file.toString('ascii', offset, offset + 4), 'KFXS');
-      assert.equal(file.readUInt32LE(offset + 4), 1);
-      assert.equal(file.readUInt32LE(offset + 12) + 32, length);
-    } else {
-      assert.equal(version, 1);
-      const { crc32 } = await import('node:zlib');
-      assert.equal(file.readUInt32LE(offset), crc32(file.subarray(offset + 4, offset + length)));
-    }
-    chunks.push({ id, version, length });
-    offset += length;
+  for (let offset = 20; offset < file.length;) {
+    assert.ok(offset + 20 <= file.length);
+    const id = file.toString('ascii', offset, offset + 4), length = file.readUInt32LE(offset + 8);
+    assert.ok(offset + 20 + length <= file.length);
+    chunks.push({ id, offset, length });
+    offset += 20 + length;
   }
-  assert.deepEqual(chunks.map(c => c.id), ['INFO', 'GSTA', 'ILVL', 'LUA ']);
+  assert.deepEqual(chunks.map(c => c.id), ['META', 'SCHM', 'NAMS', 'CONF', 'GAME', 'ILVL', 'LUA ']);
   await delay(2000);
   const advanced = await request('get_current_game_info');
   assert.ok(advanced.game_turn > afterSave.game_turn);
@@ -80,15 +72,16 @@ try {
   // Malformed metadata must be rejected before applying a saved Game.
   const savePath = join(runtime, 'save/fx1g9998.sav');
   try {
-    const badLength = Buffer.from(file);
-    badLength.writeUInt32LE(0xffffffff, 0);
-    await writeFile(savePath, badLength);
+    await writeFile(savePath, file.subarray(0, file.length - 1));
     await request('console_command', { command: 'game.load 9998' }, false);
     const badChecksum = Buffer.from(file);
-    badChecksum[12 + 32] ^= 1;
+    badChecksum[chunks.find(c => c.id === 'GAME').offset + 20] ^= 1;
     await writeFile(savePath, badChecksum);
     await request('console_command', { command: 'game.load 9998' }, false);
   } finally { await writeFile(savePath, file); }
+  await delay(500);
+  const afterRefusals = await request('get_current_game_info');
+  assert.ok(afterRefusals.game_turn > resumed.game_turn, 'A refused load must leave the running game going');
   const result = { passed: true, chunks, beforeSave, afterSave, advanced, loaded, resumed };
   await writeFile(join(output, 'live-state-test.json'), JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result, null, 2));
