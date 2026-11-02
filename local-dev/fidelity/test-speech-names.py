@@ -77,32 +77,33 @@ static struct {
 } mods_conf;
 enum { FGrp_FxData, FGrp_CmpgConfig, FGrp_CmpgLvls, FGrp_Main };
 #define MODS_DIR_NAME "mods"
+constexpr int FULLPATH_SIZE = 4096, DISKPATH_SIZE = 144;
 #define set_flag(value, flags) ((value) |= (flags))
 static unsigned long selected_level = 1;
 static std::map<std::string, std::string> fixture_files;
 static std::vector<std::string> loaded;
 static const char* language = "eng";
-static char* prepare_file_path(int group, const char*) {
+static char* prepare_file_path(int group, const char* name) {
     static char path[32];
-    snprintf(path, sizeof(path), "%s", group == FGrp_FxData ? "base" : "campaign");
+    if (strncmp(name, "map", 3) == 0) snprintf(path, sizeof(path), "%.8s", name);
+    else snprintf(path, sizeof(path), "%s", group == FGrp_FxData ? "base" : "campaign");
     return path;
+}
+static char* prepare_file_path_buf(char* dst, int size, short group, const char* name) {
+    snprintf(dst, size, "%s", prepare_file_path(group, name));
+    return dst;
 }
 static unsigned long get_selected_level_number() { return selected_level; }
-static char* get_game_file_path_fmt(int, const char*, unsigned long level, const char*) {
-    static char path[32];
-    snprintf(path, sizeof(path), "map%05lu", level);
-    return path;
-}
-static char* prepare_file_path_mod(const char* mod, int group, const char*) {
+static char* prepare_file_path_mod(const char* mod, int group, const char* name) {
     static char path[128];
-    snprintf(path, sizeof(path), "%s%s", mod + 5,
+    if (strncmp(name, "map", 3) == 0) snprintf(path, sizeof(path), "%s-%.8s", mod + 5, name);
+    else snprintf(path, sizeof(path), "%s%s", mod + 5,
         group == FGrp_Main ? "-root" : group == FGrp_CmpgConfig ? "-campaign" : "");
     return path;
 }
-static char* get_mod_file_path_fmt(const char* mod, int, const char*, unsigned long level, const char*) {
-    static char path[128];
-    snprintf(path, sizeof(path), "%s-map%05lu", mod + 5, level);
-    return path;
+static char* prepare_file_path_buf_mod(char* dst, int size, const char* mod, short group, const char* name) {
+    snprintf(dst, size, "%s", prepare_file_path_mod(mod, group, name));
+    return dst;
 }
 static TbBool fixture_load(const char*, unsigned short);
 static ConfigFileData keeper_sounds_file_data = {"sounds.cfg", fixture_load, nullptr, nullptr};

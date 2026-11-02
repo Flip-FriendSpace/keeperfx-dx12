@@ -7,7 +7,7 @@ $workspace = Resolve-KeeperWorkspace $WorkspacePath
 $output = Join-Path $workspace 'artifacts/terrain'
 $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'terrain-test.sh')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'keeperfx-dev unavailable.' }
-& wsl.exe -d keeperfx-dev --exec bash $script
+& wsl.exe -d keeperfx-dev --exec bash $script (& wsl.exe -d keeperfx-dev --exec wslpath -a $workspace).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Terrain test compilation failed.' }
 $units = foreach ($arch in @('i686','x86_64')) {
     $json = & (Join-Path $output "terrain-$arch.exe")

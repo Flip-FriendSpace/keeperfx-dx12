@@ -10,9 +10,10 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 
 repo = Path(__file__).resolve().parent.parent
-out = repo.parent / "artifacts" / "reference" / "hover-cpu"
+out = Path(sys.argv[1]) if len(sys.argv) > 1 else repo.parent / "artifacts" / "reference" / "hover-cpu"
 out.mkdir(parents=True, exist_ok=True)
 engine = (repo / "src/engine_render.c").read_text()
 header = (repo / "src/engine_render.h").read_text()
@@ -40,7 +41,7 @@ static unsigned flags;static unsigned char white_pal[256],red_pal[256],*lbSprite
 static int thing_being_displayed_is_creature;static struct Thing *thing_being_displayed;
 static bool local_camera_reference_enabled(void){return optin;}
 static bool flag_is_set(int v,int m){return (v&m)!=0;}
-static struct PlayerInfo *get_my_player(void){return &player;}
+static struct PlayerInfo *get_local_user_state(void){return &player;}
 static struct Thing *thing_get(int i){return &things[i>0&&i<THINGS_COUNT?i:0];}
 static bool thing_exists(const struct Thing *t){return t->exists;}
 static uint64_t WorldSceneThingIncarnation(unsigned i){return i<THINGS_COUNT?incarnations[i]:0;}
@@ -48,7 +49,7 @@ static int get_gameturn(void){return turn;}
 static unsigned RendererGetDrawFlags(void){return flags;}
 static void RendererAddDrawFlags(unsigned f){flags|=f;}
 ''' + proof + scope + r'''
-static void actual_front_remap(struct Thing *thing){const struct PlayerInfo *player=get_my_player();
+static void actual_front_remap(struct Thing *thing){const struct PlayerInfo *ustate=get_local_user_state();
 ''' + branch + r'''
 }
 int main(void){int checks=0;
@@ -111,7 +112,9 @@ for result in results:
     print(result, flush=True)
 names=("src/engine_render.c", "src/console_cmd.c", "src/local_camera.c", "src/kfx/renderer/WorldSceneCapture.cpp", "src/kfx/renderer/SceneAssetCapture.cpp")
 checked=[]
-for architecture, build, triple in (("x64",Path("/opt/keeperfx-build/x64/RelWithDebInfo"),"x86_64-w64-mingw32"),("x86",Path("/opt/keeperfx-build/RelWithDebInfo"),"i686-w64-mingw32")):
+builds = () if "--no-syntax" in sys.argv else (("x64",Path("/opt/keeperfx-build/x64/RelWithDebInfo"),"x86_64-w64-mingw32"),("x86",Path("/opt/keeperfx-build/RelWithDebInfo"),"i686-w64-mingw32"))
+# The production flags belong to whichever checkout last configured those build folders.
+for architecture, build, triple in builds:
     ninja=(build/"build.ninja").read_text()
     for name in names:
         match=re.search(r"^build CMakeFiles/keeperfx\.dir/"+re.escape(name)+r"\.obj:.*\n((?:  .*\n)+)",ninja,re.M)

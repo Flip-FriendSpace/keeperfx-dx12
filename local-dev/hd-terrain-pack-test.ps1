@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-param()
+param([string]$WorkspacePath)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'workspace.ps1')
 $repository=Split-Path -Parent $PSScriptRoot
-$workspace=Split-Path -Parent $repository
+$workspace=Resolve-KeeperWorkspace $WorkspacePath
 $output=Join-Path $workspace ('artifacts/texture-prototype/native-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 New-Item -ItemType Directory -Path $output | Out-Null
 $linuxRepo=(& wsl.exe -d keeperfx-dev --exec wslpath -a $repository).Trim()

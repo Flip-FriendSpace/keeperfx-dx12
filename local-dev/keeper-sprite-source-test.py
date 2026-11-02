@@ -6,7 +6,7 @@ No engine/GPU run. The emitted fixture hash binds the extracted functions;
 full translation-unit checks remain separate from these source-bound tests.
 """
 import argparse, hashlib, json, pathlib, subprocess
-p=argparse.ArgumentParser(); p.add_argument('--compiler',default='gcc'); p.add_argument('--output',required=True)
+p=argparse.ArgumentParser(); p.add_argument('--compiler',default='gcc'); p.add_argument('--output',required=True); p.add_argument('--git-dir',help='Needed where the checkout is a Windows worktree read from WSL.')
 a=p.parse_args(); root=pathlib.Path(__file__).resolve().parents[1]; out=pathlib.Path(a.output); out.mkdir(parents=True,exist_ok=True)
 def function(path,name,text=None):
     if text is None: text=(root/path).read_text()
@@ -21,7 +21,7 @@ def function(path,name,text=None):
 engine='src/engine_render.c'; custom='src/custom_sprites.c'
 functions=[function(engine,n) for n in ['load_single_frame','get_keepersprite_source_extent']]
 functions += [function(custom,n) for n in ['sprite_rle_capacity','convert_row','compress_raw']]
-legacy_text=subprocess.run(['git','show','cb44fe4fd^:src/custom_sprites.c'],cwd=root,capture_output=True,text=True,check=True).stdout
+legacy_text=subprocess.run(['git']+(['--git-dir',a.git_dir] if a.git_dir else [])+['show','cb44fe4fd^:src/custom_sprites.c'],cwd=root,capture_output=True,text=True,check=True).stdout
 legacy=function(custom,'compress_raw',legacy_text).replace('compress_raw(', 'legacy_compress_raw(',1)
 functions.append(legacy)
 shim=r'''

@@ -72,11 +72,12 @@ $cache = Join-Path $workspace 'downloads/keeperfx-dx12'
 $artifacts = Join-Path $workspace 'artifacts/dx12'
 New-Item -ItemType Directory -Path $cache,$artifacts -Force | Out-Null
 $dependencies = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'dependencies-dx12.json') -Raw | ConvertFrom-Json
-& (Join-Path $PSScriptRoot 'prepare-dx12-dependencies.ps1')
+& (Join-Path $PSScriptRoot 'prepare-dx12-dependencies.ps1') -WorkspacePath $workspace
 if (-not $SkipBuild) {
     $script = (& wsl.exe -d keeperfx-dev --exec wslpath -a (Join-Path $PSScriptRoot 'dx12-build.sh')).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'The keeperfx-dev build environment is unavailable.' }
-    & wsl.exe -d keeperfx-dev --exec bash $script 2>&1 | Tee-Object -FilePath (Join-Path $artifacts 'build.log')
+    $linuxWorkspace = (& wsl.exe -d keeperfx-dev --exec wslpath -a $workspace).Trim()
+    & wsl.exe -d keeperfx-dev --exec bash $script $linuxWorkspace 2>&1 | Tee-Object -FilePath (Join-Path $artifacts 'build.log')
     if ($LASTEXITCODE -ne 0) { throw 'DX12 foundation build failed.' }
 }
 $bin = Join-Path $artifacts 'bin'
