@@ -62,6 +62,7 @@
 #include "kfx/renderer/FrontTerrainPlan.h"
 #include "engine_textures.h"
 #include "local_camera.h"
+#include "local_possession.h"
 #include "map_utils.h"
 #include "front_simple.h"
 #include "frontend.h"
@@ -239,8 +240,6 @@ long x_init_off;
 long y_init_off;
 long floor_pointed_at_x;
 long floor_pointed_at_y;
-long box_lag_compensation_x;
-long box_lag_compensation_y;
 
 static long fade_scaler;
 static long fade_way_out;
@@ -297,7 +296,6 @@ static TbBool reference_selector_enabled;
 static TbBool reference_selector_drawing;
 static struct RoomSpace reference_selector_roomspace;
 static struct MapVolumeBox reference_selector_saved_box;
-static long reference_selector_saved_lag_x, reference_selector_saved_lag_y;
 static int reference_selector_room_kind, reference_selector_room_busy;
 static TbBool reference_room_emitting;
 static struct EngineReferenceRoomProof reference_room_proof;
@@ -348,12 +346,9 @@ static void begin_engine_reference_selector(void)
         return;
     }
     reference_selector_saved_box = map_volume_box;
-    reference_selector_saved_lag_x = box_lag_compensation_x;
-    reference_selector_saved_lag_y = box_lag_compensation_y;
     reference_selector_drawing = true;
     reference_room_proof = (struct EngineReferenceRoomProof){0};
     map_volume_box.visible = false;
-    box_lag_compensation_x = box_lag_compensation_y = 0;
     if (reference_selector_room_kind != 0) {
         const int width = reference_selector_roomspace.width, height = reference_selector_roomspace.height;
         const int x = reference_selector_roomspace.centreX, y = reference_selector_roomspace.centreY;
@@ -393,8 +388,6 @@ static void end_engine_reference_selector(void)
 {
     if (!reference_selector_drawing) return;
     map_volume_box = reference_selector_saved_box;
-    box_lag_compensation_x = reference_selector_saved_lag_x;
-    box_lag_compensation_y = reference_selector_saved_lag_y;
     reference_selector_drawing = false;
     reference_room_emitting = false;
 }
@@ -659,6 +652,7 @@ struct ThingInterpolateResult interpolate_thing(struct Thing *thing)
         result.mappos = thing->mappos;
         result.floor_height = thing->floor_height;
     }
+    offset_local_possession_shot(thing, &result.mappos);
 
     return result;
 }
@@ -806,7 +800,7 @@ void update_engine_settings(struct PlayerInfo *player)
     me_pointed_at = NULL;
     me_distance = 100000000;
     max_i_can_see = get_max_i_can_see_from_settings();
-    const struct UserState *ustate = get_local_user_state();
+    const struct UserState *ustate = get_local_user_state_prediction();
     if ((lens_mode != 0) || user_state_invalid(ustate))
       temp_cluedo_mode = 0;
     else
@@ -3034,9 +3028,9 @@ static void process_isometric_map_volume_box(long x, long y, long z, PlayerNumbe
     unsigned char default_color = map_volume_box.color;
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
-    struct UserState* ustate = get_local_user_state();
+    const struct UserState *ustate = get_user_state_prediction(get_displayed_user());
     const struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
-        : get_dig_prediction_render_roomspace(&ustate->render_roomspace);
+        : &ustate->render_roomspace;
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
     const TbBool build_in_progress = map_volume_box_build_in_progress(current_player);
@@ -3050,20 +3044,20 @@ static void process_isometric_map_volume_box(long x, long y, long z, PlayerNumbe
         if (render_roomspace->is_roomspace_a_box)
         {
             // This is a basic square box
-            create_map_volume_box(x + box_lag_compensation_x, y + box_lag_compensation_y, z, line_color);
+            create_map_volume_box(x, y, z, line_color);
         }
         else
         {
             // This is a "2-line" square box
             // i.e. an "accurate" box with an outer square box
             map_volume_box.color = line_color;
-            create_fancy_map_volume_box(*render_roomspace, x + box_lag_compensation_x, y + box_lag_compensation_y, z, (render_roomspace->slab_count == 0) ? SLC_RED : SLC_BROWN, true);
+            create_fancy_map_volume_box(*render_roomspace, x, y, z, (render_roomspace->slab_count == 0) ? SLC_RED : SLC_BROWN, true);
         }
     }
     else
     {
         // This is an "accurate"/"automagic" box
-        create_fancy_map_volume_box(*render_roomspace, x + box_lag_compensation_x, y + box_lag_compensation_y, z, line_color, false);
+        create_fancy_map_volume_box(*render_roomspace, x, y, z, line_color, false);
     }
     map_volume_box.color = default_color;
     reference_room_emitting = false;
@@ -5127,8 +5121,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
 {
     unsigned short flg_mem;
     unsigned char alpha_mem;
-    const struct PlayerInfo *player = get_displayed_player();
-    const struct UserState *ustate = get_player_user_state(player);
+    const struct UserState *ustate = get_user_state(get_displayed_user());
     struct ObjectConfigStats* objst;
     struct Thing *thing = jspr->thing;
     WorldSceneTraceObject(thing->index);
@@ -5580,8 +5573,6 @@ void draw_status_sprites(long scrpos_x, long scrpos_y, struct Thing *thing)
         w = (base_size * spr->SWidth * bs_units_per_px / 16) >> 13;
         h = (base_size * spr->SHeight * bs_units_per_px / 16) >> 13;
         LbSpriteDrawScaled(scrpos_x - w / 2, scrpos_y - h, spr, w, h);
-        spr = get_button_sprite_for_player(state_spridx, thing->owner);
-        h_add += spr->SHeight * bs_units_per_px / 16;
     }
     else if (state_spridx)
     {
@@ -5589,7 +5580,12 @@ void draw_status_sprites(long scrpos_x, long scrpos_y, struct Thing *thing)
         w = (base_size * spr->SWidth * bs_units_per_px / 16) >> 13;
         h = (base_size * spr->SHeight * bs_units_per_px / 16) >> 13;
         LbSpriteDrawScaled(scrpos_x - w / 2, scrpos_y - h, spr, w, h);
-        h_add += h;
+    }
+    // The flower goes above the state icon whichever of the state and anger icons blinks in, so it doesn't jump
+    if (state_spridx || anger_spridx)
+    {
+        spr = state_spridx ? get_button_sprite_for_player(state_spridx, thing->owner) : get_button_sprite(anger_spridx);
+        h_add += (base_size * spr->SHeight * bs_units_per_px / 16) >> 13;
     }
 
     if ((thing->lair.spr_size > 0) && (health_spridx > 0) && ((get_gameturn() % (2 * gui_blink_rate)) >= gui_blink_rate))
@@ -8355,7 +8351,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
     unsigned short flg_mem;
     unsigned char alpha_mem;
     const struct PlayerInfo *player = get_displayed_player();
-    const struct UserState *ustate = get_player_user_state(player);
+    const struct UserState *ustate = get_user_state(get_displayed_user());
     struct Thing *thing = jspr->thing;
     WorldSceneTraceObject(thing->index);
     unsigned short animation_sprite;
@@ -8405,7 +8401,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
           }
           else if ((get_local_view_type(player) == PVT_CreatureContrl) || (get_local_view_type(player) == PVT_CreaturePasngr))
           {
-              struct Thing *creatng = thing_get(player->influenced_thing_idx);
+              struct Thing *creatng = thing_get(ustate->influenced_thing_idx);
               if (thing_is_creature(creatng))
               {
                   struct CreatureControl* cctrl = creature_control_get_from_thing(creatng);
@@ -8883,14 +8879,14 @@ void create_frontview_map_volume_box(struct Camera *cam, unsigned char stl_width
     int32_t coord_y;
     int32_t coord_z;
     long box_width, box_height;
-    pos.y.val = map_volume_box.end_y - box_lag_compensation_y;
-    pos.x.val = map_volume_box.end_x - box_lag_compensation_x;
+    pos.y.val = map_volume_box.end_y;
+    pos.x.val = map_volume_box.end_x;
     pos.z.val = subtile_coord(5,0);
     convert_world_coord_to_front_view_screen_coord(&pos, cam, &coord_x, &coord_y, &coord_z);
     box_width = coord_x;
     box_height = coord_y;
-    pos.y.val = map_volume_box.beg_y - box_lag_compensation_y;
-    pos.x.val = map_volume_box.beg_x - box_lag_compensation_x;
+    pos.y.val = map_volume_box.beg_y;
+    pos.x.val = map_volume_box.beg_x;
     convert_world_coord_to_front_view_screen_coord(&pos, cam, &coord_x, &coord_y, &coord_z);
     box_width -= coord_x;
     box_height -= coord_y;
@@ -8947,14 +8943,14 @@ void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Ca
     valid_slabs.beg_y = subtile_coord((roomspace.top * 3), 0);
     valid_slabs.end_x = subtile_coord((3*1) + (roomspace.right * 3), 0);
     valid_slabs.end_y = subtile_coord(((3*1) + roomspace.bottom * 3), 0);
-    pos.y.val = valid_slabs.end_y - box_lag_compensation_y;
-    pos.x.val = valid_slabs.end_x - box_lag_compensation_x;
+    pos.y.val = valid_slabs.end_y;
+    pos.x.val = valid_slabs.end_x;
     pos.z.val = subtile_coord(5,0);
     convert_world_coord_to_front_view_screen_coord(&pos, cam, &coord_x, &coord_y, &coord_z);
     box_width = coord_x;
     box_height = coord_y;
-    pos.y.val = valid_slabs.beg_y - box_lag_compensation_y;
-    pos.x.val = valid_slabs.beg_x - box_lag_compensation_x;
+    pos.y.val = valid_slabs.beg_y;
+    pos.x.val = valid_slabs.beg_x;
     convert_world_coord_to_front_view_screen_coord(&pos, cam, &coord_x, &coord_y, &coord_z);
     box_width -= coord_x;
     box_height -= coord_y;
@@ -9119,9 +9115,9 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
     unsigned char default_color = map_volume_box.color;
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
-    struct UserState* ustate = get_local_user_state();
+    const struct UserState *ustate = get_user_state_prediction(get_displayed_user());
     const struct RoomSpace *render_roomspace = reference_selector_drawing ? &reference_selector_roomspace
-        : get_dig_prediction_render_roomspace(&ustate->render_roomspace);
+        : &ustate->render_roomspace;
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
     const TbBool build_in_progress = map_volume_box_build_in_progress(current_player);
@@ -9156,8 +9152,15 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
 
 TbBool cursor_on_room(RoomIndex room_index)
 {
-    const struct UserState *ustate = get_player_user_state(get_displayed_player());
-    struct SlabMap* slb = get_slabmap_for_subtile(ustate->cursor_subtile_x, ustate->cursor_subtile_y);
+    const struct UserState *ustate = get_user_state(get_displayed_user());
+    MapSubtlCoord stl_x = ustate->cursor_subtile_x;
+    MapSubtlCoord stl_y = ustate->cursor_subtile_y;
+    const struct Packet *pckt = get_local_packet();
+    if (is_my_player(get_displayed_player()) && ((pckt->control_flags & PCtr_MapCoordsValid) != 0)) {
+        stl_x = coord_subtile(pckt->pos_x);
+        stl_y = coord_subtile(pckt->pos_y);
+    }
+    struct SlabMap* slb = get_slabmap_for_subtile(stl_x, stl_y);
     if (slabmap_block_invalid(slb)) {
         return false;
     }
@@ -9176,7 +9179,7 @@ TbBool room_is_damaged(RoomIndex room_index)
 }
 TbBool placing_same_room_type(RoomIndex room_index)
 {
-    const struct UserState *ustate = get_player_user_state(get_displayed_player());
+    const struct UserState *ustate = get_user_state_prediction(get_displayed_user());
     if (map_volume_box.visible == 0) {
         return false;
     }

@@ -195,7 +195,7 @@ TbBool process_dungeon_power_hand_state(NetUserId user)
     ustate->additional_flags &= ~UsrAF_ChosenSubTileIsHigh;
     if ((ustate->secondary_cursor_state != CSt_DefaultArrow) && (ustate->secondary_cursor_state != CSt_PowerHand))
     {
-        if (player->instance_num != PI_Grab) {
+        if (ustate->instance_num != PI_Grab) {
             delete_power_hand(user);
         }
         return false;
@@ -214,24 +214,17 @@ TbBool process_dungeon_power_hand_state(NetUserId user)
         if (ustate->hand_thing_idx == 0) {
             create_power_hand(user);
         }
-        long allow_unclaimed_path = is_creature_droppable_on_path(thing);
-        if ((can_drop_thing_here(stl_x, stl_y, player->id_number, allow_unclaimed_path)
-             || !can_dig_here(stl_x, stl_y, player->id_number, true))
-            && (!ustate->one_click_lock_cursor))
-        {
-            ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, subtile_slab(stl_x), subtile_slab(stl_y));
-            ustate->full_slab_cursor = (ustate->roomspace_mode != single_subtile_mode);
-            tag_cursor_blocks_thing_in_hand(plyr_idx, stl_x, stl_y, allow_unclaimed_path, ustate->full_slab_cursor);
-        } else
-        {
+        if (ustate->one_click_lock_cursor || (!can_drop_thing_here(stl_x, stl_y, plyr_idx, is_creature_droppable_on_path(thing)) && can_dig_here(stl_x, stl_y, plyr_idx, true))) {
             ustate->additional_flags |= UsrAF_ChosenSubTileIsHigh;
             ustate->thing_under_hand = 0;
+        } else {
+            tag_cursor_blocks_thing_in_hand(user, stl_x, stl_y);
         }
     }
     if (ustate->hand_thing_idx != 0)
     {
-        if ((player->instance_num != PI_Grab) && (player->instance_num != PI_Drop) &&
-            (player->instance_num != PI_Whip) && (player->instance_num != PI_WhipEnd))
+        if ((ustate->instance_num != PI_Grab) && (ustate->instance_num != PI_Drop) &&
+            (ustate->instance_num != PI_Whip) && (ustate->instance_num != PI_WhipEnd))
         {
             thing = get_first_thing_in_power_hand(player);
             if ((ustate->thing_under_hand != 0) || !thing_exists(thing))
@@ -394,17 +387,17 @@ TbBool process_dungeon_control_packet_dungeon_control(NetUserId user)
                 }
                 if (ustate->thing_under_hand > 0)
                 {
-                    if (ustate->thing_under_hand != player->controlled_thing_idx)
+                    if (ustate->thing_under_hand != get_user_state(user)->controlled_thing_idx)
                     {
                         if (is_my_player(player))
                         {
                             turn_off_all_panel_menus();
                             turn_on_menu(GMnu_CREATURE_QUERY1);
                         }
-                        player->influenced_thing_idx = ustate->thing_under_hand;
-                        player->influenced_thing_creation = thing->creation_turn;
+                        ustate->influenced_thing_idx = ustate->thing_under_hand;
+                        ustate->influenced_thing_creation = thing->creation_turn;
                         set_user_work_state(user, PSt_CreatrQuery, 0);
-                        set_player_instance(player, PI_QueryCrtr, 0);
+                        set_user_instance(user, PI_QueryCrtr, 0);
                     }
                     unset_packet_control(pckt, PCtr_LBtnRelease);
                 }
@@ -703,7 +696,7 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
         case PSt_CastPowerOnSubtile:
             if (((pckt->control_flags & PCtr_LBtnRelease) != 0) && ((pckt->control_flags & PCtr_MapCoordsValid) != 0))
             {
-                i = get_power_overcharge_level(player);
+                i = get_power_overcharge_level(user);
                 magic_use_available_power_on_subtile(plyr_idx, pwkind, i, stl_x, stl_y, PwCast_None, PwMod_Default);
                 unset_packet_control(pckt, PCtr_LBtnRelease);
             }
@@ -722,15 +715,15 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
             {
                 if (ustate->thing_under_hand > 0)
                 {
-                    player->influenced_thing_idx = ustate->thing_under_hand;
-                    player->influenced_thing_creation = thing->creation_turn;
-                    set_player_instance(player, PI_PsngrCtrl, 0);
+                    ustate->influenced_thing_idx = ustate->thing_under_hand;
+                    ustate->influenced_thing_creation = thing->creation_turn;
+                    set_user_instance(user, PI_PsngrCtrl, 0);
                     unset_packet_control(pckt, PCtr_LBtnRelease);
                 }
             }
             if ((pckt->control_flags & PCtr_RBtnRelease) != 0)
             {
-                if (player->instance_num != PI_PsngrCtrl)
+                if (ustate->instance_num != PI_PsngrCtrl)
                 {
                     set_user_work_state(user, ustate->continue_work_state, 0);
                     unset_packet_control(pckt, PCtr_RBtnRelease);
@@ -750,7 +743,7 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
             }
             if ((pckt->control_flags & PCtr_RBtnRelease) != 0)
             {
-                if (player->instance_num != PI_DirctCtrl)
+                if (ustate->instance_num != PI_DirctCtrl)
                 {
                     set_user_work_state(user, ustate->continue_work_state, 0);
                     unset_packet_control(pckt, PCtr_RBtnRelease);
@@ -765,9 +758,9 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
                 {
                     if (thing->class_id == TCls_Creature)
                     {
-                        if (player->controlled_thing_idx != ustate->thing_under_hand)
+                        if (get_user_state(user)->controlled_thing_idx != ustate->thing_under_hand)
                         {
-                            query_creature(player, ustate->thing_under_hand, true, false);
+                            query_creature(user, ustate->thing_under_hand, true, false);
                         }
                     }
                     else
@@ -779,7 +772,7 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
             }
             if ( ustate->work_state == PSt_CreatrInfo )
             {
-                thing = thing_get(player->controlled_thing_idx);
+                thing = thing_get(get_user_state(user)->controlled_thing_idx);
                 if ((pckt->control_flags & PCtr_RBtnRelease) != 0)
                 {
                     if (is_my_player(player))
@@ -787,12 +780,12 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
                         turn_off_query_menus();
                         turn_on_main_panel_menu();
                     }
-                    set_player_instance(player, PI_UnqueryCrtr, 0);
+                    set_user_instance(user, PI_UnqueryCrtr, 0);
                     unset_packet_control(pckt, PCtr_RBtnRelease);
                 } else
-                if (creature_is_dying(thing) || (thing->creation_turn != player->influenced_thing_creation))
+                if (creature_is_dying(thing) || (thing->creation_turn != ustate->influenced_thing_creation))
                 {
-                    set_player_instance(player, PI_UnqueryCrtr, 0);
+                    set_user_instance(user, PI_UnqueryCrtr, 0);
                     if (is_my_player(player))
                     {
                         turn_off_query_menus();
@@ -810,7 +803,7 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
             {
                 ustate->full_slab_cursor = 1;
                 // Make the frame around active slab
-                i = tag_cursor_blocks_place_door(player->id_number, stl_x, stl_y);
+                i = tag_cursor_blocks_place_door(player->id_number, user, stl_x, stl_y);
                 if ((pckt->control_flags & PCtr_LBtnClick) != 0)
                 {
                     packet_place_door(stl_x, stl_y, player->id_number, ustate->chosen_door_kind, i);
@@ -834,7 +827,7 @@ TbBool process_dungeon_control_packet_clicks(NetUserId user)
                     if (thing_is_invalid(thing)) {
                         break;
                     }
-                    i = get_power_overcharge_level(player);
+                    i = get_power_overcharge_level(user);
                     magic_use_available_power_on_thing(plyr_idx, pwkind, i, stl_x, stl_y, thing, PwMod_Default);
                 }
                 unset_packet_control(pckt, PCtr_LBtnRelease);

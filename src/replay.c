@@ -26,6 +26,7 @@
 #include "bflib_datetm.h"
 #include "frontend.h"
 #include "game_legacy.h"
+#include "game_merge.h"
 #include "game_saves.h"
 #include "kfx/save/SaveManager.h"
 #include "kfx/save/core/save_schema.h"
@@ -978,10 +979,11 @@ TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry)
         replay.fopened = 0;
         return false;
     }
+    struct IntralevelData ilvl;
     struct ReplaySnapshotData snapshot;
     struct SaveError err;
     enum SaveResult r = SaveManager_ReadReplayHeader(replay.fp, centry, &replay.head,
-        &snapshot, &packet_load_schema, &packet_load_dec, &err);
+        &ilvl, &snapshot, &packet_load_schema, &packet_load_dec, &err);
     if (r != SVR_Ok)
     {
         set_replay_crashlog(0, 0);
@@ -1000,6 +1002,7 @@ TbBool open_packet_file_for_load(char *fname, struct CatalogueEntry *centry)
         close_packet_file();
         return false;
     }
+    memcpy(&intralvl, &ilvl, sizeof(intralvl));
     replay.snapshot_loaded = (snapshot.save_data != NULL);
     if (replay.snapshot_loaded)
     {
@@ -1462,6 +1465,11 @@ void close_packet_file(void)
         replay.fp = NULL;
     }
     free_packet_load_decoder();
+    replay_rewind_deinit();
+    free(pending_resync);
+    pending_resync = NULL;
+    pending_resync_len = 0;
+    replay_checksum_pending = false;
 }
 
 TbBool reinit_packets_after_load(void)
@@ -1732,7 +1740,7 @@ TbBool open_new_packet_file_for_save(void)
     SaveManager_FillEntry(&centry, "Packet file");
     struct SaveError err;
     enum SaveResult r = SaveManager_WriteReplayHeader(replay.fp, &centry, &replay.head,
-        get_gameturn() != 0, &err);
+        get_gameturn() != 0, &intralvl, &err);
     if (r != SVR_Ok)
     {
         WARNMSG("Cannot write to packet file, \"%s\": %s", replay.fname, err.message);
@@ -1829,7 +1837,6 @@ void disable_packet_mode(void)
 {
     const NetUserId local_user = get_local_user();
     close_packet_file();
-    replay_rewind_reset();
     replay.load_enable = false;
     replay.save_enable = false;
     remap_user_to_solo(get_my_player(), local_user);

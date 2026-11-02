@@ -24,6 +24,7 @@
 #include "net_exchange_gameplay.h"
 #include "net_exchange_common.h"
 #include "net_main.h"
+#include <stddef.h>
 #include <zlib.h>
 #include "globals.h"
 #include "frontend.h"
@@ -40,6 +41,7 @@
 #include "net_spectator.h"
 #include "ariadne_update.h"
 #include "keeperfx.hpp"
+#include "kjm_input.h"
 #include "kfx/save/core/save_resync.h"
 #include "kfx/renderer/WorldSceneCapture.h"
 #include "state_navigation.h"
@@ -51,10 +53,6 @@ extern "C" {
 
 struct Boing {
   unsigned char active_panel_menu_index;
-  unsigned char comp_player_aggressive;
-  unsigned char comp_player_defensive;
-  unsigned char comp_player_construct;
-  unsigned char comp_player_creatrsonly;
   unsigned char creatures_tend_imprison;
   unsigned char creatures_tend_flee;
   unsigned short hand_over_subtile_x;
@@ -108,7 +106,7 @@ void intentional_desync()
             thing->health += 1;
         }
     }
-    get_player(0)->instance_remain_turns += 1;
+    get_user_state(0)->instance_remain_turns += 1;
 }
 
 void animate_resync_progress_bar(int current_phase, int total_phases)
@@ -127,10 +125,6 @@ void animate_resync_progress_bar(int current_phase, int total_phases)
 void store_localised_game_structure(void)
 {
     boing.active_panel_menu_index = game.active_panel_mnu_idx;
-    boing.comp_player_aggressive = game.comp_player_aggressive;
-    boing.comp_player_defensive = game.comp_player_defensive;
-    boing.comp_player_construct = game.comp_player_construct;
-    boing.comp_player_creatrsonly = game.comp_player_creatrsonly;
     boing.creatures_tend_imprison = game.creatures_tend_imprison;
     boing.creatures_tend_flee = game.creatures_tend_flee;
     boing.hand_over_subtile_x = game.hand_over_subtile_x;
@@ -151,10 +145,6 @@ void store_localised_game_structure(void)
 void recall_localised_game_structure(void)
 {
     game.active_panel_mnu_idx = boing.active_panel_menu_index;
-    game.comp_player_aggressive = boing.comp_player_aggressive;
-    game.comp_player_defensive = boing.comp_player_defensive;
-    game.comp_player_construct = boing.comp_player_construct;
-    game.comp_player_creatrsonly = boing.comp_player_creatrsonly;
     game.creatures_tend_imprison = boing.creatures_tend_imprison;
     game.creatures_tend_flee = boing.creatures_tend_flee;
     game.hand_over_subtile_x = boing.hand_over_subtile_x;
@@ -173,7 +163,7 @@ void recall_localised_game_structure(void)
 }
 
 // resync message: ResyncHeader, then the zlib-compressed data
-static char *encode_resync_message(const void * buffer, size_t total_length, size_t *message_size)
+char *encode_resync_message(const void * buffer, size_t total_length, size_t *message_size)
 {
     TbClockMSec start_time = LbTimerClock();
     if (total_length > UINT32_MAX) {
@@ -305,8 +295,12 @@ static TbBool receive_resync_message(char **message_out, size_t *message_size_ou
     TbClockMSec start_time = LbTimerClock();
     TbClockMSec last_progress_time = start_time;
     int32_t last_progress = 0;
-    while (LbTimerClock() - start_time < RESYNC_RECEIVE_TIMEOUT_MS) {
+    while (LbTimerClock() - start_time < RESYNC_RECEIVE_TIMEOUT_MS && netstate.users[SERVER_ID].progress != USER_UNUSED) {
         netstate.sp->update(OnNewUser);
+        if (!poll_inputs()) {
+            exit_keeper = 1;
+            return false;
+        }
         int32_t progress = GetResyncProgress() * 80 / 100;
         if (progress > last_progress && LbTimerClock() - last_progress_time >= 50) {
             animate_resync_progress_bar(progress, 100);
@@ -365,7 +359,7 @@ static TbBool receive_resync_message(char **message_out, size_t *message_size_ou
         return true;
     }
 
-    ERRORLOG("Client: Timeout waiting for resync data after %dms", RESYNC_RECEIVE_TIMEOUT_MS);
+    ERRORLOG("Client: Gave up waiting for resync data after %dms", (int32_t)(LbTimerClock() - start_time));
     return false;
 }
 
@@ -413,7 +407,7 @@ TbBool LbNetwork_Resync(void * data_buffer, size_t buffer_length)
 }
 
 // The full resync data: [u32 game_len][game bytes][u32 lua_len][lua bytes]
-static char *build_resync_game_data(size_t *full_resync_len)
+char *build_resync_game_data(size_t *full_resync_len)
 {
     // Light system state lives outside Game; the same as for a savegame
     light_export_system_state(&game.lightst);
@@ -571,9 +565,12 @@ TbBool state_resync_self_test(void)
         ok = !apply_resync_game_message(message, message_size) && ok;
         message[message_size - 1] ^= 1;
         // Exercise a checksum-valid envelope with a corrupt navigation block.
-        before[before_size - 1] ^= 1;
+        // The high byte of triangle_index is validated, unlike the scratch border array at the end.
+        char *const corrupt = before + before_size - sizeof(struct NavigationSnapshot)
+            + offsetof(struct NavigationSnapshot, triangle_index) + 3;
+        *corrupt ^= 1;
         ok = !apply_resync_game_data(before, before_size) && ok;
-        before[before_size - 1] ^= 1;
+        *corrupt ^= 1;
         ok = apply_resync_game_message(message, message_size) && ok;
     }
     size_t after_size = 0;
@@ -613,20 +610,9 @@ static char *create_resync_game_message(size_t *message_size)
     return message_buffer;
 }
 
-TbBool send_spectator_resync(uint64_t user_mask)
-{
-    size_t message_size = 0;
-    char *message_buffer = create_resync_game_message(&message_size);
-    if (message_buffer == NULL) {
-        return false;
-    }
-    send_to_active_peers(1, NetSend_Reliable, message_buffer, message_size, user_mask);
-    free(message_buffer);
-    return true;
-}
-
 TbBool send_resync_game(void)
 {
+    netstate.resync_pending = false;
     pack_desync_history_for_resync();
     clear_flag(game.operation_flags, GOF_Paused);
     animate_resync_progress_bar(0, 100);
@@ -669,7 +655,9 @@ TbBool receive_resync_game(void)
 
     animate_resync_progress_bar(90, 100);
 
-    compare_desync_history_from_host();
+    if ((local_system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0) {
+        compare_desync_history_from_host();
+    }
 
     return true;
 }
@@ -682,9 +670,8 @@ static void finish_resync(const struct Packet *saved_packets)
     recall_localised_game_structure();
     reinit_level_after_load();
     light_import_system_state(&game.lightst);
-    if (network_is_active() && net_join_role == NetRole_Spectator) {
-        reinitialise_eye_lens(game.applied_lens_type);
-    }
+    light_rebuild_after_load();
+    network_spectator_finish_seat();
     memcpy(game.packets, saved_packets, sizeof(game.packets));
 
     if (!network_is_active() || !network_user_is_spectator(netstate.my_id)) {
@@ -695,7 +682,6 @@ static void finish_resync(const struct Packet *saved_packets)
 
     clear_flag(local_system_flags, GSF_NetGameNoSync);
     clear_flag(local_system_flags, GSF_NetSeedNoSync);
-    panel_map_update(0, 0, game.map_subtiles_x + 1, game.map_subtiles_y + 1);
 }
 
 void resync_game(void)
@@ -720,6 +706,8 @@ void resync_game(void)
     finish_resync(saved_packets);
     wait_for_all_players();
     animate_resync_progress_bar(100, 100);
+    update_gameplay_delta_time();
+    local_state.process_turn_time = 1.0;
     NETLOG("Resync finished locally in %u ms", (uint32_t)(LbTimerClock() - start_time));
 }
 

@@ -87,19 +87,19 @@ void set_chosen_power_none(void)
     game.chosen_spell_tooltip = 0;
 }
 
-unsigned char general_expand_check(const struct PlayerInfo *player)
+unsigned char general_expand_check(NetUserId user)
 {
-    return (player->cast_expand_level != 0);
+    return get_user_state(user)->cast_expand_level != 0;
 }
 
-unsigned char sight_of_evil_expand_check(const struct PlayerInfo *player)
+unsigned char sight_of_evil_expand_check(NetUserId user)
 {
-    return (player->cast_expand_level != 0) && (!player_uses_power_sight(player->id_number));
+    return get_user_state(user)->cast_expand_level != 0 && !player_uses_power_sight(get_user_player(user)->id_number);
 }
 
-unsigned char call_to_arms_expand_check(const struct PlayerInfo *player)
+unsigned char call_to_arms_expand_check(NetUserId user)
 {
-    return (player->cast_expand_level != 0) && (!player_uses_power_call_to_arms(player->id_number));
+    return get_user_state(user)->cast_expand_level != 0 && !player_uses_power_call_to_arms(get_user_player(user)->id_number);
 }
 
 void process_armageddon(void)
@@ -250,13 +250,12 @@ void process_disease(struct Thing *creatng)
 void lightning_modify_palette(struct Thing *thing)
 {
     struct PlayerInfo* myplyr = get_my_player();
-    struct UserState* ustate = get_user_state(get_local_user());
     struct Camera* camera = get_local_active_camera(myplyr);
 
     if (thing->health == 0)
     {
       PaletteSetUserPalette(get_local_user(), engine_palette);
-      ustate->additional_flags &= ~UsrAF_LightningPaletteIsActive;
+      local_state.lightning_palette_active = false;
       return;
     }
     if (camera == NULL)
@@ -266,24 +265,24 @@ void lightning_modify_palette(struct Thing *thing)
     }
     if (((thing->health % 8) != 7) && (thing->health != 1) && (UNSYNC_RANDOM(4) != 0))
     {
-        if ((ustate->additional_flags & UsrAF_LightningPaletteIsActive) != 0)
+        if (local_state.lightning_palette_active)
         {
             if (get_chessboard_distance(&camera->mappos, &thing->mappos) < 11520)
             {
                 PaletteSetUserPalette(get_local_user(), engine_palette);
-                ustate->additional_flags &= ~UsrAF_LightningPaletteIsActive;
+                local_state.lightning_palette_active = false;
             }
         }
         return;
     }
     if (get_local_view_type(myplyr) != PVT_MapScreen)
     {
-        if ((ustate->additional_flags & UsrAF_LightningPaletteIsActive) == 0)
+        if (!local_state.lightning_palette_active)
         {
                         if (get_chessboard_distance(&camera->mappos, &thing->mappos) < 11520)
             {
               PaletteSetUserPalette(get_local_user(), lightning_palette);
-              ustate->additional_flags |= UsrAF_LightningPaletteIsActive;
+              local_state.lightning_palette_active = true;
             }
         }
     }

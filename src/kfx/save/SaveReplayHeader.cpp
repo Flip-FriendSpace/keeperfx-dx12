@@ -46,20 +46,23 @@ static enum SaveResult build_replay_snapshot(const CatalogueEntry *centry, SaveB
 }
 
 enum SaveResult SaveManager::WriteReplayHeader(TbFileHandle file, const CatalogueEntry *centry,
-    const PacketSaveHead *phead, bool with_snapshot, SaveError *err)
+    const PacketSaveHead *phead, bool with_snapshot, const IntralevelData *ilvl, SaveError *err)
 {
     SaveBufferOwner schema_buffer;
     SaveBufferOwner meta;
     SaveBufferOwner phdr;
+    SaveBufferOwner ilvlbuf;
     SaveBufferOwner savebuf;
     SaveBufferOwner out;
-    const SaveStructDesc *roots[3] = {
-        &save_desc_CatalogueEntry, &save_desc_PacketSaveHead, &save_desc_Packet };
-    enum SaveResult result = save_schema_encode(&schema_buffer, roots, 3u, SVM_Save, err);
+    const SaveStructDesc *roots[4] = {
+        &save_desc_CatalogueEntry, &save_desc_PacketSaveHead, &save_desc_Packet, &save_desc_IntralevelData };
+    enum SaveResult result = save_schema_encode(&schema_buffer, roots, 4u, SVM_Save, err);
     if (result == SVR_Ok)
         result = save_encode_record(&meta, &save_desc_CatalogueEntry, centry, SVM_Save, err);
     if (result == SVR_Ok)
         result = save_encode_record(&phdr, &save_desc_PacketSaveHead, phead, SVM_Save, err);
+    if (result == SVR_Ok)
+        result = save_encode_record(&ilvlbuf, &save_desc_IntralevelData, ilvl, SVM_Save, err);
     if ((result == SVR_Ok) && with_snapshot)
         result = build_replay_snapshot(centry, &savebuf, err);
     if (result != SVR_Ok)
@@ -74,6 +77,7 @@ enum SaveResult SaveManager::WriteReplayHeader(TbFileHandle file, const Catalogu
     add(SCID_Schema, schema_buffer, true);
     add(SCID_Meta, meta, false);
     add(SCID_PacketHead, phdr, false);
+    add(SCID_Level, ilvlbuf, true);
     if (with_snapshot)
     {
         std::unique_ptr<NavigationSnapshot, savebytes::FreeDeleter> navigation(
@@ -132,7 +136,8 @@ static enum SaveResult fail_freeing_decoder(SaveDecoder *decoder, SaveFileSchema
 }
 
 enum SaveResult SaveManager::ReadReplayHeader(TbFileHandle file, CatalogueEntry *centry, PacketSaveHead *phead,
-    ReplaySnapshotData *snapshot, SaveFileSchema *out_schema, SaveDecoder *out_dec, SaveError *err)
+    IntralevelData *ilvl, ReplaySnapshotData *snapshot, SaveFileSchema *out_schema, SaveDecoder *out_dec,
+    SaveError *err)
 {
     memset(snapshot, 0, sizeof(*snapshot));
     memset(out_schema, 0, sizeof(*out_schema));
@@ -149,6 +154,7 @@ enum SaveResult SaveManager::ReadReplayHeader(TbFileHandle file, CatalogueEntry 
     bool have_schema = false;
     bool have_meta = false;
     bool have_phdr = false;
+    bool have_ilvl = false;
     for (bool done = false; !done;)
     {
         uint32_t id = 0;
@@ -172,15 +178,20 @@ enum SaveResult SaveManager::ReadReplayHeader(TbFileHandle file, CatalogueEntry 
             break;
         case SCID_Meta:
         case SCID_PacketHead:
+        case SCID_Level:
         {
             if (!have_schema)
             {
                 SaveManager_FreeReplaySnapshot(snapshot);
                 return save_fail(err, SVR_Damaged, "replay chunk before its schema");
             }
-            const SaveStructDesc *desc = (id == SCID_Meta) ? &save_desc_CatalogueEntry : &save_desc_PacketSaveHead;
-            void *dst = (id == SCID_Meta) ? static_cast<void *>(centry) : static_cast<void *>(phead);
-            memset(dst, 0, (id == SCID_Meta) ? sizeof(*centry) : sizeof(*phead));
+            const SaveStructDesc *desc = (id == SCID_Meta) ? &save_desc_CatalogueEntry
+                : (id == SCID_PacketHead) ? &save_desc_PacketSaveHead : &save_desc_IntralevelData;
+            void *dst = (id == SCID_Meta) ? static_cast<void *>(centry)
+                : (id == SCID_PacketHead) ? static_cast<void *>(phead) : static_cast<void *>(ilvl);
+            const size_t dst_size = (id == SCID_Meta) ? sizeof(*centry)
+                : (id == SCID_PacketHead) ? sizeof(*phead) : sizeof(*ilvl);
+            memset(dst, 0, dst_size);
             uint32_t used;
             save_decoder_set_chunk_flags(out_dec, flags);
             result = save_decode_record(out_dec, desc, data.get(), len, &used, dst, err);
@@ -190,7 +201,8 @@ enum SaveResult SaveManager::ReadReplayHeader(TbFileHandle file, CatalogueEntry 
                 return fail_freeing_decoder(out_dec, out_schema, result);
             }
             if (id == SCID_Meta) have_meta = true;
-            else have_phdr = true;
+            else if (id == SCID_PacketHead) have_phdr = true;
+            else have_ilvl = true;
             break;
         }
         case SCID_Game:
@@ -215,7 +227,7 @@ enum SaveResult SaveManager::ReadReplayHeader(TbFileHandle file, CatalogueEntry 
             break;
         }
     }
-    if (!have_schema || !have_meta || !have_phdr
+    if (!have_schema || !have_meta || !have_phdr || !have_ilvl
         || ((snapshot->save_data != nullptr) != (snapshot->navigation_data != nullptr)))
     {
         save_fail(err, SVR_Damaged, "replay file is missing a required chunk");
@@ -226,16 +238,17 @@ enum SaveResult SaveManager::ReadReplayHeader(TbFileHandle file, CatalogueEntry 
 }
 /******************************************************************************/
 extern "C" enum SaveResult SaveManager_WriteReplayHeader(TbFileHandle file, const struct CatalogueEntry *centry,
-    const struct PacketSaveHead *phead, TbBool with_snapshot, struct SaveError *err)
+    const struct PacketSaveHead *phead, TbBool with_snapshot, const struct IntralevelData *ilvl,
+    struct SaveError *err)
 {
-    return SaveManager::WriteReplayHeader(file, centry, phead, with_snapshot != 0, err);
+    return SaveManager::WriteReplayHeader(file, centry, phead, with_snapshot != 0, ilvl, err);
 }
 
 extern "C" enum SaveResult SaveManager_ReadReplayHeader(TbFileHandle file, struct CatalogueEntry *centry,
-    struct PacketSaveHead *phead, struct ReplaySnapshotData *snapshot, struct SaveFileSchema *out_schema,
-    struct SaveDecoder *out_dec, struct SaveError *err)
+    struct PacketSaveHead *phead, struct IntralevelData *ilvl, struct ReplaySnapshotData *snapshot,
+    struct SaveFileSchema *out_schema, struct SaveDecoder *out_dec, struct SaveError *err)
 {
-    return SaveManager::ReadReplayHeader(file, centry, phead, snapshot, out_schema, out_dec, err);
+    return SaveManager::ReadReplayHeader(file, centry, phead, ilvl, snapshot, out_schema, out_dec, err);
 }
 
 extern "C" void SaveManager_FreeReplaySnapshot(struct ReplaySnapshotData *snapshot)

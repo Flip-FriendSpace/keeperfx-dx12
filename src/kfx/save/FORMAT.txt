@@ -98,7 +98,6 @@ CONTENTS
   CONT  Continue    continue link, campaign progress  fx1lastf.sav, progress
   REPL  Replay      a replay header, then packets     .pck
   HSCR  HighScore   high score table of a campaign
-  NCFG  NetConfig   network config
   RSYN  Resync      reserved, never written
 
   chunk ids
@@ -122,7 +121,7 @@ CONTENTS
     ILVL                                    REQ     yes
     LUA                                     -       yes   only when Lua has state
 
-  Record file (Continue, HighScore, NetConfig)
+  Record file (Continue, HighScore)
     SCHM                                    REQ     yes
     RECS                                    REQ     yes
 
@@ -420,13 +419,20 @@ CONTENTS
 --------------------------------------------------------------------------------
   header   kind REPL
   chunks   in this order
-    SCHM   REQ  zlib   roots: CatalogueEntry, PacketSaveHead, Packet,
+    SCHM   REQ  zlib   roots: CatalogueEntry, PacketSaveHead, Packet, IntralevelData,
                               and Game when the file has GAME
     META   REQ  raw    CatalogueEntry
     PHDR   REQ  raw    PacketSaveHead
+    ILVL   REQ  zlib   the interlevel state at the start of the replay
     GAME   REQ  zlib   optional, the game at the start of the replay
+    RSNP   REQ  raw    optional, a whole Save file (4) for a replay started mid-level
+    RNAV   REQ  raw    with RSNP, the navigation graph as struct NavigationSnapshot
     TURN   REQ  raw    raw_len 0, stored_len 0
   Everything after TURN belongs to the replay codec and is not described here.
+
+  This fork writes RSNP and RNAV instead of GAME, and refuses a replay with GAME.
+  RNAV is a raw struct, so such a replay plays only on the architecture recorded
+  in PacketSaveHead (PSHF_64Bit).
 
 
 13  LIMITS

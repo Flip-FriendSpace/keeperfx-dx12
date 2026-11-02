@@ -15,7 +15,6 @@
 #include "kfx/save/core/save_codec.h"
 #include "kfx/save/core/save_schema.h"
 
-struct ConfigInfo;
 struct HighScore;
 struct IntralevelData;
 struct GameCampaign;
@@ -62,10 +61,6 @@ int SaveManager_CampaignHasProgress(const struct GameCampaign *campgn);
 void SaveManager_UpdateCampaignPercents(struct CampaignsList *clist);
 void SaveManager_DeleteContinueLink(void);
 
-/** Network config file (fxconfig.net). On any read failure *cfg is left untouched. */
-enum SaveResult SaveManager_ReadNetConfig(const char *fname, struct ConfigInfo *config, struct SaveError *err);
-int SaveManager_WriteNetConfig(const char *fname, const struct ConfigInfo *config);
-
 /** A campaign's high score table. The table comes back malloc'd, to be freed with free(); it is
  *  NULL when there are no entries or on any error. */
 enum SaveResult SaveManager_ReadHighScores(const char *fname, struct HighScore **table, uint32_t *count,
@@ -80,20 +75,22 @@ struct ReplaySnapshotData {
 };
 
 /** The KFXS header of a replay (.pck) file, written to and read from an open file handle. The header is
- *  followed by the streamed turn data, which stays the replay code's own. with_snapshot adds a snapshot of
- *  the running game, for a replay that starts mid-level. */
+ *  followed by the streamed turn data, which stays the replay code's own. The IntralevelData is always
+ *  stored, even for skirmishes. with_snapshot adds a snapshot of the running game, for a replay that starts
+ *  mid-level. */
 enum SaveResult SaveManager_WriteReplayHeader(TbFileHandle file, const struct CatalogueEntry *centry,
-    const struct PacketSaveHead *phead, TbBool with_snapshot, struct SaveError *err);
-/** Reads the header from fh, at the start of the file, into *centry and *phead, and the snapshot's bytes,
- *  if the file has one, into *snapshot. Nothing in the running game changes. On success fh is at the first
- *  byte of the turn stream, *snapshot must be freed with SaveManager_FreeReplaySnapshot, and *out_schema
+    const struct PacketSaveHead *phead, TbBool with_snapshot, const struct IntralevelData *ilvl,
+    struct SaveError *err);
+/** Reads the header from fh, at the start of the file, into *centry, *phead and *ilvl, and the snapshot's
+ *  bytes, if the file has one, into *snapshot. Nothing in the running game changes. On success fh is at the
+ *  first byte of the turn stream, *snapshot must be freed with SaveManager_FreeReplaySnapshot, and *out_schema
  *  and *out_dec are set up and must be kept for the per-turn decodes, then freed with
  *  save_schema_free/save_decoder_free. Nothing needs freeing on failure. */
 enum SaveResult SaveManager_ReadReplayHeader(TbFileHandle file, struct CatalogueEntry *centry,
-    struct PacketSaveHead *phead, struct ReplaySnapshotData *snapshot, struct SaveFileSchema *out_schema,
-    struct SaveDecoder *out_dec, struct SaveError *err);
+    struct PacketSaveHead *phead, struct IntralevelData *ilvl, struct ReplaySnapshotData *snapshot,
+    struct SaveFileSchema *out_schema, struct SaveDecoder *out_dec, struct SaveError *err);
 /** Validates the whole snapshot in scratch memory, then puts it into the running game. A snapshot refused by
- *  validation changes nothing. Campaign progress (intralvl) stays this session's. */
+ *  validation changes nothing. */
 enum SaveResult SaveManager_ApplyReplaySnapshot(const struct ReplaySnapshotData *snapshot,
     struct CatalogueEntry *centry, struct SaveError *err);
 void SaveManager_FreeReplaySnapshot(struct ReplaySnapshotData *snapshot);
@@ -129,15 +126,14 @@ public:
     void UpdateCampaignPercents(CampaignsList *clist);
     void DeleteContinueLink();
 
-    enum SaveResult ReadNetConfig(const char *fname, ConfigInfo *config, SaveError *err);
-    bool WriteNetConfig(const char *fname, const ConfigInfo *config);
     enum SaveResult ReadHighScores(const char *fname, HighScore **table, uint32_t *count, SaveError *err);
     bool WriteHighScores(const char *fname, const HighScore *table, uint32_t count);
 
     static enum SaveResult WriteReplayHeader(TbFileHandle file, const CatalogueEntry *centry,
-        const PacketSaveHead *phead, bool with_snapshot, SaveError *err);
+        const PacketSaveHead *phead, bool with_snapshot, const IntralevelData *ilvl, SaveError *err);
     static enum SaveResult ReadReplayHeader(TbFileHandle file, CatalogueEntry *centry, PacketSaveHead *phead,
-        ReplaySnapshotData *snapshot, SaveFileSchema *out_schema, SaveDecoder *out_dec, SaveError *err);
+        IntralevelData *ilvl, ReplaySnapshotData *snapshot, SaveFileSchema *out_schema, SaveDecoder *out_dec,
+        SaveError *err);
 
 private:
     bool EnsureSlot(long slot);

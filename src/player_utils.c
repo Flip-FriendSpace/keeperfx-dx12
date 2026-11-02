@@ -123,7 +123,18 @@ static TbBool player_belongs_in_victory_kernel(const struct PlayerInfo *player)
     return is_active_keeper(player)
         && player->id_number != game.neutral_player_num
         && (player->victory_state != VicS_LostLevel)
-        && !flag_is_set(player->allocflags, PlaF_CompCtrl);
+        && !flag_is_set(player->allocflags, PlaF_CompCtrl)
+        && !player_is_placeholder(player);
+}
+
+TbBool placeholder_has_human_ally(const struct PlayerInfo *placeholder)
+{
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++) {
+        if (player_belongs_in_victory_kernel(get_player(plyr_idx)) && players_are_mutual_allies(placeholder->id_number, plyr_idx)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // check if all undefeated human players form a "kernel"
@@ -240,12 +251,12 @@ void set_player_as_lost_level(struct PlayerInfo *player)
         gui_set_button_flashing(0, 0);
     if (get_player_view_type(player) == PVT_CreatureContrl)
     {
-        struct Thing *thing = thing_get(player->controlled_thing_idx);
+        struct Thing *thing = thing_get(get_player_user_state(player)->controlled_thing_idx);
         leave_creature_as_controller(player, thing);
     }
     else if (get_player_view_type(player) == PVT_CreaturePasngr)
     {
-        struct Thing *thing = thing_get(player->controlled_thing_idx);
+        struct Thing *thing = thing_get(get_player_user_state(player)->controlled_thing_idx);
         leave_creature_as_passenger(player, thing);
     }
     else
@@ -855,6 +866,17 @@ void init_user_state(NetUserId user, PlayerNumber player_id)
     }
 }
 
+void init_user_controls(struct UserState *ustate)
+{
+    ustate->continue_work_state = PSt_CtrlDungeon;
+    ustate->work_state = PSt_CtrlDungeon;
+    ustate->roomspace_highlight_mode = ustate->prefs[UPref_StartingHighlightMode];
+    ustate->roomspace_mode = ustate->prefs[UPref_StartingHighlightMode];
+    ustate->roomspace_width = 1;
+    ustate->roomspace_height = 1;
+    ustate->roomspace_detection_looseness = DEFAULT_USER_ROOMSPACE_DETECTION_LOOSENESS;
+}
+
 void init_local_player_state(void)
 {
     local_state.minimap_pos_x = 11;
@@ -876,13 +898,7 @@ void init_player(struct PlayerInfo *player, short no_explore)
         struct UserState *ustate = get_user_state(user);
         if (ustate->player_id != player->id_number)
             continue;
-        ustate->continue_work_state = PSt_CtrlDungeon;
-        ustate->work_state = PSt_CtrlDungeon;
-        ustate->roomspace_highlight_mode = ustate->prefs[UPref_StartingHighlightMode];
-        ustate->roomspace_mode = ustate->prefs[UPref_StartingHighlightMode];
-        ustate->roomspace_width = 1;
-        ustate->roomspace_height = 1;
-        ustate->roomspace_detection_looseness = DEFAULT_USER_ROOMSPACE_DETECTION_LOOSENESS;
+        init_user_controls(ustate);
     }
     if (is_my_player(player))
     {
@@ -922,10 +938,9 @@ void init_player(struct PlayerInfo *player, short no_explore)
         break;
     }
     init_player_cameras(player);
-    player->mp_message_text[0] = '\0';
     // By default, player is his own ally
     player->allied_players = to_flag(player->id_number);
-    player->hand_busy_until_turn = 0;
+    player->slap_cooldown_until_turn = 0;
     if (player->generate_speed == 0)
       player->generate_speed = game.conf.rules[player->id_number].rooms.default_generate_speed;
     if (is_my_player(player)) {
@@ -953,7 +968,7 @@ int32_t user_get_visibility_bounds(NetUserId user, MapCoord *x, MapCoord *y)
     case PVT_CreatureContrl:
     case PVT_CreaturePasngr:
     {
-        struct Thing *thing = thing_get(player->controlled_thing_idx);
+        struct Thing *thing = thing_get(get_user_state(user)->controlled_thing_idx);
         if (thing_exists(thing))
         {
             *x = thing->mappos.x.val;
@@ -962,7 +977,6 @@ int32_t user_get_visibility_bounds(NetUserId user, MapCoord *x, MapCoord *y)
         return default_radius;
     }
     case PVT_MapScreen:
-    case PVT_MapFadeOut:
     {
         const struct Packet *pckt = get_packet(user);
         if (packet_camera_context(pckt) == CamIV_Parchment)
@@ -1259,11 +1273,20 @@ void process_player_states(void)
         {
             if ( (ustate->work_state == PSt_CreatrInfo) || (ustate->work_state == PSt_CreatrInfoAll) )
             {
-                struct Thing* thing = thing_get(player->controlled_thing_idx);
+                struct Thing* thing = thing_get(ustate->controlled_thing_idx);
                 if (thing_exists(thing)) {
                     get_player_user_state(player)->dungeon_camera.x = thing->mappos.x.val;
                     get_player_user_state(player)->dungeon_camera.y = thing->mappos.y.val;
                     set_local_camera_destination(player);
+                }
+            }
+            else if (get_player_view_type(player) == PVT_CreatureContrl || get_player_view_type(player) == PVT_CreaturePasngr)
+            {
+                struct Thing* thing = thing_get(ustate->controlled_thing_idx);
+                if (thing_exists(thing)) {
+                    ustate->dungeon_camera.x = thing->mappos.x.val;
+                    ustate->dungeon_camera.y = thing->mappos.y.val;
+                    ustate->dungeon_camera.yaw[false] = thing->move_angle_xy;
                 }
             }
         }

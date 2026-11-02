@@ -43,11 +43,11 @@
 #include "sound_manager.h"
 #include "net_exchange_gameplay.h"
 #include "replay.h"
-#include "replay_rewind.h"
 #include "game_merge.h"
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
 #include "kjm_input.h"
+#include "lens_api.h"
 #include "config_sounds.h"
 #include "lvl_filesdk1.h"
 #include "lua_base.h"
@@ -167,9 +167,6 @@ static void init_keepers_map_exploration(void)
 
 static TbBool init_level(void)
 {
-    if (network_is_active() && net_join_role == NetRole_Player) {
-        net_lobby_set_phase(NetPhase_Loading);
-    }
     SYNCDBG(6,"Starting");
     struct IntralevelData transfer_mem;
     //memcpy(&transfer_mem,&game.intralvl.transferred_creature,sizeof(struct CreatureStorage));
@@ -188,6 +185,7 @@ static TbBool init_level(void)
     // above. No-op on software / before GL is active.
     RendererClearKeeperSpriteAtlas();
     lens_mode = 0;
+    reset_lens_failures();
     setup_heap_manager();
 
     wait_for_all_players();
@@ -354,9 +352,9 @@ static TbBool restore_packet_snapshot(void)
     local_state.view_type = PVT_None;
     local_state.palette_fade_step_pain = 0;
     local_state.palette_fade_step_possession = 0;
-    reinitialise_eye_lens(game.applied_lens_type);
+    local_state.lens_palette = 0;
     struct PlayerInfo *player = get_my_player();
-    PaletteSetUserPalette(get_local_user(), local_state.lens_palette ? local_state.lens_palette : engine_palette);
+    PaletteSetUserPalette(get_local_user(), engine_palette);
     init_local_cameras(player);
     return true;
 }
@@ -365,7 +363,6 @@ TbBool startup_saved_packet_game(void)
 {
     struct CatalogueEntry centry;
     clear_packets();
-    replay_rewind_reset();
     if (!open_packet_file_for_load(replay.fname,&centry))
     {
         ERRORLOG("Cannot replay \"%s\": unreadable, or written by an incompatible version",
@@ -484,6 +481,7 @@ void startup_network_game(CoroutineLoop *context, TbBool local)
     {
         game.game_kind = GKind_MultiGame;
         if (!init_players_network_game()) {
+            clear_flag(game.operation_flags, GOF_SingleLevel);
             coroutine_clear(context, true);
             return;
         }
@@ -507,9 +505,6 @@ static CoroutineLoopState startup_network_game_tail(CoroutineLoop *context)
         return CLS_CONTINUE;
     }
     TbBool ShouldAssignCpuKeepers = coroutine_args(context)[0];
-    if (game.game_kind == GKind_MultiGame) {
-        setup_alliances();
-    }
     if (fe_computer_players || ShouldAssignCpuKeepers)
     {
         SYNCDBG(5,"Setting up uninitialized players as computer players");
@@ -518,6 +513,9 @@ static CoroutineLoopState startup_network_game_tail(CoroutineLoop *context)
     {
         SYNCDBG(5,"Setting up uninitialized players as zombie players");
         setup_zombie_players();
+    }
+    if (game.game_kind == GKind_MultiGame) {
+        setup_alliances();
     }
     post_init_level();
     post_init_players();

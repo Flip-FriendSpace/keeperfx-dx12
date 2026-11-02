@@ -78,7 +78,6 @@ extern void startup_network_game(CoroutineLoop *context, TbBool local);
 extern void faststartup_network_game(CoroutineLoop *context);
 extern CoroutineLoopState set_not_has_quit(CoroutineLoop *context);
 void update_frontend_delta_time();
-void update_gameplay_delta_time();
 bool use_delta_time();
 
 /******************************************************************************/
@@ -361,22 +360,12 @@ static void force_application_close()
 {
     extern int frontend_menu_state;
 
-    if (frontend_menu_state == 0)
-    {
-        struct PlayerInfo* player = get_my_player();
-        if (player != INVALID_PLAYER)
-        {
-            set_players_packet_action(player, PckA_ForceApplicationClose, 0, 0, 0, 0);
-        }
-        else
-        {
-            exit_keeper = 1;
-        }
+    TbBool network_paused = network_is_active() && flag_is_set(game.operation_flags, GOF_Paused);
+    if ((frontend_menu_state == 0) && (get_my_player() != INVALID_PLAYER) && !network_paused) {
+        set_players_packet_action(get_my_player(), PckA_ForceApplicationClose, 0, 0, 0, 0);
+        return;
     }
-    else
-    {
-        exit_keeper = 1;
-    }
+    exit_keeper = 1;
 }
 
 // Keep presses received during rendering or between logic turns until input()
@@ -582,7 +571,9 @@ void gameplay_loop_draw()
 
 void network_yield_waiting_gameplay_packets()
 {
-    poll_gameplay_inputs();
+    if (!poll_gameplay_inputs()) {
+        exit_keeper = 1;
+    }
     gameplay_loop_draw();
     update_gameplay_delta_time();
     // Reduce game speed during lag spikes.
@@ -1040,7 +1031,7 @@ static TbBool wait_at_frontend(void)
         break; // end while
       }
 
-      if ((!finish_menu) && (LbIsActive()))
+      if ((!finish_menu) && (LbIsActive() || !freeze_game_on_focus_lost()))
       {
         if (frontend_draw() != 2) {
             RendererPresentFrame();
@@ -1182,7 +1173,7 @@ void game_loop(void)
           for (int i = 0; i < PLAYERS_COUNT; i++) {
               struct PlayerInfo *player = get_player(i);
               if (player_exists(player) && ((player->allocflags & PlaF_CompCtrl) == 0) && !player_skips_heart_zoom(player)) {
-                  set_player_instance(player, PI_HeartZoom, 0);
+                  set_user_instance(get_player_primary_user(player), PI_HeartZoom, 0);
               }
           }
           if (player_skips_heart_zoom(get_my_player()) && !replay.load_enable) {

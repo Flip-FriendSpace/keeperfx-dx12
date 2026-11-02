@@ -149,7 +149,7 @@ struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *playe
         toggle_status_menu(0);
         turn_off_roaming_menus();
     }
-    set_selected_creature(player, thing);
+    set_selected_creature(get_player_user_state(player), thing);
     thing->alloc_flags |= TAlF_IsControlled;
     thing->rendering_flags |= TRF_Invisible;
     struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
@@ -175,10 +175,10 @@ struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *playe
     {
         ERRORLOG("Cannot allocate light to new hero");
     }
-    if ((thing->class_id == TCls_Creature) && is_my_player(player)) {
+    if (thing->class_id == TCls_Creature) {
         struct CreatureModelConfig* crconf = creature_stats_get_from_thing(thing);
         SYNCDBG(7,"Possessing creature '%s', eye_effect=%d", crconf->name, crconf->eye_effect);
-        setup_eye_lens(crconf->eye_effect);
+        set_player_lens(player->id_number, crconf->eye_effect);
     }
     return thing;
 }

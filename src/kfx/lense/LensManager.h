@@ -104,6 +104,7 @@ public:
     const char* GetActiveCustomLensName() const;
     TbBool RequiresIndexedSource() const { return m_initialized && !m_active_custom_lens.empty(); }
     uint64_t CustomDrawAttempts() const { return m_custom_draw_attempts; }
+    void ClearCustomLenses();
     
     // State query
     TbBool IsReady() const { return m_initialized; }

@@ -29,6 +29,7 @@ extern "C" {
 #endif
 
 #define PACKETS_COUNT           9
+#define NET_LEAVE_TIMED_OUT     1
 
 /******************************************************************************/
 #pragma pack(1)
@@ -53,6 +54,8 @@ TbBool network_user_active(NetUserId);
 const char *network_user_name(NetUserId);
 TbBool network_human_contenders_remain(void);
 void resolve_placeholders(void);
+void hand_waiting_placeholders_to_ai(void);
+void seat_network_user(NetUserId user, PlayerNumber plyr_idx, const UserPreferences seat_prefs);
 void process_user_leave_game_packet(NetUserId user);
 void process_disconnected_network_players(void);
 TbBool user_present(NetUserId user);
@@ -63,6 +66,7 @@ void apply_user_preferences(NetUserId user, const UserPreferences prefs, unsigne
 void apply_local_user_preferences(NetUserId user, unsigned char flags);
 void apply_user_start_tendencies(struct PlayerInfo *player);
 TbBool user_cheats_allowed(NetUserId user);
+TbBool computer_assistant_allowed(void);
 TbBool game_censorship_enabled(void);
 void apply_recorded_network_stop(void);
 TbBool get_startup_user_preferences(NetUserId user, UserPreferences prefs);

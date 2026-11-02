@@ -26,6 +26,7 @@
 #include "bflib_sprite.h"
 #include "config_campaigns.h"
 #include "net_game.h"
+#include "front_network.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -87,18 +88,19 @@ enum NetAction {
     NetAct_Limping            = 0x10,
     NetAct_HostStartLevel     = 0x18,
     NetAct_OpenLandView       = 0x20,
-    NetAct_SetAlliance        = 0x28,
-    NetAct_SetPlayerColour      = 0x30,
+    NetAct_SetPlayerSetting   = 0x30,
     NetAct_SetComputerPlayers = 0x38,
 };
 
 struct ScreenPacket {
   unsigned char networkstatus_flags;
   char frontend_alliances;
-  short stored_data1; // Can contain: hand_position_x or other frontend-specific temporary data
-  short stored_data2; // Can contain: hand_position_y or other frontend-specific temporary data
+  short stored_data1; // Can contain: hand_position_x
+  short stored_data2; // Can contain: hand_position_y
   short action_par1;
   unsigned char action_par2;
+  int8_t player_settings[NetPlayerSetting_Count][MAX_NET_USERS];
+  int8_t max_players;
 };
 
 static inline unsigned char screen_packet_action(const struct ScreenPacket *nspck) {
@@ -107,6 +109,10 @@ static inline unsigned char screen_packet_action(const struct ScreenPacket *nspc
 
 static inline void screen_packet_set_action(struct ScreenPacket *nspck, unsigned char action) {
     nspck->networkstatus_flags = (nspck->networkstatus_flags & NetStat_NonActionMask) | action;
+}
+
+static inline TbBool is_connected_screen_packet(const struct ScreenPacket *nspck) {
+    return (nspck->networkstatus_flags & NetStat_PlayerConnected) != 0;
 }
 
 /******************************************************************************/
@@ -145,6 +151,7 @@ void set_level_name_text(LevelNumber lvnum, const char *lv_name);
 void draw_map_level_descriptions(void);
 TbBool init_netfont_palette_remap(char* land_view);
 void pop_palette_remap(void);
+void make_palette_remap(unsigned char *remap, const unsigned char *source_palette, const unsigned char *destination_palette);
 
 TbBool initialize_description_speech(void);
 TbBool play_current_description_speech(short play_good);

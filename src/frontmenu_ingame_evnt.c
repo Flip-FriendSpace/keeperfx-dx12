@@ -42,8 +42,10 @@
 #include "net_input_lag.h"
 #include "net_game.h"
 #include "net_spectator.h"
+#include "observer.h"
 #include "frontend.h"
 #include "front_input.h"
+#include "kjm_input.h"
 #include "vidfade.h"
 #include "game_legacy.h"
 #include "map_events.h"
@@ -51,10 +53,13 @@
 #include "sprites.h"
 #include "timer.h"
 #include "replay_rewind.h"
+#include "vidmode.h"
 
 #include "keeperfx.hpp"
 #include "post_inc.h"
 
+#define HIGHLIGHTED_TEXT_FADE_LEVEL 48
+#define PAUSED_MESSAGE_HOVER_PADDING_HEIGHTS 3
 extern int32_t multiplayer_speed_adjustment_ns;
 
 unsigned long TimerTurns = 0;
@@ -95,6 +100,9 @@ void gui_kill_event(struct GuiButton *gbtn)
     struct PlayerInfo* player = get_my_player();
     EventIndex evidx = get_my_event_button_index(gbtn->content.lval);
     turn_off_event_box_if_necessary(player->id_number, evidx);
+    if (replay.load_enable || (network_is_active() && net_join_role == NetRole_Spectator)) {
+        return;
+    }
     if (game.event[evidx].kind != EvKind_Objective) {
         my_event_button_state[evidx] |= EvBtnS_Hidden;
         set_players_packet_action(player, PckA_EventBoxTurnOff, evidx, 0, 0, 0);
@@ -156,7 +164,7 @@ void gui_get_creature_in_battle(struct GuiButton *gbtn)
     if (battle_creature_over <= 0) {
         return;
     }
-    PowerKind pwkind = get_local_user_state()->chosen_power_kind;
+    PowerKind pwkind = get_local_user_state_prediction()->chosen_power_kind;
     struct Thing* thing = thing_get(battle_creature_over);
     if (!thing_exists(thing)) {
         WARNLOG("Nonexisting thing %d in battle",(int)battle_creature_over);
@@ -550,7 +558,15 @@ void draw_timer(void)
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 
-static void draw_bottom_right_text(const char *text, int line, TbBool player_icon)
+struct TextBoxLayout {
+    int32_t scr_x;
+    int32_t scr_y;
+    int32_t width;
+    int32_t height;
+    int32_t icon_scale;
+};
+
+static void get_bottom_right_text_layout(const char *text, int line, TbBool player_icon, struct TextBoxLayout *layout)
 {
     LbTextSetFont(winfont);
     int textLength = strlen(text);
@@ -559,27 +575,34 @@ static void draw_bottom_right_text(const char *text, int line, TbBool player_ico
         textCharWidth += LbTextCharWidth(text[i]);
     }
 
-    int32_t width = textCharWidth * units_per_pixel / 16;
-    int32_t height = LbTextLineHeight() * units_per_pixel / 16 + (LbTextLineHeight() * units_per_pixel / 16) / 2;
+    layout->width = textCharWidth * units_per_pixel / 16;
+    layout->height = LbTextLineHeight() * units_per_pixel / 16 + (LbTextLineHeight() * units_per_pixel / 16) / 2;
     if (MyScreenHeight < 400) {
-        height *= 2;
-        width *= 2;
+        layout->height *= 2;
+        layout->width *= 2;
         if ((dbc_initialized && dbc_enabled) && (game.timer_real)) {
-            width += (width / 8);
+            layout->width += (layout->width / 8);
         }
     }
-    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
-    int32_t scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
-    int32_t icon_scale = 0;
+    layout->scr_x = MyScreenWidth - layout->width - 16 * units_per_pixel / 16;
+    layout->icon_scale = 0;
     if (player_icon) {
         const struct TbSprite *icon = get_panel_sprite(GPS_plyrsym_symbol_room_red_std_a);
-        icon_scale = calculate_relative_upp(22 * units_per_pixel / 16, 16, icon->SHeight);
-        scr_x -= icon->SWidth * icon_scale / 16 + 4 * units_per_pixel / 16;
+        layout->icon_scale = calculate_relative_upp(22 * units_per_pixel / 16, 16, icon->SHeight);
+        layout->scr_x -= icon->SWidth * layout->icon_scale / 16 + 4 * units_per_pixel / 16;
     }
-    int32_t scr_y = MyScreenHeight - (line + 1) * height - 16 * units_per_pixel / 16;
+    layout->scr_y = MyScreenHeight - (line + 1) * layout->height - 16 * units_per_pixel / 16;
+}
 
-    LbTextSetWindow(scr_x, scr_y, width, height);
-    //draw_slab64k(scr_x, scr_y, units_per_pixel, width, height);
+static void draw_bottom_right_text(const char *text, const struct TextBoxLayout *layout, TbBool highlighted)
+{
+    LbTextSetFont(winfont);
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
+    if (highlighted) {
+        LbTextSetRemap(&pixmap.fade_tables[HIGHLIGHTED_TEXT_FADE_LEVEL * PALETTE_COLORS]);
+    }
+    LbTextSetWindow(layout->scr_x, layout->scr_y, layout->width, layout->height);
+    //draw_slab64k(layout->scr_x, layout->scr_y, units_per_pixel, layout->width, layout->height);
     int tx_units_per_px;
     int y;
     if ((MyScreenHeight < 400) && (dbc_initialized && dbc_enabled)) {
@@ -587,15 +610,16 @@ static void draw_bottom_right_text(const char *text, int line, TbBool player_ico
         y = 0;
     } else if ((MyScreenWidth > 1280) && (dbc_initialized && dbc_enabled)) {
         tx_units_per_px = scale_ui_value(16 - (MyScreenWidth / 640));
-        y = height / 4;
+        y = layout->height / 4;
     } else {
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
     }
-    draw_counter_text_scaled(0, y, tx_units_per_px, text, width);
-    if (player_icon) {
-        draw_gui_panel_sprite_left_player(scr_x + width + 4 * units_per_pixel / 16,
-            scr_y + y, icon_scale, GPS_plyrsym_symbol_room_red_std_a, my_player_number);
+    draw_counter_text_scaled(0, y, tx_units_per_px, text, layout->width);
+    LbTextSetRemap(NULL);
+    if (layout->icon_scale != 0) {
+        draw_gui_panel_sprite_left_player(layout->scr_x + layout->width + 4 * units_per_pixel / 16,
+            layout->scr_y + y, layout->icon_scale, GPS_plyrsym_symbol_room_red_std_a, my_player_number);
     }
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
@@ -603,13 +627,9 @@ static void draw_bottom_right_text(const char *text, int line, TbBool player_ico
 // name of user to display while watching a game
 static const char *get_displayed_user_name(void)
 {
+    const NetUserId watched = observer_get_watched_user();
     if (network_is_active() && network_user_is_spectator(netstate.my_id)) {
-        for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
-            if (get_net_user_player_number(user) == my_player_number) {
-                return netstate.users[user].name;
-            }
-        }
-        return NULL;
+        return watched >= 0 ? netstate.users[watched].name : NULL;
     }
     if (!replay.load_enable) {
         return NULL;
@@ -619,7 +639,7 @@ static const char *get_displayed_user_name(void)
         if (replay.head.user_players[user] >= 0)
             users++;
     }
-    const NetUserId user = get_local_user();
+    const NetUserId user = observer_is_active() ? watched : get_local_user();
     if ((users < 1) || (user < 0) || (user >= MAX_NET_USERS))
         return NULL;
     return replay.head.user_names[user];
@@ -630,29 +650,125 @@ void draw_gameturn_timer(void)
     char text[32];
     if (!local_state.rewinding || !replay_rewind_at_limit() || ((get_time_tick_ns() / 250000000) % 2 == 0)) {
         snprintf(text, sizeof(text), "%sGameTurn %u", local_state.rewinding ? "< " : "", get_gameturn());
-        draw_bottom_right_text(text, 0, false);
+        struct TextBoxLayout layout;
+        get_bottom_right_text_layout(text, 0, false, &layout);
+        draw_bottom_right_text(text, &layout, false);
     }
+}
+
+static TbBool get_watched_player_name_layout(char *text, size_t text_size, struct TextBoxLayout *layout)
+{
+    const char *name = get_displayed_user_name();
+    if (name == NULL && !(replay.load_enable && is_observer_camera_active())) {
+        return false;
+    }
+    const char *marker = "";
+    if (is_observer_camera_active()) {
+        marker = "*";
+    }
+    if (name == NULL) {
+        name = "";
+    }
+    snprintf(text, text_size, "%s%.*s", marker, (int32_t)sizeof(replay.head.user_names[0]), name);
+    int32_t line = 0;
+    if (gameturn_timer_enabled()) {
+        line = 1;
+    }
+    get_bottom_right_text_layout(text, line, true, layout);
+    return true;
+}
+
+static TbBool mouse_is_over_padded_area(int32_t x, int32_t y, int32_t width, int32_t height, int32_t padding)
+{
+    int32_t mouse_x = GetMouseX();
+    int32_t mouse_y = GetMouseY();
+    return mouse_x >= x - padding && mouse_x < x + width + padding && mouse_y >= y - padding / 2 && mouse_y < y + height + padding / 2;
+}
+
+static TbBool mouse_is_over_bottom_right_text(const struct TextBoxLayout *layout)
+{
+    return mouse_is_over_padded_area(layout->scr_x, layout->scr_y, MyScreenWidth - layout->scr_x, MyScreenHeight - layout->scr_y, layout->height);
+}
+
+TbBool mouse_is_over_watched_player_name(void)
+{
+    char text[sizeof(netstate.users[0].name) + 2];
+    struct TextBoxLayout layout;
+    return get_watched_player_name_layout(text, sizeof(text), &layout) && mouse_is_over_bottom_right_text(&layout);
 }
 
 void draw_watched_player_name(void)
 {
     char text[sizeof(netstate.users[0].name) + 2];
-    const char *name = get_displayed_user_name();
-    if (name != NULL || (replay.load_enable && is_observer_camera_active())) {
-        const char *marker = "";
-        if (is_observer_camera_active()) {
-            marker = "*";
-        }
-        if (name == NULL) {
-            name = "";
-        }
-        snprintf(text, sizeof(text), "%s%.*s", marker, (int32_t)sizeof(replay.head.user_names[0]), name);
-        int32_t line = 0;
-        if (gameturn_timer_enabled()) {
-            line = 1;
-        }
-        draw_bottom_right_text(text, line, true);
+    struct TextBoxLayout layout;
+    if (get_watched_player_name_layout(text, sizeof(text), &layout)) {
+        draw_bottom_right_text(text, &layout, mouse_is_over_bottom_right_text(&layout));
     }
+}
+
+static TbBool get_paused_message_layout(struct TextBoxLayout *layout)
+{
+    if (((game.operation_flags & GOF_Paused) == 0) || ((game.operation_flags & GOF_WorldInfluence) != 0) || unpausing_in_progress) {
+        return false;
+    }
+    LbTextSetFont(winfont);
+    layout->width = LbTextStringWidth(get_string(GUIStr_PausedMsg)) * units_per_pixel / 16 + 2 * (LbTextCharWidth(' ') * units_per_pixel / 16);
+    layout->height = LbTextLineHeight() * units_per_pixel / 16;
+    if (get_local_view_type(get_my_player()) != PVT_MapScreen) {
+        layout->scr_x = local_state.engine_window_x + (MyScreenWidth - layout->width - local_state.engine_window_x) / 2;
+    } else {
+        layout->scr_x = (MyScreenWidth - layout->width) / 2;
+    }
+    layout->scr_y = 16 * units_per_pixel / 16;
+    layout->icon_scale = 0;
+    if (MyScreenHeight < 400) {
+        layout->width *= 2;
+        layout->height *= 3;
+    }
+    return true;
+}
+
+static TbBool mouse_is_over_paused_message_layout(const struct TextBoxLayout *layout)
+{
+    if (observer_is_active() || (get_my_player()->victory_state == VicS_LostLevel)) {
+        return false;
+    }
+    int32_t padding = PAUSED_MESSAGE_HOVER_PADDING_HEIGHTS * LbTextLineHeight() * units_per_pixel / 16;
+    return mouse_is_over_padded_area(layout->scr_x, 0, layout->width, layout->scr_y + layout->height, padding);
+}
+
+TbBool mouse_is_over_paused_message(void)
+{
+    struct TextBoxLayout layout;
+    return get_paused_message_layout(&layout) && mouse_is_over_paused_message_layout(&layout);
+}
+
+TbBool mouse_is_over_clickable_hud_text(void)
+{
+    return mouse_is_over_paused_message() || mouse_is_over_watched_player_name();
+}
+
+void draw_paused_message(int tx_units_per_px)
+{
+    struct TextBoxLayout layout;
+    if (!get_paused_message_layout(&layout)) {
+        return;
+    }
+    int32_t text_x = layout.scr_x;
+    int32_t text_width = layout.width;
+    if ((MyScreenHeight < 400) && (dbc_initialized && dbc_enabled)) {
+        text_x -= 12;
+        text_width += 32;
+    }
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
+    LbTextSetWindow(text_x, layout.scr_y, text_width, layout.height);
+    draw_slab64k(layout.scr_x, layout.scr_y, units_per_pixel, layout.width, layout.height);
+    if (mouse_is_over_paused_message_layout(&layout)) {
+        LbTextSetRemap(&pixmap.fade_tables[HIGHLIGHTED_TEXT_FADE_LEVEL * PALETTE_COLORS]);
+    }
+    LbTextDrawResized(0, 0, tx_units_per_px, get_string(GUIStr_PausedMsg));
+    LbTextSetRemap(NULL);
+    LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 
 TbBool timer_enabled(void)
@@ -1106,7 +1222,9 @@ void draw_network_stats()
     LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Half ping: %ums", half_ping);
     LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
-    if (input_lag_stats.target != game.input_lag_turns) {
+    if (network_user_is_spectator(netstate.my_id)) {
+        snprintf(text, sizeof(text), "Input lag: N/A");
+    } else if (input_lag_stats.target != game.input_lag_turns) {
         snprintf(text, sizeof(text), "Input lag: %d turns (%dms) -> %d", game.input_lag_turns, input_lag_ms, input_lag_stats.target);
     } else {
         snprintf(text, sizeof(text), "Input lag: %d turns (%dms)", game.input_lag_turns, input_lag_ms);
