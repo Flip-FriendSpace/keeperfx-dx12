@@ -105,6 +105,18 @@ The preview launcher creates `keeperfx-dx12-preview.cfg` from the normal configu
 
 Preview launches disable inherited diagnostic controls and DX12 validation. Each writes a unique backend-named log under `runtime/keeperfx-x64/preview-logs/`; an existing default log is archived before native logging removes it. The fallback restarts the same executable with OpenGL. Close the current process first; fallback cannot recover unsaved progress.
 
+## Interrupted sessions
+
+Build and config sync refuse to touch a workspace while a play session, installation or live test holds it. If one of those was killed, its lock stays behind until it is recovered:
+
+| Interrupted | Recover with |
+| --- | --- |
+| Installed remaster session | `remaster/play-remaster.ps1 -WorkspacePath <workspace> -Recover` |
+| Remaster installation | `py -3 remaster/install.py --runtime <runtime> --recover` |
+| Live test | `restore-test-session.ps1 -WorkspacePath <workspace>` |
+
+Config sync only seeds `mods/load_order.cfg` in a new runtime. An existing mod order is never overwritten.
+
 ## Checks and measurements
 
 Live campaign checks require your prepared runtime and original assets. They temporarily enable the loopback API for their own session:

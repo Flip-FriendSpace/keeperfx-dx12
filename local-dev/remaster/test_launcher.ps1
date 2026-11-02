@@ -58,6 +58,25 @@ Replace-OwnedFile $replacement $path $after
 Check ((Hash $path) -eq $after) 'Activation failed.'
 Restore-Journal $journal
 Check ((Hash $path) -eq $before) 'Restoration failed.'
+# Each restore stands alone: an edited mod order is kept, and a changed file does not stop the others.
+$orderFile=Join-Path $runtime 'mods/load_order.cfg';$other=Join-Path $runtime 'data/other.dat'
+$orderSession=Join-Path $runtime 'remaster/sessions/order';New-Item -ItemType Directory -Path $orderSession|Out-Null
+[IO.File]::WriteAllText($orderFile,'before');[IO.File]::WriteAllBytes($other,[byte[]](1));$orderBefore=Hash $orderFile;$otherBefore=Hash $other
+Copy-Item -LiteralPath $orderFile -Destination (Join-Path $orderSession '0');Copy-Item -LiteralPath $other -Destination (Join-Path $orderSession '1')
+[IO.File]::WriteAllText($orderFile,'session');$orderAfter=Hash $orderFile;[IO.File]::WriteAllBytes($other,[byte[]](2));$otherAfter=Hash $other
+[IO.File]::WriteAllText($orderFile,'edited during play');$orderEdited=Hash $orderFile
+$edited=@{schema=1;state='running';directory=$orderSession;entries=@(@{path='mods/load_order.cfg';backup='0';before=$orderBefore;after=$orderAfter},@{path='data/other.dat';backup='1';before=$otherBefore;after=$otherAfter})}
+Restore-Journal $edited
+Check ((Hash $orderFile) -eq $orderEdited) 'An edited mod order was overwritten.'
+Check ((Hash $other) -eq $otherBefore) 'An edited mod order stopped a later restoration.'
+Check ($edited.state -eq 'restored-with-player-edits') 'Kept mod order edit was not recorded.'
+[IO.File]::WriteAllBytes($path,[byte[]](9,9));[IO.File]::WriteAllBytes($other,[byte[]](2))
+$partial=@{schema=1;state='running';directory=$orderSession;entries=@(@{path='data/native.dat';backup='0';before=$before;after=$after},@{path='data/other.dat';backup='1';before=$otherBefore;after=$otherAfter})}
+$partialFailed=$false;try{Restore-Journal $partial}catch{$partialFailed=$_.Exception.Message -match 'data/native\.dat'}
+Check $partialFailed 'A changed session file was not reported.'
+Check ((Hash $other) -eq $otherBefore) 'A changed session file stopped a later restoration.'
+Check ($partial.state -eq 'recovery-required') 'A failed restoration was not recorded.'
+Copy-Item -LiteralPath (Join-Path $session '0') -Destination $path -Force
 $badRejected=$false
 try{Replace-OwnedFile $replacement $path ('0'*64)}catch{$badRejected=$true}
 Check $badRejected 'Bad replacement hash accepted.'

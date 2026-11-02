@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+  [string]$WorkspacePath,
   [ValidateSet('OPENGL','SOFTWARE','DX12')][string]$Renderer = 'OPENGL',
   [ValidateSet('x86','x64')][string]$Architecture = 'x64',
   [ValidateSet('3840x2160','1920x1080','640x480')][string]$Resolution = '3840x2160',
@@ -20,7 +21,8 @@ if ($TemporalUpdates -and $Renderer -ne 'DX12') { throw 'Temporal receipts requi
 if ($TerrainUpdates -and $TemporalUpdates) { throw 'Run terrain reuse and live temporal surfaces separately.' }
 if ($WindowUpdates -and $Renderer -ne 'DX12') { throw 'Window lifecycle qualification requires DX12 renderer statistics.' }
 if ($WindowUpdates -and ($TerrainUpdates -or $TemporalUpdates)) { throw 'Run window lifecycle separately from terrain and temporal updates.' }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime = Join-Path $workspace $(if ($Architecture -eq 'x64') { 'runtime/keeperfx-x64' } else { 'runtime/keeperfx' })
 $executable = Join-Path $runtime $(if ($Renderer -eq 'DX12') { 'keeperfx-dx12.exe' } else { 'keeperfx-local.exe' })
 $testSave = Join-Path $runtime 'save/fx1g9997.sav'
@@ -66,6 +68,7 @@ try {
   if ($TemporalUpdates) { $env:KFX_SCENE_LIVE_SURFACES = '1' }
   $phase = 'listener-readiness'
   $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -WindowStyle Hidden -PassThru `
+  $null = $game.Handle
     -ArgumentList "-config keeperfx-live-renderer.cfg -nointro -skipheartzoom -campaign keeporig -level $Level -nosound -alex"
   $timer = [Diagnostics.Stopwatch]::StartNew()
   while ($timer.Elapsed.TotalSeconds -lt 30) {
@@ -93,6 +96,7 @@ try {
   }
   if ($Reloads -gt 0) { $arguments += "--reloads=$Reloads", ('"--runtime=' + $runtime + '"') }
   $client = Start-Process -FilePath $nodeExecutable -ArgumentList $arguments -WindowStyle Hidden -PassThru `
+  $null = $client.Handle
     -RedirectStandardOutput (Join-Path $output 'client.stdout.log') -RedirectStandardError (Join-Path $output 'client.stderr.log')
   $timer.Restart()
   $clientLimit = 120 + $Reloads * 60 + $(if ($TerrainUpdates) { 900 } else { 0 }) + $(if ($TemporalUpdates) { 600 } else { 0 }) + $(if ($WindowUpdates) { 180 } else { 0 })

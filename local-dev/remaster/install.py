@@ -140,6 +140,24 @@ def assemble(game, stage, powershell):
          'decoded_bytes': sum(p.stat().st_size for p in changes.values())})
     return profile, changes
 
+def roll_back(game, journal, backup, stamp, temporary_files):
+    for entry in reversed(journal['entries']):
+        destination = target(game, entry['path'])
+        actual = sha(destination) if destination.exists() else None
+        if actual == entry['before']: continue
+        if actual != entry['after']: raise RuntimeError('Recovery needs unchanged files; backup retained: ' + str(backup))
+        if entry['before'] is None: destination.unlink()
+        else:
+            saved = backup / entry['backup']
+            if sha(saved) != entry['before']: raise RuntimeError('Backup hash mismatch; recovery retained.')
+            temporary = destination.with_name(destination.name + '.' + stamp + '.restore.tmp')
+            with temporary.open('xb') as f:
+                temporary_files.append(temporary)
+                with saved.open('rb') as s: shutil.copyfileobj(s, f)
+            if sha(temporary) != entry['before']: raise RuntimeError('Recovery copy mismatch')
+            os.replace(temporary, destination)
+    journal['state'] = 'rolled_back'
+
 def install(game, stage, powershell, verify_only=False):
     profile, changes = assemble(game, stage, powershell)
     if verify_only:
@@ -190,22 +208,7 @@ def install(game, stage, powershell, verify_only=False):
             committed.append(entry)
         journal['state'] = 'installed'
     except BaseException:
-        for entry in reversed(journal['entries']):
-            destination = target(game, entry['path'])
-            actual = sha(destination) if destination.exists() else None
-            if actual == entry['before']: continue
-            if actual != entry['after']: raise RuntimeError('Recovery needs unchanged files; backup retained: ' + str(backup))
-            if entry['before'] is None: destination.unlink()
-            else:
-                saved = backup / entry['backup']
-                if sha(saved) != entry['before']: raise RuntimeError('Backup hash mismatch; recovery retained.')
-                temporary = destination.with_name(destination.name + '.' + stamp + '.restore.tmp')
-                with temporary.open('xb') as f:
-                    temporary_files.append(temporary)
-                    with saved.open('rb') as s: shutil.copyfileobj(s, f)
-                if sha(temporary) != entry['before']: raise RuntimeError('Recovery copy mismatch')
-                os.replace(temporary, destination)
-        journal['state'] = 'rolled_back'
+        roll_back(game, journal, backup, stamp, temporary_files)
         raise
     finally:
         try:
@@ -219,6 +222,32 @@ def install(game, stage, powershell, verify_only=False):
                     temporary.unlink()
     return {'installed': True, 'selection': SELECTION, 'files': len(changes), 'changed': len(committed), 'backup': str(backup)}
 
+def recover(game, powershell):
+    """Finish the rollback of an installation that died before its own handler ran."""
+    assert_closed(powershell)
+    control = target(game, 'remaster/operation.lock', create_control=False)
+    if not control.exists(): return {'recovered': False, 'reason': 'No operation lock.'}
+    owner = control.read_text(encoding='utf-8-sig').strip()
+    if not owner.startswith('installation pid '):
+        raise ValueError('The lock belongs to a play session; run play-remaster.ps1 -Recover: ' + owner)
+    pending = []
+    backups = target(game, 'remaster/backups', create_control=False)
+    for path in backups.glob('*/journal.json') if backups.exists() else ():
+        journal = json.loads(path.read_text(encoding='utf-8-sig'))
+        if journal.get('state') == 'prepared': pending.append((path, journal))
+    if len(pending) > 1:
+        raise ValueError('More than one interrupted installation; recover by hand from: ' + ', '.join(str(p) for p, _ in pending))
+    for path, journal in pending:
+        temporary_files = []
+        try:
+            roll_back(game, journal, path.parent, uuid.uuid4().hex, temporary_files)
+        finally:
+            for temporary in temporary_files:
+                if temporary.exists(): temporary.unlink()
+        dump(path, journal)
+    control.unlink()
+    return {'recovered': True, 'rolled_back': len(pending)}
+
 def main():
     if sys.version_info < (3, 11): raise SystemExit('Python 3.11 or newer is required.')
     parser = argparse.ArgumentParser(description=__doc__)
@@ -226,8 +255,12 @@ def main():
     parser.add_argument('--powershell', default='powershell.exe')
     parser.add_argument('--verify-only', action='store_true')
     parser.add_argument('--stage-only', type=Path)
+    parser.add_argument('--recover', action='store_true', help='roll back an installation that was killed part way')
     args = parser.parse_args()
     game = args.runtime.resolve(strict=True)
+    if args.recover:
+        print(json.dumps(recover(game, args.powershell), indent=2))
+        return
     assert_closed(args.powershell)
     if args.stage_only:
         args.stage_only.mkdir(parents=True, exist_ok=False)

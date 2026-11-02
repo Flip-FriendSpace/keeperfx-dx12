@@ -121,6 +121,13 @@ try {
   }
   $smokePassed = $true
 } finally {
+  # Recorded first, as stopping the processes below would change these answers.
+  $gameExitedBeforeCleanup = $game.HasExited
+  $clientExitedBeforeCleanup = if ($client) { $client.HasExited } else { $null }
+  $gameExitCode = if ($gameExitedBeforeCleanup) { $game.ExitCode } else { $null }
+  $clientExitCode = if ($clientExitedBeforeCleanup) { $client.ExitCode } else { $null }
+  try { if ($client -and -not $client.HasExited) { Stop-Process -Id $client.Id -ErrorAction SilentlyContinue } } catch { Write-Warning $_.Exception.Message }
+  try { if (-not $game.HasExited) { Stop-Process -Id $game.Id } } catch { Write-Warning $_.Exception.Message }
   $lifecycle = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     phase = $smokePhase
@@ -129,17 +136,16 @@ try {
     gameProcessId = $game.Id
     apiOwnerVerified = $listenerReady
     apiListenerProcessId = $apiListenerProcessId
-    gameExitedBeforeCleanup = $game.HasExited
-    gameExitCode = if ($game.HasExited) { $game.ExitCode } else { $null }
-    clientExitedBeforeCleanup = if ($client) { $client.HasExited } else { $null }
-    clientExitCode = if ($client -and $client.HasExited) { $client.ExitCode } else { $null }
+    gameExitedBeforeCleanup = $gameExitedBeforeCleanup
+    gameExitCode = $gameExitCode
+    clientExitedBeforeCleanup = $clientExitedBeforeCleanup
+    clientExitCode = $clientExitCode
   }
   if ($dx12Validation) { $lifecycle.dx12Validation = $dx12Validation }
   if ($audioValidation) { $lifecycle.audioValidation = $audioValidation }
+  New-Item -ItemType Directory -Path (Join-Path $workspace 'artifacts') -Force | Out-Null
   $lifecycle | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $workspace "artifacts/smoke-$label-$Architecture-$Renderer-lifecycle.json") -Encoding utf8
-  if ($client -and -not $client.HasExited) { Stop-Process -Id $client.Id -ErrorAction SilentlyContinue }
   if ($client -and (Test-Path -LiteralPath $clientStdout)) { Get-Content -LiteralPath $clientStdout }
   if ($client -and (Test-Path -LiteralPath $clientStderr)) { Get-Content -LiteralPath $clientStderr | Write-Host }
-  if (-not $game.HasExited) { Stop-Process -Id $game.Id }
   Copy-Item -LiteralPath (Join-Path $runtime 'keeperfx.log') -Destination (Join-Path $workspace "artifacts/smoke-$label-$Architecture-$Renderer.log") -Force
 }

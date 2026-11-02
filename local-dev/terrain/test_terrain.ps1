@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-param([ValidateSet('Original','HD','Default')][string]$Variant='Default',[switch]$FullTerrain,[string]$RuntimePath,[string]$ArtifactRoot)
+param([string]$WorkspacePath,[ValidateSet('Original','HD','Default')][string]$Variant='Default',[switch]$FullTerrain,[string]$RuntimePath,[string]$ArtifactRoot)
 $ErrorActionPreference='Stop'
-$workspace=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime=if($RuntimePath){[IO.Path]::GetFullPath($RuntimePath)}else{Join-Path $workspace 'runtime/keeperfx-x64'}
 $art=if($ArtifactRoot){[IO.Path]::GetFullPath($ArtifactRoot)}else{Join-Path $workspace 'artifacts/terrain'}
 $pack=Join-Path $runtime 'fxdata/standard-hd.kfht'
@@ -17,6 +18,7 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $testConfig=Join-Path $runtime 'keeperfx-terrain-art.cfg';$loadOrder=Join-Path $runtime 'mods/load_order.cfg'
 $backups=@{}
 foreach($path in @($testConfig,$loadOrder,(Join-Path $runtime 'keeperfx.cfg'),(Join-Path $runtime 'save/settings.toml'),(Join-Path $runtime 'save/fx1lastf.sav'),(Join-Path $runtime 'keeperfx.log'),(Join-Path $env:APPDATA 'keeperfx/keeperfx/renderer_prefs.ini'))){$backups[$path]=if(Test-Path -LiteralPath $path){[IO.File]::ReadAllBytes($path)}else{$null}}
+Save-TestBackup $backups $output $workspace
 $envNames=@('KFX_HD_TERRAIN_PACK','KFX_SCENE_TEST_DIR','KFX_SCENE_REFERENCE','KFX_SCENE_LIVE_SURFACES','KFX_DX12_PERFORMANCE','KFX_RENDER_BENCHMARK_DIR','KFX_RENDER_BENCHMARK_WARMUP_SECONDS','KFX_RENDER_BENCHMARK_SAMPLE_SECONDS')
 $oldEnv=@{};foreach($key in $envNames){$oldEnv[$key]=[Environment]::GetEnvironmentVariable($key)}
 $game=$null;$client=$null;$passed=$false;$apiOwnerVerified=$false;$failure=$null;$validation=$null
@@ -31,11 +33,13 @@ try{
  $env:KFX_SCENE_TEST_DIR=$output;$env:KFX_SCENE_REFERENCE='1';$env:KFX_SCENE_LIVE_SURFACES='1'
  $executable=Join-Path $runtime 'keeperfx-dx12.exe'
  $game=Start-Process -FilePath $executable -WorkingDirectory $runtime -WindowStyle Hidden -PassThru -ArgumentList '-config keeperfx-terrain-art.cfg -nointro -skipheartzoom -campaign keeporig -level 1 -nosound -alex'
+ $null = $game.Handle
  $timer=[Diagnostics.Stopwatch]::StartNew()
  while($timer.Elapsed.TotalSeconds -lt 30){if($game.HasExited){throw 'Game exited before API readiness.'};foreach($listener in @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -EQ 5599)){if($listener.OwningProcess -ne $game.Id -or $listener.LocalAddress -ne '127.0.0.1'){throw 'API listener ownership or loopback check failed.'};$apiOwnerVerified=$true};if($apiOwnerVerified){break};Start-Sleep -Milliseconds 250}
  if(-not $apiOwnerVerified){throw 'No owned loopback API listener.'}
  $node=(Get-Command node -ErrorAction Stop).Source
  $client=Start-Process -FilePath $node -WindowStyle Hidden -PassThru -ArgumentList @(('"'+(Join-Path $PSScriptRoot 'test_terrain.mjs')+'"'),('"'+$output+'"'),($Variant),([string]$tiles.Count),([string][int][bool]$FullTerrain)) -RedirectStandardOutput (Join-Path $output 'client.stdout.log') -RedirectStandardError (Join-Path $output 'client.stderr.log')
+ $null = $client.Handle
  $timer.Restart();while(-not $client.WaitForExit(100)){if($timer.Elapsed.TotalSeconds -gt 300){throw 'Terrain fixture exceeded its time bound.'};if($game.HasExited -and -not $client.WaitForExit(1000)){throw 'Game exited before the fixture finished.'}}
  $client.WaitForExit();if($client.ExitCode -ne 0){throw 'Terrain fixture failed; inspect client.stderr.log.'}
  if(-not $game.WaitForExit(10000) -or $game.ExitCode -ne 0){throw 'Game did not exit cleanly.'}
@@ -56,6 +60,7 @@ finally{
  foreach($key in $envNames){[Environment]::SetEnvironmentVariable($key,$oldEnv[$key])}
  foreach($path in $backups.Keys){if($null -ne $backups[$path]){[IO.File]::WriteAllBytes($path,$backups[$path])}elseif(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path}}
  $restored=$true;foreach($path in $backups.Keys){if($null -eq $backups[$path]){$restored=$restored -and -not(Test-Path -LiteralPath $path)}else{$restored=$restored -and ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -eq [Convert]::ToBase64String($backups[$path]))}}
+ if($restored){Clear-TestBackup $workspace}
  @{passed=$passed;error=$failure;variant=$Variant;apiOwnerVerified=$apiOwnerVerified;settingsRestored=$restored;dx12=$validation;executableSHA256=(Get-FileHash (Join-Path $runtime 'keeperfx-dx12.exe')).Hash;packageSHA256=(Get-FileHash $pack).Hash}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $output 'run-report.json') -Encoding utf8
  Write-Output "Terrain pilot evidence: $output"
 }

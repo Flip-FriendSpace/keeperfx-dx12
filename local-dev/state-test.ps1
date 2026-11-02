@@ -29,6 +29,8 @@ $backups = @{}
 foreach ($path in @($testConfig, $normalConfig, (Join-Path $runtime 'save/settings.toml'), (Join-Path $runtime 'save/fx1lastf.sav'), (Join-Path $env:APPDATA 'keeperfx/keeperfx/renderer_prefs.ini'))) {
   $backups[$path] = if (Test-Path -LiteralPath $path) { [IO.File]::ReadAllBytes($path) } else { $null }
 }
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+Save-TestBackup $backups $output $workspace
 $config = Get-Content -LiteralPath $normalConfig -Raw
 foreach ($pair in @{API_ENABLED='TRUE'; API_PORT='5599'; AUTOMATIC_REPLAYS='OFF'; FREEZE_GAME_ON_FOCUS_LOST='OFF'; RENDERER=$Renderer}.GetEnumerator()) {
   $pattern = '(?m)^' + $pair.Key + '=.*$'
@@ -124,6 +126,7 @@ try {
       else { $restored = $restored -and ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -eq [Convert]::ToBase64String($backups[$path])) }
     } catch { $restored = $false; $cleanupErrors += $_.Exception.Message }
   }
+  if ($restored) { Clear-TestBackup $workspace }
   [ordered]@{passed=($passed -and $restored -and -not $forced);architecture=$Architecture;renderer=$Renderer;executable=$executable;binarySha256=(Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash;gameProcessId=if($game){$game.Id}else{$null};apiOwnerVerified=$ready;listeners=$listenersObserved;exitCode=if($game -and $game.HasExited){$game.ExitCode}else{$null};forced=$forced;byteExactRestoration=$restored;failure=$failure;cleanupErrors=$cleanupErrors;dx12Validation=$dx12Validation} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'verification.json') -Encoding utf8
   if (-not $restored) { throw "Runtime restoration failed: $($cleanupErrors -join '; ')" }
 }

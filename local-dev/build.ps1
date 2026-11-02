@@ -16,6 +16,8 @@ if ($DX12 -and $Architecture -ne 'x64') { throw 'The DX12 developer backend requ
 if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog,keeperfx-dx12,keeperfx-dx12-hvlog -ErrorAction SilentlyContinue) {
   throw 'Close running KeeperFX instances before rebuilding.'
 }
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+Assert-NoRuntimeSession $workspace
 & (Join-Path $PSScriptRoot 'prepare-dependencies.ps1') -Architecture $Architecture -WorkspacePath $workspace
 if ($Architecture -eq 'x64') { & (Join-Path $PSScriptRoot 'prepare-x64-runtime.ps1') -WorkspacePath $workspace }
 if ($DX12) { & (Join-Path $PSScriptRoot 'prepare-dx12-dependencies.ps1') -WorkspacePath $workspace }

@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
-param([string]$OriginalPath = 'C:\GOG Games\Dungeon Keeper Gold')
+param([string]$WorkspacePath,[string]$OriginalPath = 'C:\GOG Games\Dungeon Keeper Gold')
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime = Join-Path $workspace 'runtime/keeperfx'
 if (-not (Test-Path -LiteralPath (Join-Path $runtime 'keeperfx.exe'))) {
   throw 'Extract the official release and matching alpha into runtime/keeperfx first.'

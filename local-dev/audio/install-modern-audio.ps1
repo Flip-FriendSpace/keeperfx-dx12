@@ -80,25 +80,15 @@ if (Test-Path -LiteralPath $target) {
     }
 }
 $runtimeOrder = Join-Path $RuntimeDirectory 'mods/load_order.cfg'
-$sourceOrder = Join-Path $sourceRoot 'config/mods/load_order.cfg'
 $runtimeBefore = if (Test-Path -LiteralPath $runtimeOrder) { [IO.File]::ReadAllText($runtimeOrder) } else { '' }
-$sourceBefore = if (Test-Path -LiteralPath $sourceOrder) { [IO.File]::ReadAllText($sourceOrder) } else { $runtimeBefore }
-# A fresh checkout has only the factory audio default. Carry an existing
-# runtime's visual mod choices back into source defaults before future syncs.
-$sourceExtraMods = @($sourceBefore -split '\r?\n' | ForEach-Object {
-    ($_ -split ';', 2)[0].Trim()
-} | Where-Object { $_ -and $_ -ne $modName -and $_ -notmatch '^\[(after_base|after_campaign|after_map)\]$' })
-if ($sourceExtraMods.Count -eq 0 -and $runtimeBefore.Trim()) { $sourceBefore = $runtimeBefore }
 $runtimeEnabled = Set-ModernAudioOrder $runtimeBefore
-$sourceEnabled = Set-ModernAudioOrder $sourceBefore
-if (-not $PSCmdlet.ShouldProcess($RuntimeDirectory, 'Install 734 verified audio files and enable Modern audio in runtime and local source defaults')) { return }
+if (-not $PSCmdlet.ShouldProcess($RuntimeDirectory, 'Install 734 verified audio files and enable Modern audio in the runtime')) { return }
 if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog,keeperfx-dx12,keeperfx-dx12-hvlog -ErrorAction SilentlyContinue) {
     throw 'Close KeeperFX before installing or changing its audio defaults.'
 }
 $backup = Join-Path $workspace ('artifacts/audio-mod/default-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 New-Item -ItemType Directory -Path $backup | Out-Null
 if (Test-Path -LiteralPath $runtimeOrder) { Copy-Item -LiteralPath $runtimeOrder -Destination (Join-Path $backup 'runtime-load-order.before.cfg') }
-if (Test-Path -LiteralPath $sourceOrder) { Copy-Item -LiteralPath $sourceOrder -Destination (Join-Path $backup 'source-load-order.before.cfg') }
 $payload = @($manifest.files | ForEach-Object { $_.file }) + @('fxdata/sounds.cfg', 'sounds.cfg', 'local-audio-mod.json', 'NOTICE.md')
 if (-not $PackageDirectory.Equals([IO.Path]::GetFullPath($target), [StringComparison]::OrdinalIgnoreCase)) {
     foreach ($relative in $payload) {
@@ -113,11 +103,9 @@ foreach ($entry in $manifest.files) {
         throw "Installed checksum mismatch: $($entry.file)"
     }
 }
-New-Item -ItemType Directory -Path (Split-Path -Parent $sourceOrder) -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeOrder) -Force | Out-Null
 [IO.File]::WriteAllText($runtimeOrder, $runtimeEnabled)
-[IO.File]::WriteAllText($sourceOrder, $sourceEnabled)
-[ordered]@{package=$modName;files=734;tier='after_base';runtime=$RuntimeDirectory;sourceDefaults=$sourceOrder;originalBanksReplaced=$false} |
+[ordered]@{package=$modName;files=734;tier='after_base';runtime=$RuntimeDirectory;originalBanksReplaced=$false} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $backup 'installed.json') -Encoding utf8
 Write-Output "Modern audio is now the default for this runtime. Existing texture and creature mods are preserved."
-Write-Output "Previous mod orders: $backup"
+Write-Output "Previous mod order: $backup"

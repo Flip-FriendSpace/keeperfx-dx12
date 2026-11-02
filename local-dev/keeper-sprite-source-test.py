@@ -21,7 +21,7 @@ def function(path,name,text=None):
 engine='src/engine_render.c'; custom='src/custom_sprites.c'
 functions=[function(engine,n) for n in ['load_single_frame','get_keepersprite_source_extent']]
 functions += [function(custom,n) for n in ['sprite_rle_capacity','convert_row','compress_raw']]
-legacy_text=subprocess.run(['git','show','HEAD:src/custom_sprites.c'],cwd=root,capture_output=True,text=True,check=True).stdout
+legacy_text=subprocess.run(['git','show','cb44fe4fd^:src/custom_sprites.c'],cwd=root,capture_output=True,text=True,check=True).stdout
 legacy=function(custom,'compress_raw',legacy_text).replace('compress_raw(', 'legacy_compress_raw(',1)
 functions.append(legacy)
 shim=r'''
@@ -33,6 +33,8 @@ shim=r'''
 #include <stdbool.h>
 #include <stdio.h>
 #define KEEPSPRITE_LENGTH 9149
+static uint64_t keeper_sprite_source_stamps[KEEPSPRITE_LENGTH];
+static uint64_t next_keepersprite_publication_stamp(void) { static uint64_t serial; return ++serial; }
 #define KEEPERSPRITE_ADD_OFFSET 16384
 #define KEEPERSPRITE_ADD_NUM 16383
 #define Lb_FILE_SEEK_BEGINNING 0

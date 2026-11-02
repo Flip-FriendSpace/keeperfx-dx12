@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+  [string]$WorkspacePath,
   [ValidateSet('Exception','RemoveDevice')][string]$Mode = 'Exception',
   [ValidateRange(30, 10000)][int]$AfterSubmissions = 120,
   [ValidateRange(15, 180)][int]$TimeoutSeconds = 90
 )
 $ErrorActionPreference = 'Stop'
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $repo = Split-Path -Parent $PSScriptRoot
 $runtime = Join-Path $workspace 'runtime/keeperfx-x64'
 $executable = Join-Path $runtime 'keeperfx-dx12.exe'
@@ -104,6 +106,7 @@ try {
   Copy-Item -LiteralPath $testConfig -Destination (Join-Path $output 'launch.cfg')
   $timer = [Diagnostics.Stopwatch]::StartNew()
   $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -ArgumentList $arguments -WindowStyle Hidden -PassThru
+  $null = $game.Handle
   if (-not $game.WaitForExit($TimeoutSeconds * 1000)) { throw "Injected failure did not exit within $TimeoutSeconds seconds." }
   $game.WaitForExit()
   $elapsed = $timer.Elapsed.TotalSeconds

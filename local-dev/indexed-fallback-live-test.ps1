@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
-param([ValidateSet('x86','x64')][string]$Architecture = 'x64', [ValidateSet('OPENGL','DX12')][string]$Renderer = 'OPENGL', [string]$PythonExecutable)
+param([string]$WorkspacePath,[ValidateSet('x86','x64')][string]$Architecture = 'x64', [ValidateSet('OPENGL','DX12')][string]$Renderer = 'OPENGL', [string]$PythonExecutable)
 $ErrorActionPreference = 'Stop'
 if ($Renderer -eq 'DX12' -and $Architecture -ne 'x64') { throw 'DX12 requires the local Windows x64 executable.' }
 if ($Renderer -eq 'DX12' -and -not $PythonExecutable) {
   $PythonExecutable = (Get-Command python -ErrorAction Stop).Source
 }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot 'workspace.ps1')
+$workspace = Resolve-KeeperWorkspace $WorkspacePath
 $runtime = Join-Path $workspace $(if ($Architecture -eq 'x64') { 'runtime/keeperfx-x64' } else { 'runtime/keeperfx' })
 $executable = Join-Path $runtime $(if ($Renderer -eq 'DX12') { 'keeperfx-dx12.exe' } else { 'keeperfx-local.exe' })
 if (Get-Process -Name keeperfx,keeperfx-local,keeperfx-local-hvlog,keeperfx-dx12,keeperfx-dx12-hvlog -ErrorAction SilentlyContinue) { throw 'Close KeeperFX before this focused live check.' }
@@ -36,6 +37,7 @@ try {
   if ($Renderer -eq 'DX12') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'indexed-fallback-pixels.py') -Destination $output }
   @{executable=$executable;executableSha256=(Get-FileHash $executable).Hash;renderer=$Renderer;architecture=$Architecture;apiAddress='127.0.0.1';scope='Three live custom lens callbacks; diagnostic snapshots are last completed outputs, not screenshot pairs'} | ConvertTo-Json | Set-Content (Join-Path $output 'run.json') -Encoding utf8
   $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -WindowStyle Hidden -PassThru -ArgumentList '-config keeperfx-indexed-fallback-test.cfg -nointro -skipheartzoom -campaign keeporig -level 1 -nosound -alex'
+  $null = $game.Handle
   Write-Output "Live game PID $($game.Id); evidence $output"
   $ready = $false
   for ($attempt=0;$attempt -lt 60;$attempt++) {
@@ -51,6 +53,7 @@ try {
   $arguments = @(('"'+(Join-Path $PSScriptRoot 'indexed-fallback-live-test.mjs')+'"'),('"'+$output+'"'),('"'+(Join-Path $workspace 'artifacts/indexed-fallback-codec')+'"'),$Renderer)
   if ($Renderer -eq 'DX12') { $arguments += ('"'+$PythonExecutable+'"') }
   $client = Start-Process -FilePath (Get-Command node).Source -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $output 'client.stdout.log') -RedirectStandardError (Join-Path $output 'client.stderr.log')
+  $null = $client.Handle
   $timer = [Diagnostics.Stopwatch]::StartNew()
   while (-not $client.WaitForExit(100)) {
     if ($game.HasExited -and (-not $client.WaitForExit(1000) -or $client.ExitCode -ne 0)) { throw 'Game exited before successful callback verification.' }

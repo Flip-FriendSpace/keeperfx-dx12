@@ -71,20 +71,33 @@ function Write-Journal($Journal) {
 }
 function Restore-Journal($Journal) {
   Assert-Closed
+  # Every entry is attempted, so one changed file cannot leave the others in session state.
+  $failures=@();$kept=$false
   foreach($entry in @($Journal.entries)){
-    $path=Path-InRuntime $entry.path
-    $actual=if(Test-Path -LiteralPath $path){Hash $path}else{$null}
-    if($actual -eq $entry.before){continue}
-    if($actual -ne $entry.after){throw "A session file changed; recover from the retained journal: $($entry.path)"}
-    if($entry.before){
-      $backup=Join-Path $Journal.directory $entry.backup
-      if((Hash $backup) -ne $entry.before){throw 'Recovery backup hash mismatch.'}
-      Replace-OwnedFile $backup $path $entry.before
-      if((Hash $path) -ne $entry.before){throw 'Recovery hash mismatch.'}
-    }else{Remove-Item -LiteralPath $path}
+    try{
+      $path=Path-InRuntime $entry.path
+      $actual=if(Test-Path -LiteralPath $path){Hash $path}else{$null}
+      if($actual -eq $entry.before){continue}
+      if($actual -ne $entry.after){
+        # The in-game mod menu may rewrite the order during play. That edit is the player's.
+        if($entry.path -ceq 'mods/load_order.cfg' -and $actual){
+          $kept=$true
+          Write-Warning "The mod order was edited during play and is kept. The previous order is in $(Join-Path $Journal.directory $entry.backup)"
+          continue
+        }
+        throw "A session file changed; recover from the retained journal: $($entry.path)"
+      }
+      if($entry.before){
+        $backup=Join-Path $Journal.directory $entry.backup
+        if((Hash $backup) -ne $entry.before){throw "Recovery backup hash mismatch: $($entry.path)"}
+        Replace-OwnedFile $backup $path $entry.before
+        if((Hash $path) -ne $entry.before){throw "Recovery hash mismatch: $($entry.path)"}
+      }else{Remove-Item -LiteralPath $path}
+    }catch{$failures+=$_.Exception.Message}
   }
-  $Journal.state='restored'
+  $Journal.state=if($failures.Count){'recovery-required'}elseif($kept){'restored-with-player-edits'}else{'restored'}
   Write-Journal $Journal
+  if($failures.Count){throw ($failures -join "`n")}
 }
 $control=Path-InRuntime 'remaster'
 $lockPath=Path-InRuntime 'remaster/operation.lock'
