@@ -287,7 +287,7 @@ long destroy_door(struct Thing *doortng)
         struct PlayerInfo* player = get_player(i);
         if (!player_exists(player))
             continue;
-        struct Thing* thing = thing_get(player->controlled_thing_idx);
+        struct Thing* thing = thing_get(get_player_user_state(player)->controlled_thing_idx);
         if (thing == INVALID_THING)
             continue;
         MapCoordDelta dist = get_chessboard_distance(&pos, &thing->mappos);
@@ -804,7 +804,7 @@ void script_place_door(PlayerNumber plyridx, ThingModel doorkind, MapSlabCoord s
     MapSubtlCoord stl_y = slab_subtile_center(slb_y);
     TbBool success;
 
-    if (tag_cursor_blocks_place_door(plyridx, stl_x, stl_y))
+    if (tag_cursor_blocks_place_door(plyridx, -1, stl_x, stl_y))
     {
         if (!free)
         {

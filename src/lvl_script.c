@@ -182,7 +182,7 @@ static struct CommandDesc const *find_command_desc(const struct CommandToken *to
     int token_len = token->end - token->start;
     for (int i = 0; cmdlist_desc[i].textptr != NULL; i++)
     {
-        if ((cmdlist_desc[i].textptr[token_len] == 0) && (strncmp(cmdlist_desc[i].textptr, token->start, token_len) == 0))
+        if (((int)strlen(cmdlist_desc[i].textptr) == token_len) && (strncmp(cmdlist_desc[i].textptr, token->start, token_len) == 0))
         {
             cmnd_desc = &cmdlist_desc[i];
             break;
@@ -1072,7 +1072,7 @@ void process_check_new_tunneller_parties(void)
                 }
                 else
                 {
-                    SCRIPTDBG(6, "Adding tunneler, heading %lu", tn_trig->heading);
+                    SCRIPTDBG(6, "Adding tunneler, heading %" PRIu32 "", tn_trig->heading);
                     script_process_new_tunneler(tn_trig->plyr_idx, tn_trig->location, tn_trig->heading,
                         tn_trig->exp_level, tn_trig->carried_gold);
                 }
@@ -1084,7 +1084,8 @@ void process_check_new_tunneller_parties(void)
 }
 
 // WIN_GAME / LOSE_GAME applies to every undecided human player
-// (and if they've disconnected, to their placeholders)
+// (and if they've disconnected, to their placeholders; a placeholder
+// only shares a win alongside a remaining human ally)
 static TbBool scripted_outcome_applies_to_player(const struct PlayerInfo *player)
 {
     return player_exists(player)
@@ -1102,7 +1103,7 @@ void process_win_and_lose_conditions(void)
         for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
         {
             struct PlayerInfo* player = get_player(plyr_idx);
-            if (!scripted_outcome_applies_to_player(player))
+            if (!scripted_outcome_applies_to_player(player) || (player_is_placeholder(player) && !placeholder_has_human_ally(player)))
                 continue;
             SYNCDBG(8,"Win condition %d (cond. %d) met for player %d.",(int)i,(int)k,(int)plyr_idx);
             set_player_as_won_level(player);

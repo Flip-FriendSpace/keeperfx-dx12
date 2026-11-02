@@ -277,6 +277,22 @@ TbBool instance_draws_possession_swipe(CrInstance inum)
     return ((inst_inf->instance_property_flags & InstPF_UsesSwipe) != 0);
 }
 
+TbBool instance_action_starts_cooldown(CrInstance inum)
+{
+    struct InstanceInfo* inst_inf = creature_instance_info_get(inum);
+    const Creature_Instf_Func func = creature_instances_func_list[inst_inf->func_idx];
+    return (func == instf_creature_fire_shot) || (func == instf_creature_cast_spell);
+}
+
+ThingModel get_instance_shot_model(CrInstance inum)
+{
+    struct InstanceInfo* inst_inf = creature_instance_info_get(inum);
+    if (creature_instances_func_list[inst_inf->func_idx] != instf_creature_fire_shot) {
+        return 0;
+    }
+    return inst_inf->func_params[0];
+}
+
 TbBool instance_is_ranged_weapon(CrInstance inum)
 {
     struct InstanceInfo* inst_inf = creature_instance_info_get(inum);
@@ -678,8 +694,9 @@ long instf_dig(struct Thing *creatng, int32_t *param)
             EventIndex evidx = event_create_event_or_update_nearby_existing_event(
                 subtile_coord_center(stl_x), subtile_coord_center(stl_y),
                 EvKind_AreaDiscovered, creatng->owner, 0);
-            if ((evidx > 0) && is_my_player_number(creatng->owner))
-                output_message(SMsg_DugIntoNewArea, 0);
+            if (evidx > 0) {
+                output_player_message(creatng->owner, SMsg_DugIntoNewArea, 0);
+            }
         }
     } else
     if (taskkind == SDDigTask_DigEarth)
@@ -691,8 +708,9 @@ long instf_dig(struct Thing *creatng, int32_t *param)
             EventIndex evidx = event_create_event_or_update_nearby_existing_event(
                 subtile_coord_center(stl_x), subtile_coord_center(stl_y),
                 EvKind_AreaDiscovered, creatng->owner, 0);
-            if ((evidx > 0) && is_my_player_number(creatng->owner))
-                output_message(SMsg_DugIntoNewArea, 0);
+            if (evidx > 0) {
+                output_player_message(creatng->owner, SMsg_DugIntoNewArea, 0);
+            }
         }
     }
     check_map_explored(creatng, stl_x, stl_y);
@@ -726,6 +744,7 @@ long instf_destroy(struct Thing *creatng, int32_t *param)
             return 0;
         }
         clear_dig_on_room_slabs(room, creatng->owner);
+        create_effects_on_room_slabs(room, imp_spangle_effects[get_player_color_idx(creatng->owner)], 0, creatng->owner);
         if (room->owner == game.neutral_player_num)
         {
             remove_room_from_players_list(room, game.neutral_player_num);
@@ -738,7 +757,6 @@ long instf_destroy(struct Thing *creatng, int32_t *param)
             claim_enemy_room(room, creatng);
         }
         thing_play_sample(creatng, snd_spell_stars, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
-        create_effects_on_room_slabs(room, imp_spangle_effects[get_player_color_idx(creatng->owner)], 0, creatng->owner);
         return 0;
     }
     if (slb->health > 1)
@@ -952,10 +970,7 @@ long instf_first_person_do_imp_task(struct Thing *creatng, int32_t *param)
                         MapCoord coord_y = subtile_coord_center(room->central_stl_y);
                         event_create_event_or_update_nearby_existing_event(coord_x, coord_y,
                             EvKind_RoomUnderAttack, room->owner, 0);
-                        if (is_my_player_number(room->owner))
-                        {
-                            output_message(SMsg_EnemyDestroyRooms, MESSAGE_DURATION_FIGHT);
-                        }
+                        output_player_message(room->owner, SMsg_EnemyDestroyRooms, MESSAGE_DURATION_FIGHT);
                         if (game.active_messages_count > 0)
                         {
                             clear_messages_from_player(MsgType_Room, room->kind);

@@ -341,7 +341,7 @@ void get_keepsprite_unscaled_dimensions(long kspr_anim, long angle, long frame, 
     *unsc_h += kspr->offset_y;
 }
 
-short get_creature_model_graphics(long crmodel, unsigned short seq_idx)
+int32_t get_creature_model_graphics(long crmodel, unsigned short seq_idx)
 {
     if (seq_idx >= CREATURE_GRAPHICS_INSTANCES)
     {
@@ -354,9 +354,9 @@ short get_creature_model_graphics(long crmodel, unsigned short seq_idx)
         crmodel = 0;
     }
     // Backward compatibility for custom creatures. Use the attack animation if the extra animation is undefined, return 0 if the attack animation is also undefined.
-    if (game.conf.crtr_conf.creature_graphics[crmodel][seq_idx] < 0)
+    if (game.conf.crtr_conf.creature_graphics[crmodel][seq_idx] == ANIMATION_NONE)
     {
-        if ((seq_idx >= CGI_CastSpell) && (game.conf.crtr_conf.creature_graphics[crmodel][CGI_Attack] > 0))
+        if ((seq_idx >= CGI_CastSpell) && (game.conf.crtr_conf.creature_graphics[crmodel][CGI_Attack] != ANIMATION_NONE))
         {
             return game.conf.crtr_conf.creature_graphics[crmodel][CGI_Attack];
         }
@@ -380,9 +380,9 @@ void set_creature_model_graphics(long crmodel, unsigned short seq_idx, unsigned 
     game.conf.crtr_conf.creature_graphics[crmodel][seq_idx] = val;
 }
 
-short get_creature_anim(struct Thing *thing, unsigned short seq_idx)
+int32_t get_creature_anim(struct Thing *thing, unsigned short seq_idx)
 {
-    short idx = get_creature_model_graphics(thing->model, seq_idx);
+    int32_t idx =get_creature_model_graphics(thing->model, seq_idx);
     return get_td_animation_sprite(idx);
 }
 
@@ -434,7 +434,7 @@ void update_creature_rendering_flags(struct Thing *thing)
     thing->rendering_flags &= ~TRF_Transpar_Flags;
     thing->rendering_flags &= ~TRF_AnimateOnce;
     // Now set only those that should be
-    if (is_thing_directly_controlled_by_player(thing, my_player_number) || is_thing_passenger_controlled_by_player(thing, my_player_number)) {
+    if (user_controls_thing(get_displayed_user(), thing, UCT_Direct | UCT_Passenger | UCT_Other)) {
         thing->rendering_flags |= TRF_Invisible;
     }
     if (thing_is_creature(thing)) {
@@ -444,15 +444,15 @@ void update_creature_rendering_flags(struct Thing *thing)
         }
     }
     if (creature_is_invisible(thing)) {
-        if (is_player_displayed(thing->owner)) {
+        if (is_my_player_number(thing->owner)) {
             thing->rendering_flags &= ~TRF_Transpar_Flags;
             thing->rendering_flags |= TRF_Transpar_4;
         } else {
             thing->rendering_flags |= TRF_Invisible;
-            const struct PlayerInfo *player = get_displayed_player();
-            struct Thing* creatng = thing_get(player->influenced_thing_idx);
+            const NetUserId user = get_displayed_user();
+            struct Thing* creatng = thing_get(get_user_state(user)->influenced_thing_idx);
             if ((creatng != thing) && (thing_is_creature(creatng))) {
-                if (is_thing_directly_controlled_by_player(creatng, player->id_number) || is_thing_passenger_controlled_by_player(creatng, player->id_number)) {
+                if (user_controls_thing(user, creatng, UCT_Direct | UCT_Passenger | UCT_Other)) {
                     if (creature_can_see_invisible(creatng)) {
                         thing->rendering_flags &= ~TRF_Invisible;
                         thing->rendering_flags &= ~TRF_Transpar_Flags;
@@ -464,12 +464,11 @@ void update_creature_rendering_flags(struct Thing *thing)
     }
 }
 
-void update_creature_graphic_anim(struct Thing *thing)
+void update_creature_graphic_anim(struct Thing *thing, const struct CreatureControl *cctrl)
 {
     long i;
 
     TRACE_THING(thing);
-    struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
     struct CreatureModelConfig* crconf = creature_stats_get_from_thing(thing);
     struct InstanceInfo* inst_inf;
     if ((thing->size_change & TSC_ChangeSize) != 0)
@@ -602,7 +601,7 @@ void update_creature_graphic_tint(struct Thing *thing)
 void set_creature_graphic(struct Thing *thing)
 {
     update_creature_rendering_flags(thing);
-    update_creature_graphic_anim(thing);
+    update_creature_graphic_anim(thing, creature_control_get_from_thing(thing));
     // Update tint
     update_creature_graphic_tint(thing);
 }

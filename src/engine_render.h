@@ -38,7 +38,8 @@ extern "C" {
 
 #define KEEPSPRITE_LENGTH 9149
 #define KEEPERSPRITE_ADD_OFFSET 16384
-#define KEEPERSPRITE_ADD_NUM 16383
+#define KEEPERSPRITE_ADD_NUM (ANIMATION_NONE - KEEPERSPRITE_ADD_OFFSET)
+#define ANIMATION_NONE USHRT_MAX
 
 struct EngineCoord {
   long view_width; // X screen position, probably not a width
@@ -164,8 +165,6 @@ extern long const orient_to_mapV1[];
 extern long const orient_to_mapV2[];
 extern long const orient_to_mapV3[];
 extern long const orient_to_mapV4[];
-extern long box_lag_compensation_x;
-extern long box_lag_compensation_y;
 extern Offset vert_offset[3];
 extern Offset hori_offset[3];
 extern Offset high_offset[3];

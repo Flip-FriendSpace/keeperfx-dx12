@@ -161,6 +161,18 @@ enum InstancePropertiesFlags {
     InstPF_NeedsTarget        = 0x0800,
 };
 
+enum InstancePrimaryTargets {
+    InstPT_None = 0,
+    InstPT_CreaturesAndHearts,
+    InstPT_Creatures,
+    InstPT_NotOwnCreaturesAndHearts,
+    InstPT_NotOwnCreatures,
+    InstPT_OwnCreaturesAndHearts,
+    InstPT_OwnCreatures,
+    InstPT_CreaturesHeartsAndTraps,
+    InstPT_Anything,
+};
+
 enum CreatureDeathKind {
     Death_Unset = 0,
     Death_Normal,
@@ -247,7 +259,7 @@ struct CreatureJobConfig {
     CrtrStateId initial_crstate;
     /** The state creature should back to after job is interrupted. */
     CrtrStateId continue_crstate;
-    unsigned long job_flags;
+    uint32_t job_flags;
 };
 
 struct CreatureAngerJobConfig {
@@ -256,8 +268,8 @@ struct CreatureAngerJobConfig {
 
 struct CreatureModelConfig {
     char name[COMMAND_WORD_LEN];
-    long namestr_idx;
-    unsigned long model_flags;
+    int32_t namestr_idx;
+    uint32_t model_flags;
     unsigned short job_primary;
     unsigned short job_secondary;
     unsigned short jobs_not_do;
@@ -285,7 +297,7 @@ struct CreatureModelConfig {
     short scavenger_cost;
     short scavenge_require;
     unsigned char scavenge_value;
-    unsigned long to_level[CREATURE_MAX_LEVEL];
+    uint32_t to_level[CREATURE_MAX_LEVEL];
     unsigned char base_speed;
     ThingModel grow_up;
     CrtrExpLevel grow_up_level;
@@ -366,7 +378,7 @@ struct CreatureModelConfig {
     short toking_recovery;
     TbBool illuminated;
     unsigned char transparency_flags;
-    char corpse_vanish_effect;
+    int8_t corpse_vanish_effect;
     short footstep_pitch;
     short lair_object;
     short status_offset;
@@ -418,7 +430,7 @@ struct CreatureConfig {
     ThingModel special_digger_good;
     ThingModel special_digger_evil;
     ThingModel spectator_breed;
-    short creature_graphics[CREATURE_TYPES_MAX][CREATURE_GRAPHICS_INSTANCES];
+    unsigned short creature_graphics[CREATURE_TYPES_MAX][CREATURE_GRAPHICS_INSTANCES];
     int32_t sprite_size;
     struct CreatureSounds creature_sounds[CREATURE_TYPES_MAX];
 };

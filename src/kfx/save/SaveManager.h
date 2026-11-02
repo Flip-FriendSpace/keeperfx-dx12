@@ -1,0 +1,152 @@
+/******************************************************************************/
+/** @file SaveManager.h
+ *     Everything the engine does with save files: savegame slots and their catalogue, the continue
+ *     link and campaign progress files, and the network config and high score files.
+ *     The SaveManager_* functions are the C entry points; C++ code uses GetSaveManager().
+ */
+/******************************************************************************/
+#ifndef KFX_SAVEMANAGER_H
+#define KFX_SAVEMANAGER_H
+
+#include <stdint.h>
+
+#include "bflib_basics.h"
+#include "kfx/save/SaveTypes.h"
+#include "kfx/save/core/save_codec.h"
+#include "kfx/save/core/save_schema.h"
+
+struct HighScore;
+struct IntralevelData;
+struct GameCampaign;
+struct CampaignsList;
+struct PacketSaveHead;
+struct Game;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+/******************************************************************************/
+/** Saves the running game in a slot. fill the slot's entry first (SaveManager_FillSlot). */
+int SaveManager_Save(int slot);
+/** Loads a slot. A refused load changes nothing; see SaveLoadOutcome. *why says why it was refused. */
+enum SaveLoadOutcome SaveManager_Load(int slot, enum SaveCheckResult *why);
+/** Cheap check of a slot's file: header, chunk headers and title. detail may be NULL. */
+enum SaveCheckResult SaveManager_Check(int slot, char *detail, size_t detail_len);
+/** Full check: also reads and decodes the whole save into scratch memory. Slow, changes nothing. */
+enum SaveCheckResult SaveManager_Verify(int slot, char *detail, size_t detail_len);
+TextStringId SaveManager_CheckMessage(enum SaveCheckResult result);
+/** Renames a file the game can't read to "<name>.bak", so a fresh one doesn't destroy the player's data. */
+int SaveManager_KeepUnreadableFile(const char *fname);
+
+/** The catalogue: one entry per slot the menus range over, a used entry flagged CEF_InUse. */
+int SaveManager_LoadCatalogue(void);
+/** Loads the catalogue and counts the used entries; true when there are any. */
+int SaveManager_InitialiseSlots(void);
+/** Used entries, as counted by SaveManager_InitialiseSlots. */
+int SaveManager_SavedGamesCount(void);
+int SaveManager_SlotCount(void);
+/** NULL when slot is out of range. Not valid across a reload of the catalogue. */
+struct CatalogueEntry *SaveManager_Entry(int slot);
+/** Fills a slot's entry from the running game, and a free entry of any kind. */
+int SaveManager_FillSlot(int slot, const char *textname);
+int SaveManager_FillEntry(struct CatalogueEntry *centry, const char *textname);
+int SaveManager_DisableSlot(int slot);
+
+/** The continue link (the last save or campaign played) and per-campaign progress. */
+int SaveManager_ContinueAvailable(void);
+enum ContinueTargets SaveManager_LoadContinue(void);
+int SaveManager_SaveLevelProgress(LevelNumber lvnum, unsigned char victory_state);
+int SaveManager_ResumeCampaign(const char *campaign_fname);
+int SaveManager_CampaignHasProgress(const struct GameCampaign *campgn);
+void SaveManager_UpdateCampaignPercents(struct CampaignsList *clist);
+void SaveManager_DeleteContinueLink(void);
+
+/** A campaign's high score table. The table comes back malloc'd, to be freed with free(); it is
+ *  NULL when there are no entries or on any error. */
+enum SaveResult SaveManager_ReadHighScores(const char *fname, struct HighScore **table, uint32_t *count,
+    struct SaveError *err);
+int SaveManager_WriteHighScores(const char *fname, const struct HighScore *table, uint32_t count);
+
+/** The bytes of a replay's mid-level snapshot: a whole KFXS savegame and the navigation graph, unvalidated.
+ *  Both NULL when the replay starts at the beginning of its level. */
+struct ReplaySnapshotData {
+    uint8_t *save_data; uint32_t save_len;
+    uint8_t *navigation_data; uint32_t navigation_len;
+};
+
+/** The KFXS header of a replay (.pck) file, written to and read from an open file handle. The header is
+ *  followed by the streamed turn data, which stays the replay code's own. The IntralevelData is always
+ *  stored, even for skirmishes. with_snapshot adds a snapshot of the running game, for a replay that starts
+ *  mid-level. */
+enum SaveResult SaveManager_WriteReplayHeader(TbFileHandle file, const struct CatalogueEntry *centry,
+    const struct PacketSaveHead *phead, TbBool with_snapshot, const struct IntralevelData *ilvl,
+    struct SaveError *err);
+/** Reads the header from fh, at the start of the file, into *centry, *phead and *ilvl, and the snapshot's
+ *  bytes, if the file has one, into *snapshot. Nothing in the running game changes. On success fh is at the
+ *  first byte of the turn stream, *snapshot must be freed with SaveManager_FreeReplaySnapshot, and *out_schema
+ *  and *out_dec are set up and must be kept for the per-turn decodes, then freed with
+ *  save_schema_free/save_decoder_free. Nothing needs freeing on failure. */
+enum SaveResult SaveManager_ReadReplayHeader(TbFileHandle file, struct CatalogueEntry *centry,
+    struct PacketSaveHead *phead, struct IntralevelData *ilvl, struct ReplaySnapshotData *snapshot,
+    struct SaveFileSchema *out_schema, struct SaveDecoder *out_dec, struct SaveError *err);
+/** Validates the whole snapshot in scratch memory, then puts it into the running game. A snapshot refused by
+ *  validation changes nothing. */
+enum SaveResult SaveManager_ApplyReplaySnapshot(const struct ReplaySnapshotData *snapshot,
+    struct CatalogueEntry *centry, struct SaveError *err);
+void SaveManager_FreeReplaySnapshot(struct ReplaySnapshotData *snapshot);
+/******************************************************************************/
+#ifdef __cplusplus
+}
+
+#include <vector>
+
+class SaveManager {
+public:
+    bool Save(int slot);
+    enum SaveLoadOutcome Load(int slot, SaveCheckResult *why);
+    enum SaveCheckResult Check(int slot, char *detail, size_t detail_len);
+    enum SaveCheckResult Verify(int slot, char *detail, size_t detail_len);
+    static TextStringId CheckMessage(SaveCheckResult result);
+    static bool KeepUnreadableFile(const char *fname);
+
+    bool LoadCatalogue();
+    bool InitialiseSlots();
+    int SavedGamesCount() const { return saved_games_; }
+    int SlotCount() const { return (int)slot_count_; }
+    CatalogueEntry *Entry(int slot);
+    bool FillSlot(int slot, const char *textname);
+    static bool FillEntry(CatalogueEntry *centry, const char *textname);
+    bool DisableSlot(unsigned int slot);
+
+    bool ContinueAvailable();
+    enum ContinueTargets LoadContinue();
+    bool SaveLevelProgress(LevelNumber lvnum, unsigned char victory_state);
+    bool ResumeCampaign(const char *campaign_fname);
+    bool CampaignHasProgress(const GameCampaign *campgn);
+    void UpdateCampaignPercents(CampaignsList *clist);
+    void DeleteContinueLink();
+
+    enum SaveResult ReadHighScores(const char *fname, HighScore **table, uint32_t *count, SaveError *err);
+    bool WriteHighScores(const char *fname, const HighScore *table, uint32_t count);
+
+    static enum SaveResult WriteReplayHeader(TbFileHandle file, const CatalogueEntry *centry,
+        const PacketSaveHead *phead, bool with_snapshot, const IntralevelData *ilvl, SaveError *err);
+    static enum SaveResult ReadReplayHeader(TbFileHandle file, CatalogueEntry *centry, PacketSaveHead *phead,
+        IntralevelData *ilvl, ReplaySnapshotData *snapshot, SaveFileSchema *out_schema, SaveDecoder *out_dec,
+        SaveError *err);
+
+private:
+    bool EnsureSlot(long slot);
+    int CountSavedGames();
+    void UpdateLastFileAfterSave(int slot);
+    enum ContinueTargets FindContinueTarget(int *slot, char *campaign_fname, size_t fname_len);
+    bool LoadCampaignProgress(const GameCampaign *campgn, IntralevelData *ilvl, LevelNumber *continue_lvnum);
+
+    std::vector<CatalogueEntry> catalogue_;
+    long slot_count_ = 0;      // logical length: the slots the menus range over
+    int saved_games_ = 0;
+};
+
+SaveManager &GetSaveManager();
+#endif
+#endif

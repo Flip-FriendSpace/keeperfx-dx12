@@ -160,6 +160,7 @@
     <ClCompile Include="src\kfx\lense\PaletteEffect.cpp" />
     <ClCompile Include="src\light_data.c" />
     <ClCompile Include="src\local_camera.c" />
+    <ClCompile Include="src\local_possession.c" />
     <ClCompile Include="src\lua_api.c" />
     <ClCompile Include="src\lua_api_camera.c" />
     <ClCompile Include="src\lua_api_player.c" />
@@ -221,7 +222,7 @@
     <ClCompile Include="src\power_specials.c" />
     <ClCompile Include="src\roomspace.c" />
     <ClCompile Include="src\roomspace_detection.c" />
-    <ClCompile Include="src\roomspace_prediction.c" />
+    <ClCompile Include="src\roomspace_input.c" />
     <ClCompile Include="src\room_data.c" />
     <ClCompile Include="src\room_entrance.c" />
     <ClCompile Include="src\room_garden.c" />
@@ -275,6 +276,7 @@
     <ClCompile Include="src\ftests\tests\ftest_template.c" />
     <ClCompile Include="src\gui_vscroll.c" />
     <ClCompile Include="src\kfx\platform\GLContextSDL.cpp" />
+    <ClCompile Include="src\kfx\platform\FileSystemLb.cpp" />
     <ClCompile Include="src\kfx\platform\PlatformLinux.cpp" />
     <ClCompile Include="src\kfx\platform\PlatformManager.cpp" />
     <ClCompile Include="src\kfx\platform\PlatformWindows.cpp" />
@@ -292,6 +294,33 @@
     <ClCompile Include="src\kfx\renderer\RendererOpenGL.cpp" />
     <ClCompile Include="src\kfx\renderer\RendererSettings.c" />
     <ClCompile Include="src\kfx\ai\TargetSearchProbe.c" />
+    <ClCompile Include="src\kfx\save\core\save_codec.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_config_overlay.cpp" />
+    <ClCompile Include="src\kfx\save\SaveCatalogue.cpp" />
+    <ClCompile Include="src\kfx\save\SaveContinue.cpp" />
+    <ClCompile Include="src\kfx\save\SaveGameFile.cpp" />
+    <ClCompile Include="src\kfx\save\SaveManager.cpp" />
+    <ClCompile Include="src\kfx\save\SaveReplayHeader.cpp" />
+    <ClCompile Include="src\kfx\save\SaveUnionSelectors.cpp" />
+    <ClCompile Include="src\kfx\save\SaveRecordFiles.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_inspect.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_recfile.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_resync.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_convert.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_migrate.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_names.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_decode.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_encode.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_schema.cpp" />
+    <ClCompile Include="src\kfx\save\core\save_schema_file.cpp" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_all.c" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_config.c" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_dungeon.c" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_game.c" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_misc.c" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_script.c" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_things.c" />
+    <ClCompile Include="src\kfx\save\core\schema\schema_world.c" />
     <ClCompile Include="src\kfx\renderer\RendererSoftware.cpp" />
     <ClCompile Include="src\kfx\renderer\RendererThread.cpp" />
     <ClCompile Include="src\kfx\renderer\TileAtlasPacker.cpp" />
@@ -321,11 +350,13 @@
     <ClCompile Include="src\kfx\renderer\software\bflib_vidraw_spr_remp.c" />
     <ClCompile Include="src\kfx\ui\GameUI.cpp" />
     <ClCompile Include="src\kfx_memory.c" />
+    <ClCompile Include="src\kernel_memtracker.c" />
     <ClCompile Include="src\net_checksums.c" />
     <ClCompile Include="src\net_input_lag.c" />
     <ClCompile Include="src\value_util.c" />
     <ClCompile Include="src\replay.c" />
     <ClCompile Include="src\logging.c" />
+    <ClCompile Include="src\replay_rewind.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\actionpt.h" />
@@ -484,6 +515,7 @@
     <ClInclude Include="src\kfx\lense\PaletteEffect.h" />
     <ClInclude Include="src\light_data.h" />
     <ClInclude Include="src\local_camera.h" />
+    <ClInclude Include="src\local_possession.h" />
     <ClInclude Include="src\lua_api.h" />
     <ClInclude Include="src\lua_base.h" />
     <ClInclude Include="src\lua_cfg_funcs.h" />
@@ -527,7 +559,7 @@
     <ClInclude Include="src\power_specials.h" />
     <ClInclude Include="src\roomspace.h" />
     <ClInclude Include="src\roomspace_detection.h" />
-    <ClInclude Include="src\roomspace_prediction.h" />
+    <ClInclude Include="src\roomspace_input.h" />
     <ClInclude Include="src\room_data.h" />
     <ClInclude Include="src\room_entrance.h" />
     <ClInclude Include="src\room_garden.h" />
@@ -586,6 +618,8 @@
     <ClInclude Include="src\kfx\platform\FileFind.h" />
     <ClInclude Include="src\kfx\platform\GLContextSDL.h" />
     <ClInclude Include="src\kfx\platform\IGLContext.h" />
+    <ClInclude Include="src\kfx\platform\FileSystemLb.h" />
+    <ClInclude Include="src\kfx\platform\IFileSystem.h" />
     <ClInclude Include="src\kfx\platform\IPlatform.h" />
     <ClInclude Include="src\kfx\platform\IWindowSystem.h" />
     <ClInclude Include="src\kfx\platform\PlatformLinux.h" />
@@ -618,6 +652,22 @@
     <ClInclude Include="src\kfx\renderer\RendererOpenGL.h" />
     <ClInclude Include="src\kfx\renderer\RendererSettings.h" />
     <ClInclude Include="src\kfx\ai\TargetSearchProbe.h" />
+    <ClInclude Include="src\kfx\save\core\save_bytes.h" />
+    <ClInclude Include="src\kfx\save\core\save_codec.h" />
+    <ClInclude Include="src\kfx\save\core\save_config_overlay.h" />
+    <ClInclude Include="src\kfx\save\SaveManager.h" />
+    <ClInclude Include="src\kfx\save\SaveManager_Internal.h" />
+    <ClInclude Include="src\kfx\save\SaveTypes.h" />
+    <ClInclude Include="src\kfx\save\SaveUnionArms.h" />
+    <ClInclude Include="src\kfx\save\core\save_inspect.h" />
+    <ClInclude Include="src\kfx\save\core\save_recfile.h" />
+    <ClInclude Include="src\kfx\save\core\save_resync.h" />
+    <ClInclude Include="src\kfx\save\core\save_migrate.h" />
+    <ClInclude Include="src\kfx\save\core\save_names.h" />
+    <ClInclude Include="src\kfx\save\core\save_internal.h" />
+    <ClInclude Include="src\kfx\save\core\save_schema.h" />
+    <ClInclude Include="src\kfx\save\core\save_tables.h" />
+    <ClInclude Include="src\kfx\save\core\schema\save_tables_decl.h" />
     <ClInclude Include="src\kfx\renderer\RendererSoftware.h" />
     <ClInclude Include="src\kfx\renderer\RendererThread.h" />
     <ClInclude Include="src\kfx\renderer\SpriteHandle.h" />
@@ -650,6 +700,7 @@
     <ClInclude Include="src\kfx\renderer\software\SwZoomBoxTiles.h" />
     <ClInclude Include="src\kfx\ui\GameUI.h" />
     <ClInclude Include="src\kfx_memory.h" />
+    <ClInclude Include="src\kernel_memtracker.h" />
     <ClInclude Include="src\kfx_pch.h" />
     <ClInclude Include="src\net_checksums.h" />
     <ClInclude Include="src\net_input_lag.h" />
@@ -660,6 +711,7 @@
     <ClInclude Include="src\value_util.h" />
     <ClInclude Include="src\ver_defs.h" />
     <ClInclude Include="src\replay.h" />
+    <ClInclude Include="src\replay_rewind.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Makefile" />

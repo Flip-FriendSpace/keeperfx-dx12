@@ -597,6 +597,24 @@ TbBool parse_get_varib(const char *varib_name, int32_t *varib_id, int32_t *varib
             }
             *varib_type = SVar_DESTROYED_KEEPER;
         }
+        else if (2 == sscanf(varib_name, "BATTLES_WON[%n%[^]]%c", &len, arg, &c) && (c == ']'))
+        {
+            *varib_id = get_id(player_desc, arg);
+            if (*varib_id == -1)
+            {
+                *varib_id = get_id(cmpgn_human_player_options, arg);
+            }
+            *varib_type = SVar_BATTLES_WON_VS;
+        }
+        else if (2 == sscanf(varib_name, "BATTLES_LOST[%n%[^]]%c", &len, arg, &c) && (c == ']'))
+        {
+            *varib_id = get_id(player_desc, arg);
+            if (*varib_id == -1)
+            {
+                *varib_id = get_id(cmpgn_human_player_options, arg);
+            }
+            *varib_type = SVar_BATTLES_LOST_VS;
+        }
         else if (2 == sscanf(varib_name, "SACRIFICED[%n%[^]]%c", &len, arg, &c) && (c == ']'))
         {
             *varib_id = get_id(creature_desc, arg);
@@ -1539,17 +1557,71 @@ static int script_transfer_creature(PlayerNumber plyr_idx, ThingModel crmodel, l
 
 static void special_transfer_creature_process(struct ScriptContext* context)
 {
-    if (my_player_number == context->player_idx)
-    {
-        struct Thing *heartng = get_player_soul_container(context->player_idx);
-        struct PlayerInfo* player = get_my_player();
-        start_transfer_creature(player, heartng);
-    }
+    struct Thing* heartng = get_player_soul_container(context->player_idx);
+    struct PlayerInfo* player = get_player(context->player_idx);
+    start_transfer_creature(player, heartng);
 }
 
 static void special_transfer_creature_check(const struct ScriptLine* scline)
 {
-    command_add_value(Cmd_USE_SPECIAL_TRANSFER_CREATURE, scline->np[0],0,0,0);
+    ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
+    PROCESS_SCRIPT_VALUE(scline->command);
+}
+
+static void special_steal_hero_process(struct ScriptContext* context)
+{
+    struct PlayerInfo* player = get_player(context->player_idx);
+    TbMapLocation location = context->value->ulongs[0];
+    EffectOrEffElModel effct_id = context->value->longs[1];
+    struct Coord3d pos;
+    if (get_coords_at_location(&pos, location, false))
+    {
+        steal_hero(player, &pos);
+        if (effct_id != 0)
+        {
+            create_used_effect_or_element(&pos, effct_id, player->id_number, 0);
+        }
+    }
+}
+
+static void special_steal_hero_check(const struct ScriptLine* scline)
+{
+    ALLOCATE_SCRIPT_VALUE(scline->command, scline->np[0]);
+    TbMapLocation location;
+    if (!get_map_location_id(scline->tp[1], &location))
+    {
+        SCRPTWRNLOG("Invalid location: %s", scline->tp[1]);
+        DEALLOCATE_SCRIPT_VALUE
+        return;
+    }
+
+    const char* effect_name = scline->tp[2];
+    EffectOrEffElModel effct_id = 0;
+    if (scline->tp[2][0] != '\0')
+    {
+        if (parameter_is_number(effect_name) && atoi(effect_name) == 0)
+        {
+            effct_id = 0;
+        }
+        else
+        {
+            effct_id = effect_or_effect_element_id(effect_name);
+            if (effct_id == 0)
+            {
+                SCRPTERRLOG("Unrecognised effect: %s", effect_name);
+                DEALLOCATE_SCRIPT_VALUE
+                return;
+            }
+        }
+    }
+    else
+    {
+        effct_id = ball_puff_effects[scline->np[0]];
+    }
+
+    value->ulongs[0] = location;
+    value->longs[1] = effct_id;
+    PROCESS_SCRIPT_VALUE(scline->command);
 }
 
 static void script_transfer_creature_check(const struct ScriptLine* scline)
@@ -1710,7 +1782,7 @@ static void move_creature_check(const struct ScriptLine* scline)
     }
 
     const char *effect_name = scline->tp[5];
-    long effct_id = 0;
+    EffectOrEffElModel effct_id = 0;
     if (scline->tp[5][0] != '\0')
     {
         if (parameter_is_number(effect_name) && atoi(effect_name) == 0)
@@ -1915,11 +1987,13 @@ static void new_trap_type_check(const struct ScriptLine* scline)
 static void set_trap_configuration_process(struct ScriptContext *context)
 {
     set_config_process(&trapdoor_trap_named_fields_set, context, "SET_TRAP_CONFIGURATION");
+    create_manufacture_array_from_trapdoor_data();
 }
 
 static void set_room_configuration_process(struct ScriptContext *context)
 {
     set_config_process(&terrain_room_named_fields_set, context, "SET_ROOM_CONFIGURATION");
+    update_room_tab_to_config();
 }
 
 static void set_hand_rule_process(struct ScriptContext* context)
@@ -1980,6 +2054,7 @@ static void set_door_configuration_check(const struct ScriptLine* scline)
 static void set_door_configuration_process(struct ScriptContext *context)
 {
     set_config_process(&trapdoor_door_named_fields_set, context, "SET_DOOR_CONFIGURATION");
+    create_manufacture_array_from_trapdoor_data();
 }
 
 static void create_effect_at_pos_process(struct ScriptContext* context)
@@ -1996,7 +2071,7 @@ static void create_effect_process(struct ScriptContext *context)
     struct Coord3d pos;
     if (!get_coords_at_location(&pos, context->value->ulongs[1],true))
     {
-        SCRPTWRNLOG("Could not find location %lu to create effect", context->value->ulongs[1]);
+        SCRPTWRNLOG("Could not find location %" PRIu32 " to create effect", context->value->ulongs[1]);
         return;
     }
     script_create_effect(&pos,context->value->shorts[0],context->value->longs[2]);
@@ -3545,23 +3620,11 @@ static void set_creature_configuration_process(struct ScriptContext* context)
         case 4: // EYEEFFECT
         {
             crconf->eye_effect = value;
-            struct Thing* thing = thing_get(get_my_player()->influenced_thing_idx);
-            if(thing_exists(thing))
+            for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
             {
-                if (thing->model == creatid)
-                {
-                    struct LensConfig* lenscfg = get_lens_config(value);
-                    initialise_eye_lenses();
-                    if (flag_is_set(lenscfg->flags, LCF_HasPalette))
-                    {
-                        PaletteSetUserPalette(get_local_user(), lenscfg->palette);
-                    }
-                    else
-                    {
-                        PaletteSetUserPalette(get_local_user(), engine_palette);
-                    }
-                    setup_eye_lens(value);
-                }
+                struct Thing* thing = thing_get(get_player_user_state(get_player(plyr_idx))->controlled_thing_idx);
+                if (thing_is_creature(thing) && (thing->model == creatid) && flag_is_set(thing->alloc_flags, TAlF_IsControlled))
+                    set_player_lens(plyr_idx, value);
             }
             break;
         }
@@ -7053,6 +7116,7 @@ const struct CommandDesc command_desc[] = {
   {"LOCATE_HIDDEN_WORLD",               "        ", Cmd_LOCATE_HIDDEN_WORLD, NULL, NULL},
   {"USE_SPECIAL_LOCATE_HIDDEN_WORLD",   "        ", Cmd_LOCATE_HIDDEN_WORLD, NULL, NULL}, // Legacy command
   {"USE_SPECIAL_TRANSFER_CREATURE",     "P       ", Cmd_USE_SPECIAL_TRANSFER_CREATURE, &special_transfer_creature_check, &special_transfer_creature_process},
+  {"USE_SPECIAL_STEAL_HERO",            "PLa     ", Cmd_USE_SPECIAL_STEAL_HERO, &special_steal_hero_check, &special_steal_hero_process},
   {"TRANSFER_CREATURE",                 "PC!An   ", Cmd_TRANSFER_CREATURE, &script_transfer_creature_check, &script_transfer_creature_process},
   {"CHANGE_CREATURES_ANNOYANCE",        "PC!AN   ", Cmd_CHANGE_CREATURES_ANNOYANCE, &change_creatures_annoyance_check, &change_creatures_annoyance_process},
   {"ADD_TO_FLAG",                       "PAN     ", Cmd_ADD_TO_FLAG, NULL, NULL},

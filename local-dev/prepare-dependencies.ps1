@@ -20,14 +20,21 @@ foreach ($dependency in $dependencies) {
   if ($Architecture -eq 'x64' -and $dependency.name -in @('sdl3', 'sdl3_mixer', 'sdl3_image', 'png2ico') -and (Test-Path -LiteralPath $shared) -and -not (Test-Path -LiteralPath $path)) {
     Copy-Item -LiteralPath $shared -Destination $path
   }
+  # A pinned version changed: the cached archive of the previous pin is not a failure, only out of date.
+  if ((Test-Path -LiteralPath $path) -and $dependency.sha256 -and (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $dependency.sha256) {
+    Remove-Item -LiteralPath $path
+  }
   if (-not (Test-Path -LiteralPath $path)) {
     Write-Output "Downloading $($dependency.name)"
     & curl.exe -fL --http1.1 --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error $dependency.url -o ($path + '.partial')
     if ($LASTEXITCODE -ne 0) { throw "Download failed: $($dependency.name)" }
+    if ($dependency.sha256 -and (Get-FileHash -LiteralPath ($path + '.partial') -Algorithm SHA256).Hash -ne $dependency.sha256) {
+      Remove-Item -LiteralPath ($path + '.partial')
+      throw "SHA256 mismatch: $($dependency.name)"
+    }
     Move-Item -LiteralPath ($path + '.partial') -Destination $path
   }
   $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
-  if ($dependency.sha256 -and $dependency.sha256 -ne $hash) { throw "SHA256 mismatch: $($dependency.name)" }
   $manifest += [pscustomobject]@{ name = $dependency.name; url = $dependency.url; sha256 = $hash }
 }
 $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $workspace "artifacts/dependency-downloads-$Architecture.json") -Encoding utf8

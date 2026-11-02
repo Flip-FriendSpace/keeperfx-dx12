@@ -47,6 +47,7 @@
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
 #include "kjm_input.h"
+#include "lens_api.h"
 #include "config_sounds.h"
 #include "lvl_filesdk1.h"
 #include "lua_base.h"
@@ -166,9 +167,6 @@ static void init_keepers_map_exploration(void)
 
 static TbBool init_level(void)
 {
-    if (network_is_active() && net_join_role == NetRole_Player) {
-        net_lobby_set_phase(NetPhase_Loading);
-    }
     SYNCDBG(6,"Starting");
     struct IntralevelData transfer_mem;
     //memcpy(&transfer_mem,&game.intralvl.transferred_creature,sizeof(struct CreatureStorage));
@@ -187,6 +185,7 @@ static TbBool init_level(void)
     // above. No-op on software / before GL is active.
     RendererClearKeeperSpriteAtlas();
     lens_mode = 0;
+    reset_lens_failures();
     setup_heap_manager();
 
     wait_for_all_players();
@@ -214,6 +213,10 @@ static TbBool init_level(void)
     load_stats_files();
     level_load_time_phase(LevelLoadTime_GameSetup);
     check_and_auto_fix_stats();
+    // Config is fully loaded and fixed up here, and the level script hasn't run
+    // any commands yet: this is the baseline the save-time config overlay diffs
+    // against (save-format spec 5.3/13.1 P5.3).
+    take_conf_baseline();
 
     // We should do this after 'load stats'
     update_room_tab_to_config();
@@ -270,6 +273,7 @@ static TbBool init_level(void)
     battle_initialise();
     ambient_sound_prepare();
     zero_messages();
+    render_onscreen_msg_time = 0;
     game.armageddon_cast_turn = 0;
     game.armageddon_over_turn = 0;
     clear_messages();
@@ -322,7 +326,7 @@ static void post_init_level(void)
 
 /******************************************************************************/
 
-/* Game and Lua have already been restored by load_game_chunks. Rebuild only
+/* Game and Lua have already been restored by SaveManager_ApplyReplaySnapshot. Rebuild only
  * session-local resources and derived caches; new-game hooks would destroy the
  * saved turn, script state, player input state and running player instances. */
 static TbBool restore_packet_snapshot(void)
@@ -339,7 +343,7 @@ static TbBool restore_packet_snapshot(void)
     // one keeper; PlayerInfo::user_id alone cannot reconstruct that mapping.
     restore_users_from_packet_save(false);
     sound_manager_reapply_creature_sounds();
-    // load_replay_chunks installed the exact saved navigation graph.
+    // SaveManager_ApplyReplaySnapshot installed the exact saved navigation graph.
     reinit_level_after_load();
     initialize_packet_history();
     clear_packets();
@@ -348,9 +352,9 @@ static TbBool restore_packet_snapshot(void)
     local_state.view_type = PVT_None;
     local_state.palette_fade_step_pain = 0;
     local_state.palette_fade_step_possession = 0;
-    reinitialise_eye_lens(game.applied_lens_type);
+    local_state.lens_palette = 0;
     struct PlayerInfo *player = get_my_player();
-    PaletteSetUserPalette(player->user_id, local_state.lens_palette ? local_state.lens_palette : engine_palette);
+    PaletteSetUserPalette(get_local_user(), engine_palette);
     init_local_cameras(player);
     return true;
 }
@@ -477,6 +481,7 @@ void startup_network_game(CoroutineLoop *context, TbBool local)
     {
         game.game_kind = GKind_MultiGame;
         if (!init_players_network_game()) {
+            clear_flag(game.operation_flags, GOF_SingleLevel);
             coroutine_clear(context, true);
             return;
         }
@@ -500,9 +505,6 @@ static CoroutineLoopState startup_network_game_tail(CoroutineLoop *context)
         return CLS_CONTINUE;
     }
     TbBool ShouldAssignCpuKeepers = coroutine_args(context)[0];
-    if (game.game_kind == GKind_MultiGame) {
-        setup_alliances();
-    }
     if (fe_computer_players || ShouldAssignCpuKeepers)
     {
         SYNCDBG(5,"Setting up uninitialized players as computer players");
@@ -511,6 +513,9 @@ static CoroutineLoopState startup_network_game_tail(CoroutineLoop *context)
     {
         SYNCDBG(5,"Setting up uninitialized players as zombie players");
         setup_zombie_players();
+    }
+    if (game.game_kind == GKind_MultiGame) {
+        setup_alliances();
     }
     post_init_level();
     post_init_players();
@@ -562,6 +567,15 @@ void clear_complete_game(void)
 {
     WorldSceneReset();
     memset(&game, 0, sizeof(struct Game));
+    local_state.fast_forward = 0;
+    local_state.process_turn_time = 0;
+    local_state.delta_time = 0;
+    local_state.time_delta = 0;
+    local_state.show_gui = false;
+    local_state.show_panel = false;
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
+        game.user_states[user].player_id = PLAYER_NONE;
+    }
     memset(&intralvl, 0, sizeof(struct IntralevelData));
     replay.turns_packetoff = -1;
     game.local_plyr_idx = default_loc_player;

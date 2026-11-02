@@ -46,6 +46,7 @@
 #include "power_hand.h"
 #include "player_instances.h"
 #include "local_camera.h"
+#include "observer.h"
 
 #include "keeperfx.hpp"
 #include "post_inc.h"
@@ -54,7 +55,7 @@
 extern "C" {
 #endif
 /******************************************************************************/
-static unsigned char backup_explored[26][26];
+static unsigned char backup_explored[PLAYERS_COUNT][2*MAX_SOE_RADIUS][2*MAX_SOE_RADIUS];
 /******************************************************************************/
 #ifdef __cplusplus
 }
@@ -86,19 +87,19 @@ void set_chosen_power_none(void)
     game.chosen_spell_tooltip = 0;
 }
 
-unsigned char general_expand_check(const struct PlayerInfo *player)
+unsigned char general_expand_check(NetUserId user)
 {
-    return (player->cast_expand_level != 0);
+    return get_user_state(user)->cast_expand_level != 0;
 }
 
-unsigned char sight_of_evil_expand_check(const struct PlayerInfo *player)
+unsigned char sight_of_evil_expand_check(NetUserId user)
 {
-    return (player->cast_expand_level != 0) && (!player_uses_power_sight(player->id_number));
+    return get_user_state(user)->cast_expand_level != 0 && !player_uses_power_sight(get_user_player(user)->id_number);
 }
 
-unsigned char call_to_arms_expand_check(const struct PlayerInfo *player)
+unsigned char call_to_arms_expand_check(NetUserId user)
 {
-    return (player->cast_expand_level != 0) && (!player_uses_power_call_to_arms(player->id_number));
+    return get_user_state(user)->cast_expand_level != 0 && !player_uses_power_call_to_arms(get_user_player(user)->id_number);
 }
 
 void process_armageddon(void)
@@ -249,13 +250,12 @@ void process_disease(struct Thing *creatng)
 void lightning_modify_palette(struct Thing *thing)
 {
     struct PlayerInfo* myplyr = get_my_player();
-    struct UserState* ustate = get_user_state(get_local_user());
     struct Camera* camera = get_local_active_camera(myplyr);
 
     if (thing->health == 0)
     {
       PaletteSetUserPalette(get_local_user(), engine_palette);
-      ustate->additional_flags &= ~UsrAF_LightningPaletteIsActive;
+      local_state.lightning_palette_active = false;
       return;
     }
     if (camera == NULL)
@@ -265,24 +265,24 @@ void lightning_modify_palette(struct Thing *thing)
     }
     if (((thing->health % 8) != 7) && (thing->health != 1) && (UNSYNC_RANDOM(4) != 0))
     {
-        if ((ustate->additional_flags & UsrAF_LightningPaletteIsActive) != 0)
+        if (local_state.lightning_palette_active)
         {
             if (get_chessboard_distance(&camera->mappos, &thing->mappos) < 11520)
             {
                 PaletteSetUserPalette(get_local_user(), engine_palette);
-                ustate->additional_flags &= ~UsrAF_LightningPaletteIsActive;
+                local_state.lightning_palette_active = false;
             }
         }
         return;
     }
     if (get_local_view_type(myplyr) != PVT_MapScreen)
     {
-        if ((ustate->additional_flags & UsrAF_LightningPaletteIsActive) == 0)
+        if (!local_state.lightning_palette_active)
         {
                         if (get_chessboard_distance(&camera->mappos, &thing->mappos) < 11520)
             {
               PaletteSetUserPalette(get_local_user(), lightning_palette);
-              ustate->additional_flags |= UsrAF_LightningPaletteIsActive;
+              local_state.lightning_palette_active = true;
             }
         }
     }
@@ -459,12 +459,12 @@ void store_backup_explored_flags_for_power_sight(struct PlayerInfo *player, stru
                 struct Map* mapblk = get_map_block_at(stl_x, stl_y);
                 if (!map_block_invalid(mapblk))
                 {
-                    if (map_block_revealed(mapblk, player->id_number))
-                        backup_explored[soe_y][soe_x] |= 0x01;
+                    if (map_block_revealed_to_players(mapblk, to_flag(player->id_number)))
+                        backup_explored[player->id_number][soe_y][soe_x] |= 0x01;
                     if ((mapblk->flags & SlbAtFlg_Unexplored) != 0)
-                        backup_explored[soe_y][soe_x] |= 0x02;
+                        backup_explored[player->id_number][soe_y][soe_x] |= 0x02;
                     if ((mapblk->flags & SlbAtFlg_TaggedValuable) != 0)
-                        backup_explored[soe_y][soe_x] |= 0x04;
+                        backup_explored[player->id_number][soe_y][soe_x] |= 0x04;
                 }
             }
         }
@@ -628,7 +628,7 @@ void update_explored_flags_for_power_sight(struct PlayerInfo *player)
 {
     SYNCDBG(9,"Starting");
     struct Dungeon* dungeon = get_players_dungeon(player);
-    memset(backup_explored, 0, sizeof(backup_explored));
+    memset(backup_explored[player->id_number], 0, sizeof(backup_explored[0]));
     if (dungeon->sight_casted_thing_idx == 0) {
         return;
     }
@@ -669,7 +669,7 @@ void remove_explored_flags_for_power_sight(struct PlayerInfo *player)
                 struct Map* mapblk = get_map_block_at(stl_x, stl_y);
                 if (!map_block_invalid(mapblk))
                 {
-                    backup_flags = backup_explored[soe_y][soe_x];
+                    backup_flags = backup_explored[player->id_number][soe_y][soe_x];
                     conceal_map_block(mapblk, player->id_number);
                     if ((backup_flags & 1) != 0)
                         reveal_map_block(mapblk, player->id_number);
@@ -679,6 +679,40 @@ void remove_explored_flags_for_power_sight(struct PlayerInfo *player)
                         mapblk->flags |= SlbAtFlg_TaggedValuable;
                 }
             }
+        }
+    }
+}
+
+static TbBool viewing_all_seats(void)
+{
+    return local_observer_rendering && is_observer_camera_active();
+}
+
+void update_explored_flags_for_viewed_power_sights(struct PlayerInfo *viewer)
+{
+    if (!viewing_all_seats()) {
+        update_explored_flags_for_power_sight(viewer);
+        return;
+    }
+    for (PlayerNumber i = 0; i < PLAYERS_COUNT; i++) {
+        struct PlayerInfo *player = get_player(i);
+        if (player_exists(player) && player_is_seat(player)) {
+            update_explored_flags_for_power_sight(player);
+        }
+    }
+}
+
+// reverse order, so overlapping sights restore the tag flags correctly
+void remove_explored_flags_for_viewed_power_sights(struct PlayerInfo *viewer)
+{
+    if (!viewing_all_seats()) {
+        remove_explored_flags_for_power_sight(viewer);
+        return;
+    }
+    for (PlayerNumber i = PLAYERS_COUNT - 1; i >= 0; i--) {
+        struct PlayerInfo *player = get_player(i);
+        if (player_exists(player) && player_is_seat(player)) {
+            remove_explored_flags_for_power_sight(player);
         }
     }
 }

@@ -135,10 +135,10 @@ bool OwnedFrameUI::SetParchmentCapture(bool active) noexcept
     if(!builder_ || !sink_ || zoom_capture_ || parchment_capture_==active){Fail();return false;}
     parchment_capture_=active;sink_->SetParchmentCapture(active);return true;
 }
-bool OwnedFrameUI::SubmitMapFadeStep(int tick,float step,float warp,bool fading_in,const uint8_t* ghost,const OwnedAssetLease& fade)
+bool OwnedFrameUI::SubmitMapFadeStep(bool starting,float step,float warp,const uint8_t* ghost,const OwnedAssetLease& fade)
 {
     if(!builder_ || !engine_palette || !std::isfinite(step) || step<0 || step>32 || !std::isfinite(warp) || warp<=0 || warp>2.5f){Fail(OwnedFrameStatus::InvalidInput);return false;}
-    const bool capture=((fading_in && tick==0)||(!fading_in && tick==32)) && !map_was_active_;
+    const bool capture=starting && !map_was_active_;
     if(capture && !map_submitted_) {
         if(!ghost || map_transition_==UINT64_MAX){Fail(OwnedFrameStatus::InvalidInput);return false;}
         if(!Publish(map_ghost_,305,0,{{OwnedAssetFormat::R8,256,256},{ghost,256*256},256}).Valid())return false;

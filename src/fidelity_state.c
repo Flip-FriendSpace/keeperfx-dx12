@@ -149,7 +149,7 @@ int fidelity_write_snapshot(FILE *out, const struct Game *g)
     for (unsigned long i = 0; i < g->script.conditions_num; ++i) {
         const struct Condition *c = &g->script.conditions[i];
         fprintf(out, "%s[%d,%u,%u,%u,%u,%u,%lu,%u,%u,%u,%d]", i ? "," : "", c->condit_idx,
-            c->status, c->plyr_range, c->variabl_type, c->variabl_idx, c->operation, c->rvalue,
+            c->status, c->plyr_range, c->variabl_type, c->variabl_idx, c->operation, (unsigned long)c->rvalue,
             c->plyr_range_right, c->variabl_type_right, c->variabl_idx_right, c->use_second_variable);
     }
     fprintf(out, "],\"values\":[");
@@ -169,7 +169,7 @@ int fidelity_write_snapshot(FILE *out, const struct Game *g)
     for (unsigned long i = 0; i < g->script.tunneller_triggers_num; ++i) {
         const struct TunnellerTrigger *t = &g->script.tunneller_triggers[i];
         fprintf(out, "%s[%u,%u,%u,%lu,%lu,%ld,%u,%d]", i ? "," : "", t->flags, t->condit_idx,
-            t->plyr_idx, t->location, t->heading, t->carried_gold, t->exp_level, t->party_id);
+            t->plyr_idx, (unsigned long)t->location, (unsigned long)t->heading, (long)t->carried_gold, t->exp_level, t->party_id);
     }
     fprintf(out, "]},\"armageddon\":[%lu,%lu,%d]}}\n", (unsigned long)g->armageddon_cast_turn,
         (unsigned long)g->armageddon_over_turn, (int)g->armageddon_caster_idx);

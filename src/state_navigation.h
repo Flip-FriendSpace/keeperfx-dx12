@@ -6,6 +6,7 @@
 #include "ariadne_points.h"
 #include "ariadne_tringls.h"
 #include "ariadne_regions.h"
+#include "ariadne.h"
 
 // Runtime snapshot only. The wire representation visits fields explicitly.
 struct NavigationSnapshot {
@@ -19,6 +20,9 @@ struct NavigationSnapshot {
     int32_t triangle_free;
     struct RegionT regions[REGIONS_COUNT];
     int32_t cache[4][4];
+    NavColour navigation_map[MAX_SUBTILES_X*MAX_SUBTILES_Y];
+    int32_t border_index;
+    int32_t border[BORDER_LENGTH];
 };
 
 #ifdef __cplusplus

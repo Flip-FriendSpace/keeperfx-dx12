@@ -55,6 +55,7 @@
 #include "game_legacy.h"
 #include "keeperfx.hpp"
 #include "player_instances.h"
+#include "packets.h"
 #include "post_inc.h"
 #include "creature_states_lair.h"
 
@@ -1058,10 +1059,7 @@ short imp_converts_dungeon(struct Thing *spdigtng)
                       MapCoord coord_y = subtile_coord_center(room->central_stl_y);
                       event_create_event_or_update_nearby_existing_event(coord_x, coord_y,
                           EvKind_RoomUnderAttack, room->owner, 0);
-                      if (is_my_player_number(room->owner))
-                      {
-                          output_message(SMsg_EnemyDestroyRooms, MESSAGE_DURATION_FIGHT);
-                      }
+                      output_player_message(room->owner, SMsg_EnemyDestroyRooms, MESSAGE_DURATION_FIGHT);
                 }
               }
           }
@@ -1264,7 +1262,7 @@ short imp_drops_gold(struct Thing *spdigtng)
     }
     else
     {
-        if (is_thing_directly_controlled_by_player(spdigtng, my_player_number))
+        if (user_controls_thing(get_local_user(), spdigtng, UCT_Direct | UCT_Other))
         {
             play_non_3d_sample(snd_refusal);
             internal_set_thing_state(spdigtng, state);
@@ -1380,7 +1378,7 @@ short imp_picks_up_gold_pile(struct Thing *spdigtng)
     if (crconf->gold_hold > spdigtng->creature.gold_carried)
     {
         MapSubtlCoord stl_x, stl_y;
-        if (is_thing_directly_controlled(spdigtng))
+        if (user_controls_thing(ANY_USER, spdigtng, UCT_Direct | UCT_PossessionEntryZoom))
         {
             struct CreatureControl *cctrl = creature_control_get_from_thing(spdigtng);
             struct Thing *goldtng = thing_get(cctrl->pickup_object_id);
@@ -1471,9 +1469,8 @@ short imp_toking(struct Thing *creatng)
 {
     TRACE_THING(creatng);
     struct CreatureControl* cctrl = creature_control_get_from_thing(creatng);
-    if (!creature_would_benefit_from_healing(creatng))
-    {
-        internal_set_thing_state(creatng, creatng->continue_state);
+    if (!creature_would_benefit_from_healing(creatng)) {
+        set_start_state(creatng);
         return 0;
     }
     if (cctrl->instance_id == CrInst_NULL)
@@ -1673,9 +1670,9 @@ short creature_save_unconscious_creature(struct Thing *thing)
             set_start_state(thing);
             return 0;
         }
-        if (!find_lair_totem_at(lairtng->mappos.x.stl.num,lairtng->mappos.y.stl.num))
+        if (!thing_is_lair_totem(lairtng))
         {
-            WARNLOG("Player %d can't pick %s - no position within %s to store it",(int)thing->owner,thing_model_name(picktng),room_role_code_name(RoRoF_Prison));
+            WARNLOG("Player %d can't pick %s - it has no lair totem within %s",(int)thing->owner,thing_model_name(picktng),room_role_code_name(RoRoF_LairStorage));
             set_start_state(thing);
             return 0;
         }
@@ -2072,7 +2069,7 @@ short creature_arms_trap(struct Thing *thing)
         set_start_state(thing);
         return 0;
     }
-    if (is_thing_directly_controlled(thing))
+    if (user_controls_thing(ANY_USER, thing, UCT_Direct | UCT_PossessionEntryZoom))
     {
         return creature_arms_trap_first_person(thing);
     }

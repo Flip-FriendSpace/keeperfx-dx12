@@ -196,7 +196,7 @@ static void draw_call_to_arms_circle(unsigned char owner, int32_t pos_x, int32_t
     const int32_t center_y = i + pos_y;
     float circle_time;
     if ((game.operation_flags & GOF_Paused) == 0) {
-        circle_time = ((get_gameturn() + owner) & 7) + game.process_turn_time;
+        circle_time = ((get_gameturn() + owner) & 7) + local_state.process_turn_time;
     } else {
         circle_time = ((get_gameturn() + owner) & 7);
     }
@@ -376,7 +376,7 @@ static void draw_overlay_creature(struct Thing *thing, const struct MinimapOverl
             panel_map_draw_creature_dot(x, y - offset, col2, ov->basic_zoom, ov->is_low_res);
             panel_map_draw_creature_dot(x, y, 31, ov->basic_zoom, ov->is_low_res);
         } else
-        if ((is_thing_directly_controlled_by_player(thing, my_player_number)) || (is_thing_passenger_controlled_by_player(thing, my_player_number)))
+        if (user_controls_thing(get_displayed_user(), thing, UCT_Direct | UCT_Passenger | UCT_Other))
         {
             draw_overlay_possessed_thing(ov, x, y, col2);
         } else

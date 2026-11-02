@@ -29,6 +29,7 @@ extern "C" {
 #endif
 
 #define PACKETS_COUNT           9
+#define NET_LEAVE_TIMED_OUT     1
 
 /******************************************************************************/
 #pragma pack(1)
@@ -47,13 +48,15 @@ TbBool init_players_network_game(void);
 void network_game_started(void);
 void setup_count_players(void);
 
-long network_session_join(void);
+int32_t network_session_join(void);
 
 TbBool network_user_active(NetUserId);
 const char *network_user_name(NetUserId);
 TbBool network_human_contenders_remain(void);
 void resolve_placeholders(void);
-void process_player_leave_game_packet(struct PlayerInfo *player);
+void hand_waiting_placeholders_to_ai(void);
+void seat_network_user(NetUserId user, PlayerNumber plyr_idx, const UserPreferences seat_prefs);
+void process_user_leave_game_packet(NetUserId user);
 void process_disconnected_network_players(void);
 TbBool user_present(NetUserId user);
 void host_spoof_dropped_user_packets(void);
@@ -63,14 +66,14 @@ void apply_user_preferences(NetUserId user, const UserPreferences prefs, unsigne
 void apply_local_user_preferences(NetUserId user, unsigned char flags);
 void apply_user_start_tendencies(struct PlayerInfo *player);
 TbBool user_cheats_allowed(NetUserId user);
+TbBool computer_assistant_allowed(void);
 TbBool game_censorship_enabled(void);
 void apply_recorded_network_stop(void);
 TbBool get_startup_user_preferences(NetUserId user, UserPreferences prefs);
 TbBool network_is_host(void);
 PlayerNumber get_net_user_player_number(NetUserId user);
 void set_net_user_player_number(NetUserId user, PlayerNumber plyr_idx);
-void rebuild_net_user_player_numbers(void);
-void remap_user_to_solo(struct PlayerInfo *myplyr);
+void remap_user_to_solo(struct PlayerInfo *myplyr, NetUserId old_user);
 /******************************************************************************/
 #ifdef __cplusplus
 }

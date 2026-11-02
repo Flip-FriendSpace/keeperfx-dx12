@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param(
+  [string]$WorkspacePath,
   [ValidateSet('x86', 'x64')][string]$Architecture = 'x64',
   [ValidateSet('OPENGL', 'SOFTWARE', 'DX12')][string]$Renderer = 'OPENGL'
 )
 $ErrorActionPreference = 'Stop'
 if ($Renderer -eq 'DX12' -and $Architecture -ne 'x64') { throw 'DX12 requires x64.' }
-$workspace = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
+$workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
 $runtime = Join-Path $workspace 'runtime/keeperfx'
 $outputRoot = Join-Path $workspace 'artifacts/state-codec'
 if ($Architecture -eq 'x64') { $runtime += '-x64'; $outputRoot += '-x64' }
@@ -50,6 +52,7 @@ try {
   $env:KFX_STATE_TEST = '1'
   $env:KFX_STATE_TEST_DIR = $output
   $game = Start-Process -FilePath $executable -WorkingDirectory $runtime -ArgumentList '-config keeperfx-state-test.cfg -nointro -skipheartzoom -campaign keeporig -level 1 -nosound' -WindowStyle Hidden -PassThru
+  $null = $game.Handle
   $timer = [Diagnostics.Stopwatch]::StartNew()
   while ($timer.Elapsed.TotalSeconds -lt 30) {
     if ($game.HasExited) { throw 'KeeperFX exited before the test could connect.' }
@@ -68,6 +71,7 @@ try {
   # The existing client keeps one connection through startup and all codec checks.
   $clientArguments = @(('"' + (Join-Path $PSScriptRoot 'state-test.mjs') + '"'), ('"' + $runtime + '"'), ('"' + $output + '"'))
   $client = Start-Process -FilePath $nodeExecutable -ArgumentList $clientArguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $clientStdout -RedirectStandardError $clientStderr
+  $null = $client.Handle
   $timer.Restart()
   while (-not $client.WaitForExit(100)) {
     if ($game.HasExited) {

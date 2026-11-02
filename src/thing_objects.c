@@ -654,7 +654,7 @@ static long food_moves(struct Thing *objtng)
         destroy_food(objtng);
         return TUFRet_Deleted;
     }
-    TbBool dirct_ctrl = is_thing_directly_controlled(objtng);
+    TbBool dirct_ctrl = user_controls_thing(ANY_USER, objtng, UCT_Direct | UCT_PossessionEntryZoom);
     if (dirct_ctrl)
     {
         if (objtng->food.possession_startup_timer > 0)
@@ -778,7 +778,7 @@ static long food_moves(struct Thing *objtng)
             dangle = 62;
         objtng->move_angle_xy = (objtng->move_angle_xy + dangle * sangle) & ANGLE_MASK;
         struct PlayerInfo* my_player = get_my_player();
-        if (my_player->controlled_thing_idx == objtng->index && ((get_player_view_type(my_player) == PVT_CreatureContrl) || (get_player_view_type(my_player) == PVT_CreaturePasngr))) {
+        if (get_local_user_state()->controlled_thing_idx == objtng->index && ((get_player_view_type(my_player) == PVT_CreatureContrl) || (get_player_view_type(my_player) == PVT_CreaturePasngr))) {
             set_local_camera_destination(my_player);
         }
         if (get_angle_difference(objtng->move_angle_xy, objtng->food.angle) < DEGREES_50)
@@ -978,7 +978,7 @@ long process_temple_special(struct Thing *thing, long sacowner)
     if (object_is_mature_food(thing))
     {
         dungeon->chickens_sacrificed++;
-        if (user_cheats_allowed(get_player(sacowner)->user_id) && temple_check_for_arachnid_join_dungeon(dungeon))
+        if (user_cheats_allowed(get_player_primary_user(get_player(sacowner))) && temple_check_for_arachnid_join_dungeon(dungeon))
             return true;
     } else
     {
@@ -998,8 +998,7 @@ void process_object_sacrifice(struct Thing *thing, long sacowner)
     {
         process_temple_special(thing, sacowner);
         kill_all_players_chickens(thing->owner);
-        if (is_my_player_number(sacowner))
-            output_message(SMsg_SacrificePunish, 0);
+        output_player_message(sacowner, SMsg_SacrificePunish, 0);
     } else
     if (object_is_gold_pile(thing))
     {
@@ -1027,8 +1026,7 @@ void process_object_sacrifice(struct Thing *thing, long sacowner)
                 }
             } else
             {
-                if (is_my_player_number(sacowner))
-                    output_message(SMsg_SacrificeWishing, 0);
+                output_player_message(sacowner, SMsg_SacrificeWishing, 0);
             }
         }
     }
@@ -1300,11 +1298,11 @@ static TngUpdateRet object_update_dungeon_heart(struct Thing *heartng)
 void set_call_to_arms_as_birthing(struct Thing *objtng)
 {
     int frame;
-    switch (objtng->call_to_arms_flag.state)
-    {
+    switch (objtng->call_to_arms_flag.state) {
     case CTAOL_Birthing:
         frame = objtng->current_frame;
         break;
+    case CTAOL_Unset:
     case CTAOL_Alive:
         frame = 0;
         break;

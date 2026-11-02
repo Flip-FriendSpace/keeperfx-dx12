@@ -21,6 +21,7 @@
 
 #include "bflib_basics.h"
 #include "globals.h"
+#include "net_main.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,6 +53,8 @@ void draw_god_lightning(struct Thing *thing);
 TbBool player_uses_power_sight(PlayerNumber plyr_idx);
 void update_explored_flags_for_power_sight(struct PlayerInfo *player);
 void remove_explored_flags_for_power_sight(struct PlayerInfo *player);
+void update_explored_flags_for_viewed_power_sights(struct PlayerInfo *viewer);
+void remove_explored_flags_for_viewed_power_sights(struct PlayerInfo *viewer);
 
 TbBool player_uses_power_call_to_arms(PlayerNumber plyr_idx);
 void turn_off_power_call_to_arms(PlayerNumber plyr_idx);
@@ -62,9 +65,9 @@ TbBool player_uses_power_obey(PlayerNumber plyr_idx);
 
 TbBool player_uses_power_hold_audience(PlayerNumber plyr_idx);
 
-unsigned char general_expand_check(const struct PlayerInfo *player);
-unsigned char sight_of_evil_expand_check(const struct PlayerInfo *player);
-unsigned char call_to_arms_expand_check(const struct PlayerInfo *player);
+unsigned char general_expand_check(NetUserId user);
+unsigned char sight_of_evil_expand_check(NetUserId user);
+unsigned char call_to_arms_expand_check(NetUserId user);
 /******************************************************************************/
 #ifdef __cplusplus
 }

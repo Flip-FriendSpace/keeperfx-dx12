@@ -32,7 +32,7 @@ public:
     IUIRenderer* GetUIRenderer() override;
     ICursorLayer* GetCursorLayer() override;
     IWorldViewRenderer* GetWorldViewRenderer() override;
-    void SubmitMapFadeStep(int,float,float,bool,const unsigned char*) override;
+    void SubmitMapFadeStep(bool,float,float,const unsigned char*) override;
     void BeginOverlayCapture(OverlayCaptureKind) override;
     void EndOverlayCapture(OverlayCaptureKind) override;
     bool MapFadeSupportsNativeResolution() const override { return true; }

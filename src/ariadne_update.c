@@ -1697,6 +1697,9 @@ void capture_navigation_snapshot(struct NavigationSnapshot *snapshot)
     memcpy(&snapshot->triangle_free, &free_Triangles, sizeof(snapshot->triangle_free));
     memcpy(&snapshot->regions, &Regions, sizeof(snapshot->regions));
     memcpy(&snapshot->cache, &find_cache, sizeof(snapshot->cache));
+    memcpy(&snapshot->navigation_map, &game.navigation_map, sizeof(snapshot->navigation_map));
+    memcpy(&snapshot->border_index, &ix_Border, sizeof(snapshot->border_index));
+    memcpy(&snapshot->border, &Border, sizeof(snapshot->border));
 }
 
 void apply_navigation_snapshot(const struct NavigationSnapshot *snapshot)
@@ -1711,6 +1714,9 @@ void apply_navigation_snapshot(const struct NavigationSnapshot *snapshot)
     memcpy(&free_Triangles, &snapshot->triangle_free, sizeof(snapshot->triangle_free));
     memcpy(&Regions, &snapshot->regions, sizeof(snapshot->regions));
     memcpy(&find_cache, &snapshot->cache, sizeof(snapshot->cache));
+    memcpy(&game.navigation_map, &snapshot->navigation_map, sizeof(snapshot->navigation_map));
+    memcpy(&ix_Border, &snapshot->border_index, sizeof(snapshot->border_index));
+    memcpy(&Border, &snapshot->border, sizeof(snapshot->border));
 }
 
 TbBool validate_navigation_snapshot(const struct NavigationSnapshot *snapshot)
@@ -1719,7 +1725,8 @@ TbBool validate_navigation_snapshot(const struct NavigationSnapshot *snapshot)
         || snapshot->point_count < 0 || snapshot->point_count > snapshot->point_index
         || snapshot->point_index < 0 || snapshot->point_index > POINTS_COUNT
         || snapshot->triangle_count < 0 || snapshot->triangle_count > snapshot->triangle_index
-        || snapshot->triangle_index < 0 || snapshot->triangle_index > TRIANLGLES_COUNT)
+        || snapshot->triangle_index < 0 || snapshot->triangle_index > TRIANLGLES_COUNT
+        || snapshot->border_index < 0 || snapshot->border_index > BORDER_LENGTH)
         return false;
     int free_count = 0;
     for (int point = snapshot->point_free; point != -1; point = snapshot->points[point].x) {

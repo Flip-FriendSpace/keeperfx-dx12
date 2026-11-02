@@ -13,6 +13,7 @@
 #include "kfx/platform/PlatformWindows.h"
 #include "kfx/platform/PlatformLinux.h"
 #include "kfx/platform/FileFind.h"
+#include "kfx/platform/FileSystemLb.h"
 #include "platform.h"
 #include "bflib_fileio.h"
 #include "cdrom.h"
@@ -22,6 +23,12 @@
 /******************************************************************************/
 
 IWindowSystem* IPlatform::GetWindowSystem() { return GetSDLWindowSystem(); }
+
+IFileSystem* IPlatform::GetFileSystem()
+{
+    static FileSystemLb s_fs;
+    return &s_fs;
+}
 
 IPlatform* GetPlatform()
 {
@@ -40,6 +47,7 @@ extern "C" const void * PlatformManager_GetImageBase(void)   { return GetPlatfor
 extern "C" const char * PlatformManager_GetWineVersion(void) { return GetPlatform()->GetWineVersion(); }
 extern "C" const char * PlatformManager_GetWineHost(void)    { return GetPlatform()->GetWineHost(); }
 extern "C" const char * PlatformManager_GetUserPrefDir(void) { return GetPlatform()->GetUserPrefDir(); }
+extern "C" size_t       PlatformManager_GetScratchSize(void) { return GetPlatform()->GetScratchSize(); }
 
 /******************************************************************************/
 

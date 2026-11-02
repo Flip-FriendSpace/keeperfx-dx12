@@ -21,6 +21,7 @@
 
 #include "bflib_basics.h"
 #include "globals.h"
+#include "net_main.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,7 +37,7 @@ struct Thing;
 struct PlayerInfo;
 
 struct CreatureBattle {
-  unsigned long fighters_num;
+  uint32_t fighters_num;
   unsigned short first_creatr;
   unsigned short last_creatr;
 };
@@ -75,7 +76,7 @@ long get_combat_state_for_combat(struct Thing *fightng, struct Thing *enmtng, Cr
 TbBool active_battle_exists(PlayerNumber plyr_idx);
 void maintain_my_battle_list(void);
 TbBool step_battles_forward(PlayerNumber plyr_idx);
-long battle_move_player_towards_battle(struct PlayerInfo *player, BattleIndex battle_id);
+TbBool battle_move_user_towards_battle(NetUserId user, BattleIndex battle_id);
 void battle_initialise(void);
 /******************************************************************************/
 #ifdef __cplusplus

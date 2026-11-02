@@ -376,10 +376,7 @@ TbBool process_prisoner_skelification(struct Thing *thing, struct Room *room)
     }
     if (prison_convert_creature_to_skeleton(room, thing))
     {
-        if (is_my_player_number(room->owner))
-        {
-            output_message(SMsg_PrisonMadeSkeleton, 0);
-        }
+        output_player_message(room->owner, SMsg_PrisonMadeSkeleton, 0);
     }
     return true; // Return true even if no skeleton could be created due to creature limit. Otherwise there's a confusing sound message.
 }
@@ -419,7 +416,7 @@ TbBool process_prison_food(struct Thing *creatng, struct Room *room)
             foodtng = find_random_thing_in_room(TCls_Object, ObjMdl_ChickenMature, room);
             if ( !thing_is_invalid(foodtng) )
             {
-                if ( !is_thing_directly_controlled(foodtng)
+                if ( !user_controls_thing(ANY_USER, foodtng, UCT_Direct | UCT_PossessionEntryZoom)
                 && line_of_room_move_2d(
                     &creatng->mappos,
                     &foodtng->mappos,
@@ -438,7 +435,7 @@ TbBool process_prison_food(struct Thing *creatng, struct Room *room)
         }
         return false;
     }
-    if ( is_thing_directly_controlled(foodtng) )
+    if ( user_controls_thing(ANY_USER, foodtng, UCT_Direct | UCT_PossessionEntryZoom) )
         return false;
 
     thing_play_sample(creatng, 112 + SOUND_RANDOM(3), NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
@@ -477,10 +474,7 @@ CrCheckRet process_prison_function(struct Thing *creatng)
     }
     else if ((creatng->health < 0) && ((!crconf->humanoid_creature) && ((crconf->prison_kind > game.conf.crtr_conf.model_count) || (crconf->prison_kind <= 0))))
     {
-        if (is_my_player_number(room->owner))
-        {
-            output_message(SMsg_PrisonersStarving, MESSAGE_DURATION_STARVING);
-        }
+        output_player_message(room->owner, SMsg_PrisonersStarving, MESSAGE_DURATION_STARVING);
     }
     struct CreatureControl* cctrl = creature_control_get_from_thing(creatng);
     if ((cctrl->instance_id == CrInst_NULL) && process_prison_food(creatng, room))
@@ -494,8 +488,7 @@ CrCheckRet process_prison_function(struct Thing *creatng)
         {
             if (is_my_player_number(room->owner)) {
                 output_message(SMsg_PrisonersEscaping, 40);
-            }
-            else if (is_my_player_number(room->owner)) {
+            } else if (is_my_player_number(creatng->owner)) {
                 output_message(SMsg_CreatrFreedPrison, 40);
             }
             set_start_state(creatng);

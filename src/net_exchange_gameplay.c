@@ -30,11 +30,14 @@
 #include "gui_msgs.h"
 #include "net_exchange_common.h"
 #include "net_input_lag.h"
+#include "net_lobby.h"
 #include "net_main.h"
 #include "net_spectator.h"
 #include "player_data.h"
 #include "net_game.h"
 #include "packets.h"
+#include "replay.h"
+#include "roomspace_input.h"
 #include "lua_triggers.h"
 #include "keeperfx.hpp"
 #include <zlib.h>
@@ -51,10 +54,11 @@ int32_t multiplayer_speed_adjustment_ns;
 // TURN_SYNC_MAX_ADJUSTMENT_NS being set too high causes stutters.
 #define REPAIR_HISTORY_RESEND_INTERVAL 200
 #define REPAIR_HISTORY_RECOVERY_INTERVAL 50
-#define FINAL_RESORT_RESYNC_RECOVERY 10000
+#define FINAL_RESORT_RESYNC_RECOVERY (PEER_TIMEOUT_MS * 2)
 #define TURN_SYNC_INTERVAL_MS 250
 #define TURN_SYNC_MAX_ADJUSTMENT_NS 1000000
 #define TURN_SYNC_ADJUST_FACTOR 64
+#define PEER_WAIT_MESSAGE_DELAY_MS 500
 
 struct PacketHistory {
     struct Packet entries[PACKET_HISTORY_SIZE];
@@ -80,6 +84,7 @@ static int64_t server_turn_position_ns = 0;
 static TbClockMSec last_repair_history_send[MAX_NET_USERS];
 static TbClockMSec last_turn_sync_send = 0;
 static NetUserId next_repair_history_user = 0;
+static TbClockMSec missing_packets_wait_start = 0;
 
 static int64_t get_current_turn_position_ns(void)
 {
@@ -88,8 +93,8 @@ static int64_t get_current_turn_position_ns(void)
     }
     int64_t nanoseconds_per_turn = (1000000000ULL + turns_per_second / 2) / turns_per_second;
     int64_t position_ns = (int64_t)get_gameturn() * (int64_t)nanoseconds_per_turn;
-    if (is_feature_on(Ft_DeltaTime) == true && game.process_turn_time > 0) {
-        int64_t turn_phase_ns = (int64_t)((game.process_turn_time - 1) * nanoseconds_per_turn + 0.5);
+    if (is_feature_on(Ft_DeltaTime) == true && local_state.process_turn_time > 0) {
+        int64_t turn_phase_ns = (int64_t)((local_state.process_turn_time - 1) * nanoseconds_per_turn + 0.5);
         if (turn_phase_ns >= nanoseconds_per_turn) {
             turn_phase_ns = nanoseconds_per_turn - 1;
         }
@@ -102,7 +107,7 @@ static void update_turn_speed_adjustment(void)
 {
     TbClockMSec sync_age_ms = LbTimerClock() - server_turn_received_at;
     multiplayer_speed_adjustment_ns = 0;
-    if (game.fast_forward > 0 || netstate.my_id == SERVER_ID || server_turn_received_at == 0 || turns_per_second <= 0
+    if (local_state.fast_forward > 0 || netstate.my_id == SERVER_ID || server_turn_received_at == 0 || turns_per_second <= 0
         || sync_age_ms > TURN_SYNC_INTERVAL_MS * 3) {
         return;
     }
@@ -181,12 +186,15 @@ void queue_gameplay_chat_message(NetUserId user, const char *message, MapCoord c
     queued->user = user;
     queued->cursor_x = cursor_x;
     queued->cursor_y = cursor_y;
-    snprintf(queued->message, sizeof(queued->message), "%s", message);
+    copy_chat_message(queued->message, message);
 }
 
 void load_gameplay_chat_messages(const struct QueuedGameplayChat *messages, int32_t count)
 {
+    count = clamp(count, 0, GAMEPLAY_CHAT_QUEUE_LEN);
     memcpy(gameplay_chat_queue, messages, count * sizeof(messages[0]));
+    for (int32_t i = 0; i < count; i++)
+        gameplay_chat_queue[i].message[PLAYER_MP_MESSAGE_LEN - 1] = '\0';
     gameplay_chat_queue_count = count;
 }
 
@@ -204,17 +212,32 @@ void process_gameplay_chat_message(NetUserId user, const char *message, MapCoord
     if (message[0] != '\0')
         replay_record_chat_message(user, message, cursor_x, cursor_y);
     PlayerNumber plyr_idx = get_net_user_player_number(user);
-    struct PlayerInfo *player = prepare_network_chat_message(plyr_idx, message);
+    struct UserState *ustate = get_user_state(user);
+    if (!user_state_invalid(ustate))
+        ustate->init_flags &= ~UsrIF_NewMPMessage;
     if (message[0] != '\0') {
-        SYNCLOG("Gameplay chat from user %d (player %d): %s", (int)user, (int)plyr_idx, message);
-        lua_on_chatmsg(plyr_idx, player->mp_message_text);
-        const TbBool shown = (player->mp_message_text[0] != cmd_char) || !cmd_exec(plyr_idx, player->mp_message_text + 1, cursor_x, cursor_y) || network_is_active();
+        char text[PLAYER_MP_MESSAGE_LEN];
+        copy_chat_message(text, message);
+        lua_on_chatmsg(plyr_idx, text);
+        TbBool shown = true;
+        char message_type = MsgType_Local;
+        if (network_is_active() || (game.game_kind == GKind_MultiGame)) {
+            message_type = MsgType_Player;
+        }
+        if (text[0] == cmd_char) {
+            const TbBool issued_here = (user == get_local_user()) && !replay.load_enable;
+            const enum ConsoleCommandResult result = cmd_exec(plyr_idx, text + 1, cursor_x, cursor_y, issued_here);
+            const TbBool succeeded = (result == CmdR_Succeeded) || (result == CmdR_SucceededLocally);
+            shown = (result == CmdR_Unrecognised) || (succeeded && network_is_active());
+            if (result == CmdR_SucceededLocally) {
+                message_type = MsgType_Local;
+            }
+        }
         if (shown) {
-            message_add(MsgType_Player, plyr_idx, player->mp_message_text);
+            message_add(message_type, plyr_idx, text);
             play_non_3d_sample(snd_chat_message[user == get_local_user()]);
         }
     }
-    memset(player->mp_message_text, 0, PLAYER_MP_MESSAGE_LEN);
 }
 
 TbError process_network_turn_sync_message(NetUserId source, const char *buffer, size_t buffer_size)
@@ -248,6 +271,9 @@ void store_packet_history(NetUserId user, const struct Packet *packet)
     struct Packet *entry = &packet_history[user].entries[packet->turn % PACKET_HISTORY_SIZE];
     if (!is_packet_empty(entry) && (GameTurnDelta)(entry->turn - packet->turn) > 0) {
         return;
+    }
+    if (user != netstate.my_id && network_user_active(user) && (is_packet_empty(entry) || entry->turn != packet->turn)) {
+        input_lag_note_packet_arrival(packet->turn);
     }
     *entry = *packet;
 }
@@ -347,6 +373,7 @@ void initialize_packet_history(void)
     next_repair_history_user = 0;
     network_spectator_reset();
     input_lag_reset();
+    reset_dig_prediction();
 }
 
 static TbBool user_has_required_turn_packets(NetUserId user)
@@ -369,6 +396,19 @@ static TbBool have_all_turn_packets(NetUserId local_user)
         }
     }
     return true;
+}
+
+TbBool is_waiting_on_user_packets(NetUserId user)
+{
+    if (missing_packets_wait_start == 0 || LbTimerClock() - missing_packets_wait_start < PEER_WAIT_MESSAGE_DELAY_MS) {
+        return false;
+    }
+    return user != netstate.my_id && user_present(user) && !user_has_required_turn_packets(user);
+}
+
+TbClockMSec get_peer_timeout_remaining(void)
+{
+    return max(PEER_TIMEOUT_MS - (LbTimerClock() - missing_packets_wait_start), 0);
 }
 
 static TbBool host_lost(GameTurn turn, const char *state)
@@ -467,7 +507,6 @@ static void send_repair_history_if_due(int32_t resend_interval)
 static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, NetUserId local_user)
 {
     GameTurn expected_turn = get_gameturn() - game.input_lag_turns;
-    TbClockMSec wait_start_time = LbTimerClock();
     TbBool turn_complete = false;
     TbBool wait_timed_out = false;
     MULTIPLAYER_LOG("LbNetwork_ExchangeGameplay: Missing packets for turn=%lu, collecting...", (unsigned long)expected_turn);
@@ -476,11 +515,12 @@ static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, Net
         send_repair_history_if_due(REPAIR_HISTORY_RECOVERY_INTERVAL);
         netstate.sp->update(OnNewUser);
         host_spoof_dropped_user_packets();
+        net_lobby_refresh_rejoin_open();
         if (host_lost(expected_turn, "waiting for")) {
             return Lb_OK;
         }
         turn_complete = have_all_turn_packets(local_user);
-        for (NetUserId peer_id = 0; peer_id < netstate.max_users && !turn_complete; peer_id += 1) {
+        for (NetUserId peer_id = 0; peer_id < MAX_NET_CONNECTIONS && !turn_complete; peer_id += 1) {
             if (!can_send_to_peer(peer_id)) {
                 continue;
             }
@@ -490,10 +530,10 @@ static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, Net
             }
             turn_complete = have_all_turn_packets(local_user);
         }
-        if (turn_complete || netstate.resync_pending) {
+        if (turn_complete || netstate.resync_pending || netstate.pending_spectator_id != INVALID_USER_ID) {
             break;
         }
-        if (LbTimerClock() - wait_start_time >= FINAL_RESORT_RESYNC_RECOVERY) {
+        if (LbTimerClock() - missing_packets_wait_start >= FINAL_RESORT_RESYNC_RECOVERY) {
             set_flag(local_system_flags, GSF_NetGameNoSync);
             clear_flag(local_system_flags, GSF_NetSeedNoSync);
             wait_timed_out = true;
@@ -506,8 +546,8 @@ static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, Net
             return Lb_OK;
         }
     }
-    TbClockMSec wait_time = LbTimerClock() - wait_start_time;
-    input_lag_note_packet_wait((int32_t)wait_time);
+    TbClockMSec wait_time = LbTimerClock() - missing_packets_wait_start;
+    input_lag_note_wait(wait_time);
     if (wait_timed_out) {
         WARNLOG("LbNetwork_ExchangeGameplay: Timed out waiting for turn=%lu after %dms; continuing so resync can recover",
             (unsigned long)expected_turn, (int32_t)wait_time);
@@ -549,12 +589,15 @@ TbError LbNetwork_ExchangeGameplay(void *send_buf, void *server_buf, size_t fram
     send_repair_history_if_due(repair_interval);
     network_update(server_buf, frame_size);
     update_turn_speed_adjustment();
-    if (game.skip_initial_input_turns <= 0 && !netstate.resync_pending) {
+    if (game.skip_initial_input_turns <= 0 && !netstate.resync_pending && netstate.pending_spectator_id == INVALID_USER_ID) {
         struct PlayerInfo *my_player = get_my_player();
         if (player_exists(my_player)) {
             NetUserId local_user = netstate.my_id;
             if (!have_all_turn_packets(local_user)) {
-                return wait_for_missing_packets(server_buf, frame_size, local_user);
+                missing_packets_wait_start = LbTimerClock();
+                TbError result = wait_for_missing_packets(server_buf, frame_size, local_user);
+                missing_packets_wait_start = 0;
+                return result;
             }
         }
     }

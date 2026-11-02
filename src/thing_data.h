@@ -137,7 +137,7 @@ struct Thing {
       } valuable;
       struct {
         short life_remaining;
-        char freshness_state;
+        int8_t freshness_state;
         unsigned char possession_startup_timer;
         TbBool some_chicken_was_sacrificed;
         unsigned short angle;
@@ -282,7 +282,7 @@ struct Thing {
     unsigned short sprite_size;
     unsigned char current_frame;
     unsigned char max_frames;
-    char transformation_speed;
+    int8_t transformation_speed;
     unsigned short sprite_size_min;
     unsigned short sprite_size_max;
     unsigned char rendering_flags;
@@ -346,6 +346,7 @@ TbBool thing_is_dragged_or_pulled(const struct Thing *thing);
 struct PlayerInfo *get_player_thing_is_controlled_by(const struct Thing *thing);
 
 void set_thing_animation(struct Thing *thing, long animation_index, long speed);
+void advance_thing_animation(struct Thing *thing);
 void set_thing_draw(struct Thing *thing, long anim, long speed, long scale, char animate_once, char start_frame, unsigned char draw_class);
 
 void query_thing(struct Thing *thing);
