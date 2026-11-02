@@ -334,7 +334,7 @@ OwnedWorldPrepareStatus OwnedWorldBridge::Prepare(const OwnedFrameLease& p,bool 
         r.full_frame=full_frame;
         try {r.Gather(*p);if(!r.Select()){Abandon();return OwnedWorldPrepareStatus::WouldBlock;}r.pending=p;}
         catch(const std::invalid_argument&){Abandon();return OwnedWorldPrepareStatus::InvalidInput;}
-        catch(const std::length_error&){Abandon();return OwnedWorldPrepareStatus::InvalidInput;}
+        catch(const std::length_error&){Abandon();return OwnedWorldPrepareStatus::TooManySources;}
         catch(...){Abandon();throw;}
     }
     r.prepared=false;r.frame={};

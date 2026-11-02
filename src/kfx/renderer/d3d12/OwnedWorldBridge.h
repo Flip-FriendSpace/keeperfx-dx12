@@ -8,7 +8,7 @@
 
 namespace kfx::render::dx12 {
 class Device;
-enum class OwnedWorldPrepareStatus : uint8_t { Ready, WouldBlock, PendingPacket, Unsupported, InvalidInput };
+enum class OwnedWorldPrepareStatus : uint8_t { Ready, WouldBlock, PendingPacket, Unsupported, InvalidInput, TooManySources };
 struct OwnedWorldBridgeLimits {
     // At most 2048 distinct (owned key, usage) pairs per packet; the default is
     // also the maximum. A 4K Armageddon crowd needs more than 512. Slots can change

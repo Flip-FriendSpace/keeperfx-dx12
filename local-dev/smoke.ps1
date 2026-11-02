@@ -2,6 +2,8 @@
 # KeeperFX Windows x64 / DirectX 12 preview changes: 2026-10-14.
 param([string]$WorkspacePath, [switch]$Upstream, [ValidateSet('OPENGL', 'SOFTWARE', 'DX12')][string]$Renderer = 'OPENGL', [ValidateSet('x86', 'x64')][string]$Architecture = 'x64', [switch]$Sound, [ValidateSet('', 'ENG', 'FRE', 'GER', 'JPN')][string]$Language = '')
 $ErrorActionPreference = 'Stop'
+# This test reports validation counts, which need the debug layer.
+$env:KFX_DX12_DEBUG = '1'
 if (-not $WorkspacePath) { $WorkspacePath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
 $workspace = (Resolve-Path -LiteralPath $WorkspacePath).Path
 if ($Renderer -eq 'DX12' -and ($Upstream -or $Architecture -ne 'x64')) {
