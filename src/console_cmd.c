@@ -179,7 +179,7 @@ static TbBool console_cmd_cheats_allowed(PlayerNumber plyr_idx)
 
 static struct Thing *console_cmd_selected_thing(PlayerNumber plyr_idx)
 {
-    const struct UserState *ustate = get_player_user_state(console_cmd_player(plyr_idx));
+    const struct UserState *ustate = get_player_primary_user_state(console_cmd_player(plyr_idx));
     if (user_state_invalid(ustate))
         return INVALID_THING;
     struct Thing *thing = thing_get(ustate->cheatselection.chosen_thing_idx);
@@ -190,7 +190,7 @@ static struct Thing *console_cmd_selected_thing(PlayerNumber plyr_idx)
 
 static struct Room *console_cmd_selected_room(PlayerNumber plyr_idx)
 {
-    const struct UserState *ustate = get_player_user_state(console_cmd_player(plyr_idx));
+    const struct UserState *ustate = get_player_primary_user_state(console_cmd_player(plyr_idx));
     if (user_state_invalid(ustate))
         return INVALID_ROOM;
     struct Room *room = room_get(ustate->cheatselection.chosen_room_idx);
@@ -223,12 +223,12 @@ static void console_cmd_cursor(MapCoord *x, MapCoord *y)
 void console_cmd_default_cursor(const struct PlayerInfo *player, MapCoord *x, MapCoord *y)
 {
     if (player == &local_observer_player) {
-        const struct Camera *cam = get_local_active_camera(&local_observer_player);
+        const struct Camera *cam = get_local_active_camera();
         *x = cam->mappos.x.val;
         *y = cam->mappos.y.val;
         return;
     }
-    const struct UserState *ustate = get_player_user_state(player);
+    const struct UserState *ustate = get_player_primary_user_state(player);
     if (user_state_invalid(ustate)) {
         *x = 0;
         *y = 0;
@@ -966,12 +966,12 @@ static TbBool cmd_scene_reference(char *args)
         char *value = strsep_param_with_space(&args);
         if (!value || strlen(value) != 1 || (*value != '0' && *value != '1') || strsep_param_with_space(&args)) return false;
         settings.video_cluedo_mode = *value - '0';
-        get_player_user_state(get_my_player())->prefs[UPref_WallHeight] = settings.video_cluedo_mode;
+        get_user_state(get_my_user())->prefs[UPref_WallHeight] = settings.video_cluedo_mode;
         return true;
     }
     if (strcmp(action, "camera") != 0) return false;
-    struct Camera pose = *get_local_active_camera(get_my_player());
-    const TbBool first_person = get_local_view_type(get_my_player()) == PVT_CreatureContrl;
+    struct Camera pose = *get_local_active_camera();
+    const TbBool first_person = get_local_view_type() == PVT_CreatureContrl;
     int values[] = {pose.mappos.x.val, pose.mappos.y.val, pose.mappos.z.val,
         pose.rotation_angle_x, pose.rotation_angle_y, pose.zoom, pose.horizontal_fov};
     // Explicit '*' retains a field. Reject partial/malformed/out-of-range poses.
@@ -1008,6 +1008,7 @@ static TbBool cmd_scenecheck(PlayerNumber plyr_idx, char *args)
         // Fixed local regression fixtures. Ordinary launches cannot activate
         // these controls, and the runner restores saved user settings on exit.
         struct PlayerInfo* player = get_my_player();
+        const NetUserId user = get_my_user();
         if (strcmp(view, "possession") == 0) {
             char* model_name = strsep_param_with_space(&args);
             const long model = model_name ? get_creature_model_for_command(model_name) : 0;
@@ -1016,17 +1017,17 @@ static TbBool cmd_scenecheck(PlayerNumber plyr_idx, char *args)
                 struct Thing* thing = thing_get(i);
                 if (thing_exists(thing) && thing->class_id == TCls_Creature && thing->owner == plyr_idx
                     && (!model || thing->model == model)
-                    && thing_can_be_controlled_as_controller(thing)) return control_creature_as_controller(player, thing);
+                    && thing_can_be_controlled_as_controller(thing)) return control_creature_as_controller(user, thing);
             }
             return false;
         }
         if (strcmp(view, "front") != 0 && strcmp(view, "overhead") != 0) return false;
-        if (get_player_view_type(player) == PVT_CreatureContrl) {
-            struct Thing* thing = thing_get(get_player_user_state(player)->controlled_thing_idx);
-            if (thing_exists(thing)) leave_creature_as_controller(player, thing);
+        if (get_user_view_type(user) == PVT_CreatureContrl) {
+            struct Thing* thing = thing_get(get_user_state(user)->controlled_thing_idx);
+            if (thing_exists(thing)) leave_creature_as_controller(user, thing);
         }
-        get_player_user_state(player)->prefs[UPref_FrontView] = strcmp(view, "front") == 0;
-        update_engine_view(player, false);
+        get_user_state(user)->prefs[UPref_FrontView] = strcmp(view, "front") == 0;
+        update_local_view(user, false);
         init_local_cameras(player);
         return true;
     }
@@ -1052,7 +1053,7 @@ static TbBool cmd_renderbench(PlayerNumber plyr_idx, char *args)
     struct Thing *heart = get_player_soul_container(plyr_idx);
     if (!thing_is_dungeon_heart(heart)) return false;
     if (!RenderBenchmarkRequest(scene)) return false;
-    struct DungeonCamera pose = get_player_user_state(player)->dungeon_camera;
+    struct DungeonCamera pose = get_user_state(get_my_user())->dungeon_camera;
     pose.x = heart->mappos.x.val;
     pose.y = heart->mappos.y.val;
     pose.zoom[0] = (scene == 2) ? 1600 : 6000;
@@ -2435,7 +2436,7 @@ TbBool cmd_get_thing(PlayerNumber plyr_idx, char * args)
     targeted_message_add(MsgType_Local, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "Got thing ID %d %s",
                             thing->index,
                             thing_class_and_model_name(thing->class_id, thing->model));
-    struct UserState *ustate = get_player_user_state(player);
+    struct UserState *ustate = get_player_primary_user_state(player);
     if (user_state_invalid(ustate))
         return false;
     ustate->cheatselection.chosen_thing_idx = thing->index;
@@ -2527,7 +2528,7 @@ TbBool cmd_get_room(PlayerNumber plyr_idx, char * args)
         return false;
     }
     targeted_message_add(MsgType_Local, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "Got room ID %d", room->index);
-    struct UserState *ustate = get_player_user_state(player);
+    struct UserState *ustate = get_player_primary_user_state(player);
     if (user_state_invalid(ustate))
         return false;
     ustate->cheatselection.chosen_room_idx = room->index;

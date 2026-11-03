@@ -21,7 +21,7 @@ engine = (repo / "src/engine_render.c").read_text()
 cursor = (repo / "src/cursor_tag.c").read_text()
 scope = engine[engine.index("static TbBool reference_selector_enabled;"):
                engine.index("struct EngineReferenceSelectorProof get_engine_reference_selector_proof(void)")]
-guard = cursor[cursor.index("TbBool should_draw_cursor_box(PlayerNumber plyr_idx)"):
+guard = cursor[cursor.index("TbBool should_draw_cursor_box(NetUserId user)"):
                cursor.index("unsigned char tag_cursor_blocks_dig(")]
 source = r'''
 #include <assert.h>
@@ -52,13 +52,14 @@ static bool flag_is_set(int value,int mask){return (value&mask)!=0;}
 static struct PlayerInfo *get_my_player(void){return &player;}
 static struct UserState *get_local_user_state(void){return &user_state;}
 static const struct UserState *get_user_state_prediction(int n){(void)n;return &user_state;}
-static int get_displayed_user(void){return 0;}
+static int get_displayed_user(void){return displayed?0:-1;}
 static bool is_my_player_number(int n){return displayed&&n==my_player_number;}
 static bool gameplay_cursor_is_over_gui(void){return busy;}
 static bool is_player_displayed(int id){(void)id;return displayed;}
 static bool is_observer_camera_active(void){return observer;}
 static bool game_is_busy_doing_gui(void){return busy;}
 static int get_local_user(void){return 0;}
+static int get_my_user(void){return 0;}
 static int calc_distance_from_roomspace_centre(int size,int offset){return (size-1+offset)/2;}
 static struct RoomSpace create_box_roomspace(struct RoomSpace r,int w,int h,int x,int y){r.width=w;r.height=h;r.centreX=x;r.centreY=y;r.left=x-(w-1)/2;r.top=y-(h-1)/2;r.slab_count=w*h;r.is_roomspace_a_box=r.render_roomspace_as_box=1;return r;}
 static struct RoomSpace check_roomspace_for_diggable_slabs(struct RoomSpace r,int p,void *v){(void)p;(void)v;return r;}
@@ -73,8 +74,8 @@ static int floor_height_for_volume_box(int p,int x,int y){(void)p;(void)x;(void)
 static int subtile_revealed(int x,int y,int p){(void)y;(void)p;return !(hidden_cells&&x/3==11);}
 static struct RoomSpace check_slabs_in_roomspace(struct RoomSpace r,int cost){(void)cost;r.slab_count=buildable;r.invalid_slabs_count=r.width*r.height-buildable;r.is_roomspace_a_box=(buildable==0||buildable==r.width*r.height);return r;}
 static int can_build_roomspace(int p,int k,struct RoomSpace r){assert(p==0&&k==2);(void)r;return buildable;}
-TbBool tag_cursor_blocks_place_roomspace(PlayerNumber,RoomKind,struct RoomSpace*,MapSubtlCoord,MapSubtlCoord,TbBool);
-TbBool should_draw_cursor_box(PlayerNumber plyr_idx);
+TbBool tag_cursor_blocks_place_roomspace(NetUserId,RoomKind,struct RoomSpace*,MapSubtlCoord,MapSubtlCoord,TbBool);
+TbBool should_draw_cursor_box(NetUserId user);
 static void tag_cursor_blocks_dig(struct PlayerInfo *p,int user,const struct Packet *packet,struct RoomSpace *r,int x,int y,bool full){
  (void)p;(void)user;(void)r;(void)x;(void)y;(void)full;tag_calls++;
  assert(packet->control_flags==PCtr_MapCoordsValid);

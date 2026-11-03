@@ -272,7 +272,7 @@ std::shared_ptr<const WorldScene> WorldSceneSeal()
         input.local_hover=identity(thing_get(local_state.local_thing_under_hand));
         if(const auto* player=get_my_player();!player_invalid(player)) {
             const auto* ustate=get_local_user_state();
-            input.view_type=get_local_view_type(player);input.work_state=ustate->work_state;
+            input.view_type=get_local_view_type();input.work_state=ustate->work_state;
             input.player_hover=identity(thing_get(ustate->thing_under_hand));
         }
         input.consumed=consumed_packet;input.last_button=last_button_packet;
