@@ -17,7 +17,7 @@ void DispatchWorldSprite(WorldSpriteDispatch mode, BucketKindJontySprite& sprite
         draw_jonty_mapwho(&sprite);
         break;
     case WorldSpriteDispatch::IsometricOnly: {
-        auto* active = get_local_active_camera(get_my_player());
+        auto* active = get_local_active_camera();
         if (active && (active->view_mode == PVM_IsoWibbleView || active->view_mode == PVM_IsoStraightView))
             draw_jonty_mapwho(&sprite);
         break;
