@@ -52,6 +52,12 @@ void load_sprites_for_multi_front(LevelNumber lvnum);
 extern TbBigChecksum required_sprite_zip_checksums[REQUIRED_SPRITE_ZIP_COUNT];
 
 unsigned short resolve_original_sprite_replacement(unsigned short animation);
+/** The custom sprite animations loaded now. Their sprite indices depend on the order the mods load. */
+int custom_sprite_animation_count(void);
+/** The name of custom animation n (0 to custom_sprite_animation_count() - 1), and in *sprite the sprite index of its first frame. */
+const char *custom_sprite_animation(int n, int32_t *sprite);
+/** One past the last custom sprite index in use. */
+int32_t custom_sprites_end(void);
 int32_t get_anim_id(const char *name, struct ObjectConfigStats* objst);
 int32_t get_anim_id_(const char* name);
 int32_t get_icon_id(const char *name);

@@ -64,7 +64,8 @@ enum SaveMode {
 
 /** The config table a field's value is an index into (SaveFieldDesc::name_domain). The save keeps the code
  *  name of every entry of the table, so a load can tell when the indices mean something else in this
- *  build or mod set, and refuses the save then. */
+ *  build or mod set, and refuses the save then. Sprite animations are the exception: a load moves them to
+ *  where the same animation is in the running session (SND_Sprite). */
 enum SaveNameDomain {
     /** The field is not such an index. */
     SND_None = 0,
@@ -84,6 +85,9 @@ enum SaveNameDomain {
     SND_ByThingClass,
     /** Dungeon.manufacture_kind: which table it indexes depends on the manufacture class. */
     SND_ByManufactureClass,
+    /** A sprite animation: the sprite index of its first frame. Custom animations get their indices in the
+     *  order the mods load them, so the same animation can have another index in another session. */
+    SND_Sprite,
     /** The number of domains; not a domain. */
     SND_COUNT
 };

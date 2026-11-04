@@ -16,6 +16,7 @@
 #include "dungeon_stats.h"
 #include "config_creature.h"
 #include "config_crtrmodel.h"
+#include "creature_graphics.h"
 #include "config_compp.h"
 #include "sound_manager.h"
 #include "custom_sprites.h"
@@ -52,6 +53,7 @@
 #include "map_columns.h"
 #include "map_data.h"
 #include "thing_creature.h"
+#include "thing_list.h"
 #include "kfx/platform/IPlatform.h"
 #include "kfx/renderer/WorldSceneCapture.h"
 #include "state_navigation.h"
@@ -59,6 +61,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 #include <memory>
 
@@ -199,6 +202,42 @@ static void rebuild_derived_game_state(void)
     init_creature_scores();
 }
 
+/** Owns a sprite map for the length of a load. */
+struct SpriteMapOwner : SaveSpriteMap {
+    SpriteMapOwner() : SaveSpriteMap() {}
+    ~SpriteMapOwner() { save_sprite_map_free(this); }
+    SpriteMapOwner(const SpriteMapOwner &) = delete;
+    SpriteMapOwner &operator=(const SpriteMapOwner &) = delete;
+};
+
+/** A thing whose animation moved to another sprite (before[i] is its sprite before the move) keeps its place
+ *  in it only while the animation still has that frame; otherwise it wraps, as a running animation does. A
+ *  frame past the end would be drawn from the sprites after the animation. */
+static void fit_thing_frames_to_sprites(const std::vector<unsigned short> &before)
+{
+    for (long i = 1; i < THINGS_COUNT; i++)
+    {
+        struct Thing *thing = &game.things_data[i];
+        if (!flag_is_set(thing->alloc_flags, TAlF_Exists) || (thing->anim_sprite == before[i]))
+            continue;
+        const unsigned char frames = keepersprite_frames(thing->anim_sprite);
+        if (thing->max_frames == frames)
+            continue;
+        thing->max_frames = frames;
+        if (frames == 0)
+        {
+            thing->anim_time = 0;
+            thing->current_frame = 0;
+            continue;
+        }
+        const int32_t anim_length = (int32_t)frames << 8;
+        thing->anim_time %= anim_length;
+        if (thing->anim_time < 0)
+            thing->anim_time += anim_length;
+        thing->current_frame = (unsigned char)(thing->anim_time >> 8);
+    }
+}
+
 /**
  * Puts a save that has been read in full into the running game. NAMS/CONF only mean anything once config
  * files are loaded for the save's own campaign and level, so that comes first. From here on the running
@@ -234,8 +273,17 @@ static TbBool apply_game_kfxs(const char *fname, struct LoadedSave *loaded_save,
     memcpy(&game, loaded_save->game.get(), sizeof(game));
     memcpy(&intralvl, loaded_save->ilvl.get(), sizeof(intralvl));
     WorldSceneReset();
+    // Custom sprites are numbered in the order the mods load, so the save's sprite numbers are moved to
+    // wherever the animations they name are now.
+    const savegame::SessionSprites sprites;
+    SpriteMapOwner sprite_map;
+    if (save_sprite_map_build(read_result->nams_data, read_result->nams_len, &sprites.view, &sprite_map, &err) != SVR_Ok)
+    {
+        SAVEWARN("can't read the sprite names of \"%s\": %s", fname, err.message);
+        return false;
+    }
     // Apply the save's config changes on top of the fresh config.
-    if (save_config_overlay_apply(read_result->conf_data, read_result->conf_len, &game.conf, &err) != SVR_Ok)
+    if (save_config_overlay_apply(read_result->conf_data, read_result->conf_len, &game.conf, &sprite_map, &err) != SVR_Ok)
     {
         SAVEWARN("can't apply the config overlay of \"%s\": %s", fname, err.message);
         return false;
@@ -246,6 +294,20 @@ static TbBool apply_game_kfxs(const char *fname, struct LoadedSave *loaded_save,
         SAVEWARN("\"%s\" refused: %s (level %d of campaign \"%s\")", fname, err.message,
             (int)centry->level_num, centry->campaign_fname);
         return false;
+    }
+    if ((sprite_map.moved > 0) || (sprite_map.missing > 0))
+    {
+        std::vector<unsigned short> before(THINGS_COUNT);
+        for (long i = 0; i < THINGS_COUNT; i++)
+            before[i] = game.things_data[i].anim_sprite;
+        uint32_t lost = 0;
+        const uint32_t changed = save_sprite_map_apply(&sprite_map, &game, &lost);
+        fit_thing_frames_to_sprites(before);
+        SAVELOG("\"%s\" was saved with other mod sprites: %u of its animations are at other numbers now, %u values moved",
+            fname, (unsigned)sprite_map.moved, (unsigned)changed);
+        if (sprite_map.missing > 0)
+            SAVEWARN("\"%s\" names %u sprite animations this mod set doesn't have, such as '%s'; %u values that used them show sprite 0",
+                fname, (unsigned)sprite_map.missing, sprite_map.missing_name, (unsigned)lost);
     }
     if (read_result->lua_len > 0)
     {

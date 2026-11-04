@@ -297,7 +297,7 @@ static void test_name_tables(void)
             name_case_fill(g, keep_count);
             g->things_data[5].class_id = classes[i];
             g->things_data[5].model = 2;
-            CHECK(save_names_write(g, &nams, &err) == SVR_Ok, "class %u: write failed", (unsigned)classes[i]);
+            CHECK(save_names_write(g, NULL, &nams, &err) == SVR_Ok, "class %u: write failed", (unsigned)classes[i]);
             CHECK(save_names_check(nams.data, nams.len, g, &err) == SVR_Ok,
                 "class %u, counts %s: a thing with model 2 was refused: %s", (unsigned)classes[i],
                 keep_count ? "kept" : "never set", err.message);
@@ -309,6 +309,87 @@ static void test_name_tables(void)
         }
     }
     free(g);
+}
+/******************************************************************************/
+/* Sprite animations get their indices in the order the mods load. A save names its custom animations, and a
+   load moves the indices it holds to where those animations are in the running session. */
+#define SPR_FIRST 16384u
+
+static void test_sprite_names(void)
+{
+    static const struct SaveSpriteName saved_names[] = {
+        { "BLOOD", SPR_FIRST + 3 }, { "WORKSHOP", SPR_FIRST + 10 }, { "GONE", SPR_FIRST + 20 } };
+    static const struct SaveSpriteName now_names[] = {
+        { "BLOOD", SPR_FIRST + 3 }, { "OTHER", SPR_FIRST + 10 }, { "WORKSHOP", SPR_FIRST + 30 } };
+    const struct SaveSpriteNames saved = { SPR_FIRST, SPR_FIRST + 26, 3, saved_names };
+    const struct SaveSpriteNames now = { SPR_FIRST, SPR_FIRST + 36, 3, now_names };
+    struct Game *g = (struct Game *)calloc(1, sizeof(struct Game));
+    struct Configs *baseline = (struct Configs *)calloc(1, sizeof(struct Configs));
+    struct Configs *loaded = (struct Configs *)calloc(1, sizeof(struct Configs));
+    struct SaveBuffer nams = { NULL, 0, 0 }, unnamed = { NULL, 0, 0 }, overlay = { NULL, 0, 0 };
+    struct SaveSpriteMap map;
+    struct SaveError err;
+    uint32_t lost = 99;
+    section("sprite names");
+    if ((g == NULL) || (baseline == NULL) || (loaded == NULL))
+    {
+        CHECK(0, "out of memory");
+        free(g); free(baseline); free(loaded);
+        return;
+    }
+    name_case_fill(g, 1);
+    g->things_data[5].anim_sprite = SPR_FIRST + 10;   /* WORKSHOP: moved */
+    g->things_data[6].anim_sprite = SPR_FIRST + 3;    /* BLOOD: where it was */
+    g->things_data[7].anim_sprite = 100;              /* an original sprite */
+    g->things_data[8].anim_sprite = SPR_FIRST + 11;   /* a later frame, which has no name */
+    g->things_data[9].anim_sprite = SPR_FIRST + 20;   /* GONE: not in this session */
+    g->conf.object_conf.object_cfgstats[2].sprite_anim_idx = SPR_FIRST + 10;
+    g->conf.object_conf.object_cfgstats[2].anim_speed = 7;
+    CHECK(save_names_write(g, &saved, &nams, &err) == SVR_Ok, "write failed: %s", err.message);
+    CHECK(save_names_check(nams.data, nams.len, g, &err) == SVR_Ok, "the sprite names failed the config check: %s", err.message);
+
+    /* The same session: nothing moves. */
+    CHECK(save_sprite_map_build(nams.data, nams.len, &saved, &map, &err) == SVR_Ok, "map failed: %s", err.message);
+    CHECK((map.count == 0) && (map.moved == 0) && (map.missing == 0), "a save loaded with its own sprites moved something");
+    CHECK(save_sprite_map_apply(&map, g, &lost) == 0, "an empty map changed a value");
+    CHECK(lost == 0, "an empty map lost a value");
+    save_sprite_map_free(&map);
+
+    /* Another session: WORKSHOP is elsewhere and GONE isn't there. */
+    CHECK(save_sprite_map_build(nams.data, nams.len, &now, &map, &err) == SVR_Ok, "map failed: %s", err.message);
+    CHECK((map.moved == 1) && (map.missing == 1), "moved %u and missing %u, wanted 1 and 1", map.moved, map.missing);
+    CHECK(strcmp(map.missing_name, "GONE") == 0, "the missing animation is \"%s\"", map.missing_name);
+    CHECK(save_sprite_map_apply(&map, g, &lost) == 2, "the wrong number of values changed");
+    CHECK(lost == 1, "%u values lost, wanted 1", lost);
+    CHECK(g->things_data[5].anim_sprite == SPR_FIRST + 30, "WORKSHOP went to %u", g->things_data[5].anim_sprite);
+    CHECK(g->things_data[6].anim_sprite == SPR_FIRST + 3, "BLOOD went to %u", g->things_data[6].anim_sprite);
+    CHECK(g->things_data[7].anim_sprite == 100, "an original sprite went to %u", g->things_data[7].anim_sprite);
+    CHECK(g->things_data[8].anim_sprite == SPR_FIRST + 11, "an unnamed frame went to %u", g->things_data[8].anim_sprite);
+    CHECK(g->things_data[9].anim_sprite == 0, "a missing animation went to %u, wanted 0", g->things_data[9].anim_sprite);
+    CHECK(g->conf.object_conf.object_cfgstats[2].sprite_anim_idx == SPR_FIRST + 10, "the game's own config was moved");
+
+    /* A sprite the level put in the config moves with the overlay; other values don't. */
+    CHECK(save_config_overlay_write(&g->conf, baseline, &overlay, &err) == SVR_Ok, "overlay write: %s", err.message);
+    CHECK(save_config_overlay_apply(overlay.data, overlay.len, loaded, &map, &err) == SVR_Ok, "overlay apply: %s", err.message);
+    CHECK(loaded->object_conf.object_cfgstats[2].sprite_anim_idx == SPR_FIRST + 30, "the overlay's WORKSHOP went to %d",
+        loaded->object_conf.object_cfgstats[2].sprite_anim_idx);
+    CHECK(loaded->object_conf.object_cfgstats[2].anim_speed == 7, "the overlay changed a value that isn't a sprite");
+    memset(loaded, 0, sizeof(*loaded));
+    CHECK(save_config_overlay_apply(overlay.data, overlay.len, loaded, NULL, &err) == SVR_Ok, "overlay apply: %s", err.message);
+    CHECK(loaded->object_conf.object_cfgstats[2].sprite_anim_idx == SPR_FIRST + 10, "an overlay without a map moved a sprite");
+    save_sprite_map_free(&map);
+    CHECK((map.to == NULL) && (map.count == 0), "a freed map still holds indices");
+
+    /* A save without sprite names, as earlier builds wrote: nothing to go by, so nothing moves. */
+    CHECK(save_names_write(g, NULL, &unnamed, &err) == SVR_Ok, "write failed: %s", err.message);
+    CHECK(save_sprite_map_build(unnamed.data, unnamed.len, &now, &map, &err) == SVR_Ok, "map failed: %s", err.message);
+    CHECK((map.count == 0) && (map.to == NULL), "a save without sprite names moved something");
+    save_sprite_map_free(&map);
+
+    save_buf_free(&nams);
+    save_buf_free(&unnamed);
+    save_buf_free(&overlay);
+    free(g); free(baseline); free(loaded);
 }
 /******************************************************************************/
 /* Arrays: grow, shrink (with and without live entries), 2D resize, strings, struct arrays. */
@@ -1065,7 +1146,7 @@ static void test_config_overlay_strings(void)
     /* Only the number in front of the string changes: the string must not appear in the overlay. */
     current->slab_conf.room_cfgstats[1].msg_needed.id = 7;
     CHECK(save_config_overlay_write(current, baseline, &overlay, &err) == SVR_Ok, "overlay write: %s", err.message);
-    CHECK(save_config_overlay_apply(overlay.data, overlay.len, loaded, &err) == SVR_Ok, "overlay apply: %s", err.message);
+    CHECK(save_config_overlay_apply(overlay.data, overlay.len, loaded, NULL, &err) == SVR_Ok, "overlay apply: %s", err.message);
     CHECK(loaded->slab_conf.room_cfgstats[1].msg_needed.id == 7, "the number was not applied");
     CHECK(loaded->slab_conf.room_cfgstats[1].msg_needed.path[0] == '\0', "an unchanged string came back as \"%s\"",
         loaded->slab_conf.room_cfgstats[1].msg_needed.path);
@@ -1076,7 +1157,7 @@ static void test_config_overlay_strings(void)
     memset(current, 0, sizeof(*current));
     snprintf(current->slab_conf.room_cfgstats[1].msg_needed.path, sizeof(current->slab_conf.room_cfgstats[1].msg_needed.path), "needed.wav");
     CHECK(save_config_overlay_write(current, baseline, &overlay, &err) == SVR_Ok, "overlay write: %s", err.message);
-    CHECK(save_config_overlay_apply(overlay.data, overlay.len, loaded, &err) == SVR_Ok, "overlay apply: %s", err.message);
+    CHECK(save_config_overlay_apply(overlay.data, overlay.len, loaded, NULL, &err) == SVR_Ok, "overlay apply: %s", err.message);
     CHECK(strcmp(loaded->slab_conf.room_cfgstats[1].msg_needed.path, "needed.wav") == 0, "the string came back as \"%s\"",
         loaded->slab_conf.room_cfgstats[1].msg_needed.path);
     save_buf_free(&overlay);
@@ -1320,7 +1401,7 @@ static enum SaveResult build_sample(struct SaveBuffer *out, struct SaveError *er
     if (r == SVR_Ok)
         r = save_schema_encode(&sch, roots, root_count, SVM_Save, err);
     if (r == SVR_Ok)
-        r = save_names_write(g, &nams, err);
+        r = save_names_write(g, NULL, &nams, err);
     if (r == SVR_Ok)
         r = save_config_overlay_write(&g->conf, baseline, &conf, err);
     if (r == SVR_Ok)
@@ -1738,6 +1819,7 @@ int main(int argc, char **argv)
     test_conversions();
     test_names();
     test_name_tables();
+    test_sprite_names();
     test_copy_runtime();
     test_arrays();
     test_unions();
