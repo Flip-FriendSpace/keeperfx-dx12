@@ -22,6 +22,7 @@
 
 #include "kfx/save/core/save_bytes.h"
 #include "kfx/save/core/save_config_overlay.h"
+#include "kfx/save/core/save_names.h"
 #include "kfx/save/core/save_schema.h"
 #include "kfx/save/core/schema/save_tables_decl.h"
 /******************************************************************************/
@@ -135,7 +136,7 @@ enum SaveResult save_config_overlay_write(const struct Configs *current, const s
 }
 
 static uint8_t *resolve_path(const struct SaveStructDesc *desc, uint8_t *base,
-    const char *path, uint8_t *out_stored_type, uint32_t *out_elem_size)
+    const char *path, uint8_t *out_stored_type, uint32_t *out_elem_size, const struct SaveFieldDesc **out_field)
 {
     const char *text = path;
     for (;;)
@@ -182,6 +183,7 @@ static uint8_t *resolve_path(const struct SaveStructDesc *desc, uint8_t *base,
                 return nullptr; /* a string leaf has no further segments */
             *out_stored_type = SV_STR;
             *out_elem_size = field->mem_size;
+            *out_field = field;
             return base + field->offset;
         }
         const uint32_t flat = has_index ? index : 0;
@@ -203,12 +205,13 @@ static uint8_t *resolve_path(const struct SaveStructDesc *desc, uint8_t *base,
             return nullptr; /* a scalar leaf has no further segments */
         *out_stored_type = field->stored_type;
         *out_elem_size = elem;
+        *out_field = field;
         return elem_ptr;
     }
 }
 
 enum SaveResult save_config_overlay_apply(const uint8_t *conf_data, uint32_t conf_len,
-    struct Configs *current, struct SaveError *err)
+    struct Configs *current, const struct SaveSpriteMap *sprites, struct SaveError *err)
 {
     ByteReader reader(conf_data, conf_len);
     const auto count = reader.Get<uint32_t>();
@@ -231,7 +234,8 @@ enum SaveResult save_config_overlay_apply(const uint8_t *conf_data, uint32_t con
                 break;
             uint8_t out_type;
             uint32_t out_size;
-            uint8_t *dst = resolve_path(&save_desc_Configs, reinterpret_cast<uint8_t *>(current), path, &out_type, &out_size);
+            const struct SaveFieldDesc *field = nullptr;
+            uint8_t *dst = resolve_path(&save_desc_Configs, reinterpret_cast<uint8_t *>(current), path, &out_type, &out_size, &field);
             if ((dst == nullptr) || (out_type != SV_STR))
                 continue;
             const uint32_t copy_len = (slen < out_size) ? slen : (out_size - 1);   // the last byte stays the terminator
@@ -245,12 +249,16 @@ enum SaveResult save_config_overlay_apply(const uint8_t *conf_data, uint32_t con
             break;
         uint8_t out_type;
         uint32_t out_size;
-        uint8_t *dst = resolve_path(&save_desc_Configs, reinterpret_cast<uint8_t *>(current), path, &out_type, &out_size);
+        const struct SaveFieldDesc *field = nullptr;
+        uint8_t *dst = resolve_path(&save_desc_Configs, reinterpret_cast<uint8_t *>(current), path, &out_type, &out_size, &field);
         if ((dst == nullptr) || (out_type == SV_STR) || (out_type == SV_STRUCT))
             continue;
         struct SaveValue value;
         if (save_value_load_le(raw, stored_type, &value) < 0)
             continue;
+        /* A sprite the level gave a config entry is put where its animation is in this session. */
+        if ((field->name_domain == SND_Sprite) && !value.is_float && !value.neg)
+            value.mag = save_sprite_map_index(sprites, value.mag);
         save_value_store_mem(dst, out_size, out_type, &value, 1);
     }
     if (!reader.ok())

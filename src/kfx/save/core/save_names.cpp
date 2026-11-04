@@ -2,7 +2,8 @@
 /** @file save_names.cpp
  *     NAMS chunk: writes each name domain's config-table code names, and
  *     checks a decoded Game's name_domain-tagged fields against them
- *     (it refuses a mismatch; it doesn't remap).
+ *     (it refuses a mismatch; it doesn't remap). Sprite animations are the
+ *     exception: they are moved to the index their name has now.
  */
 /******************************************************************************/
 #include "pre_inc.h"
@@ -19,9 +20,11 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "kfx/save/core/save_bytes.h"
@@ -132,10 +135,30 @@ static uint32_t named_extent(const uint8_t *base, const struct SaveNameDomainRow
     return 0;
 }
 
-enum SaveResult save_names_write(const struct Game *game_state, struct SaveBuffer *out, struct SaveError *err)
+/* The sprite domain lists every sprite index from 0 to the end of the custom ones, so an entry's index is
+   the sprite index. Only the first frame of a custom animation has a name; the rest are empty. */
+static int write_sprite_names(const struct SaveSpriteNames *sprites, struct SaveBuffer *out)
+{
+    const uint32_t count = (sprites->end > sprites->first) ? sprites->end : 0;
+    std::vector<const char *> names(count, nullptr);
+    for (uint32_t index = 0; index < sprites->count; index++)
+    {
+        const struct SaveSpriteName &sprite_name = sprites->names[index];
+        if ((sprite_name.name != nullptr) && (sprite_name.sprite >= sprites->first) && (sprite_name.sprite < count))
+            names[sprite_name.sprite] = sprite_name.name;
+    }
+    int failed = save_buf_u16(out, SND_Sprite) | save_buf_u32(out, count);
+    for (const char *name : names)
+        failed |= put_str(out, (name != nullptr) ? name : "", UINT16_MAX);
+    return failed;
+}
+
+enum SaveResult save_names_write(const struct Game *game_state, const struct SaveSpriteNames *sprites,
+    struct SaveBuffer *out, struct SaveError *err)
 {
     const auto *base = reinterpret_cast<const uint8_t *>(game_state);
-    int failed = save_buf_u16(out, static_cast<uint16_t>NAME_DOMAIN_ROW_COUNT);
+    const uint32_t domain_count = NAME_DOMAIN_ROW_COUNT + ((sprites != nullptr) ? 1U : 0U);
+    int failed = save_buf_u16(out, static_cast<uint16_t>(domain_count));
     for (const auto &name_domain_row : name_domain_rows)
     {
         const struct SaveNameDomainRow *row = &name_domain_row;
@@ -157,6 +180,8 @@ enum SaveResult save_names_write(const struct Game *game_state, struct SaveBuffe
             failed |= put_str(out, name, row->name_maxlen);
         }
     }
+    if (sprites != nullptr)
+        failed |= write_sprite_names(sprites, out);
     return (failed != 0) ? save_fail(err, SVR_NoMemory, "out of memory writing the name table") : SVR_Ok;
 }
 /******************************************************************************/
@@ -253,7 +278,7 @@ static enum SaveResult check_struct(const struct SaveStructDesc *desc, const uin
                 domain = resolve_thing_model_domain(base[offsetof(struct Thing, class_id)]);
             else if (domain == SND_ByManufactureClass)
                 domain = resolve_manufacture_domain(base[offsetof(struct Dungeon, manufacture_class)]);
-            if (domain == SND_None)
+            if ((domain == SND_None) || (domain == SND_Sprite)) /* sprites are moved, not checked */
                 continue;
             struct SaveValue value;
             save_value_load_mem(bytes, elem, field->stored_type, &value);
@@ -275,4 +300,115 @@ enum SaveResult save_names_check(const uint8_t *nams_data, uint32_t nams_len,
     if (result != SVR_Ok)
         return result;
     return check_struct(&save_desc_Game, reinterpret_cast<const uint8_t *>(game_state), parsed_names, game_state, err);
+}
+/******************************************************************************/
+enum SaveResult save_sprite_map_build(const uint8_t *nams_data, uint32_t nams_len,
+    const struct SaveSpriteNames *now, struct SaveSpriteMap *map, struct SaveError *err)
+{
+    memset(map, 0, sizeof(*map));
+    ParsedNames parsed_names;
+    const enum SaveResult result = parse_nams(nams_data, nams_len, parsed_names, err);
+    if ((result != SVR_Ok) || !parsed_names.present[SND_Sprite])
+        return result;
+    const std::vector<std::string_view> &saved = parsed_names.names[SND_Sprite];
+    std::vector<std::string_view> now_at(std::max(now->end, now->first));
+    std::unordered_map<std::string_view, uint32_t> now_by_name;
+    for (uint32_t index = 0; index < now->count; index++)
+    {
+        const struct SaveSpriteName &sprite_name = now->names[index];
+        if ((sprite_name.name == nullptr) || (sprite_name.name[0] == '\0'))
+            continue;
+        const std::string_view name(sprite_name.name);
+        now_by_name[name] = sprite_name.sprite;
+        if (sprite_name.sprite < now_at.size())
+            now_at[sprite_name.sprite] = name;
+    }
+    std::vector<int32_t> to(saved.size());
+    for (uint32_t index = 0; index < saved.size(); index++)
+    {
+        to[index] = static_cast<int32_t>(index);
+        const std::string_view &name = saved[index];
+        /* The original sprites never move, and a frame that isn't the first of an animation has no name. */
+        if ((index < now->first) || name.empty() || ((index < now_at.size()) && (now_at[index] == name)))
+            continue;
+        const auto found = now_by_name.find(name);
+        if (found != now_by_name.end())
+        {
+            to[index] = static_cast<int32_t>(found->second);
+            map->moved++;
+            continue;
+        }
+        to[index] = -1;
+        if (map->missing++ == 0)
+            snprintf(map->missing_name, sizeof(map->missing_name), "%.*s", static_cast<int>(name.size()), name.data());
+    }
+    if ((map->moved == 0) && (map->missing == 0))
+        return SVR_Ok;
+    map->to = static_cast<int32_t *>(malloc(to.size() * sizeof(int32_t)));
+    if (map->to == nullptr)
+        return save_fail(err, SVR_NoMemory, "out of memory reading the sprite names");
+    memcpy(map->to, to.data(), to.size() * sizeof(int32_t));
+    map->count = static_cast<uint32_t>(to.size());
+    return SVR_Ok;
+}
+
+void save_sprite_map_free(struct SaveSpriteMap *map)
+{
+    free(map->to);
+    memset(map, 0, sizeof(*map));
+}
+
+uint64_t save_sprite_map_index(const struct SaveSpriteMap *map, uint64_t sprite)
+{
+    if ((map == nullptr) || (map->to == nullptr) || (sprite >= map->count))
+        return sprite;
+    return (map->to[sprite] < 0) ? 0 : static_cast<uint64_t>(map->to[sprite]);
+}
+
+static uint32_t apply_struct(const struct SaveSpriteMap *map, const struct SaveStructDesc *desc, uint8_t *base,
+    uint32_t *lost)
+{
+    uint32_t changed = 0;
+    for (uint32_t field_index = 0; field_index < desc->field_count; field_index++)
+    {
+        const struct SaveFieldDesc *field = &desc->fields[field_index];
+        if (!save_field_included(field, SVM_Save))
+            continue;
+        if ((field->stored_type != SV_STRUCT) && (field->name_domain != SND_Sprite))
+            continue;
+        const uint32_t count = save_field_count(field);
+        const uint32_t elem = field->mem_size / count;
+        for (uint32_t index = 0; index < count; index++)
+        {
+            uint8_t *bytes = base + field->offset + (static_cast<size_t>(index) * elem);
+            if (field->stored_type == SV_STRUCT)
+            {
+                changed += apply_struct(map, field->sub, bytes, lost);
+                continue;
+            }
+            struct SaveValue value;
+            save_value_load_mem(bytes, elem, field->stored_type, &value);
+            if (value.is_float || value.neg)
+                continue;
+            const uint64_t sprite = save_sprite_map_index(map, value.mag);
+            if (sprite == value.mag)
+                continue;
+            if (map->to[value.mag] < 0)
+                (*lost)++;
+            value.mag = sprite;
+            save_value_store_mem(bytes, elem, field->stored_type, &value, 1);
+            changed++;
+        }
+    }
+    return changed;
+}
+
+uint32_t save_sprite_map_apply(const struct SaveSpriteMap *map, struct Game *game_state, uint32_t *lost)
+{
+    uint32_t lost_values = 0;
+    const uint32_t changed = ((map == nullptr) || (map->to == nullptr)) ? 0
+        : apply_struct(map, &save_desc_Game, reinterpret_cast<uint8_t *>(game_state), &lost_values);
+    if (lost != nullptr)
+        *lost = lost_values;
+    return changed;
 }

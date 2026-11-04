@@ -366,6 +366,8 @@ CONTENTS
     14  by manufacture class   the domain of Dungeon.manufacture_kind follows
                                the manufacture class
     13 and 14 are not written in NAMS; they pick one of 1..12 when checking.
+    15  sprite                 the sprite index of an animation's first frame,
+                               see 9.1
 
   Check after GAME is read
     For every field the tables mark with a domain, with the value as index:
@@ -374,11 +376,34 @@ CONTENTS
       domain has no table in the file  not checked
       index beyond the file's table    refused
       names differ at that index       refused
-    A domain id above 14 in the file is ignored.
-  Nothing is remapped.
+    A domain id above 15 in the file is ignored. A reader from before
+    domain 15 ignores that one too.
+  Nothing is remapped, except sprites (9.1).
 
   Read limits: count larger than half the bytes that remain, or bytes
   left inside the chunk after a name, is damaged.
+
+9.1  Sprites
+  Custom sprite animations get their sprite indices in the order the mods
+  load, so the same animation can have another index in another session.
+  The sprite domain is written last. Entry n is sprite index n, from 0 to
+  one past the last custom sprite in use. The name of a custom animation is
+  at the index of its first frame; every other entry, the original game's
+  sprites included, is empty.
+
+  Move after GAME is read
+    For every field the tables mark as a sprite, with the value as index:
+      the build's original sprites (below its first custom index), an
+      empty name, or not below the file's count
+                                       kept
+      the build has the same name at that index
+                                       kept
+      the build has the name at another index
+                                       moved there
+      the build doesn't have the name  0, as an unknown animation name in
+                                       a config file gives
+    Fields of a CONF entry that the tables mark as a sprite move the same way.
+    Without a sprite domain in the file nothing moves.
 
 
 10  CONF CHUNK
@@ -404,7 +429,8 @@ CONTENTS
 
   On load: the build's config is loaded from files first, then each entry
   is applied by path. A path or type the build does not have is skipped.
-  Values are converted as in 8.1, and cut to fit.
+  Values are converted as in 8.1, and cut to fit. A sprite is moved first
+  (9.1).
 
 
 11  RECS CHUNK

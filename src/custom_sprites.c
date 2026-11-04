@@ -2944,6 +2944,27 @@ int32_t get_icon_id(const char *name)
     return bad_icon_id; // -1 is used by SPELLBOOK_POSS etc
 }
 
+int custom_sprite_animation_count(void)
+{
+    return num_added_sprite;
+}
+
+const char *custom_sprite_animation(int n, int32_t *sprite)
+{
+    if ((n < 0) || (n >= num_added_sprite))
+    {
+        *sprite = 0;
+        return NULL;
+    }
+    *sprite = added_sprites[n].num;
+    return added_sprites[n].name;
+}
+
+int32_t custom_sprites_end(void)
+{
+    return KEEPERSPRITE_ADD_OFFSET + next_free_sprite;
+}
+
 int32_t get_anim_id(const char *name, struct ObjectConfigStats *objst)
 {
     int32_t ret = atoi(name);

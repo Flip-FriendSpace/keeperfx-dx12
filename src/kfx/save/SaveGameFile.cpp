@@ -5,6 +5,8 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "bflib_basics.h"
+#include "custom_sprites.h"
+#include "engine_render.h"
 #include "game_legacy.h"
 #include "game_merge.h"
 #include "kfx/platform/IPlatform.h"
@@ -26,6 +28,23 @@
 
 namespace savegame {
 
+SessionSprites::SessionSprites() : view()
+{
+    const int count = custom_sprite_animation_count();
+    names.reserve((count > 0) ? static_cast<size_t>(count) : 0);
+    for (int n = 0; n < count; n++)
+    {
+        int32_t sprite;
+        const char *name = custom_sprite_animation(n, &sprite);
+        if ((name != nullptr) && (sprite >= KEEPERSPRITE_ADD_OFFSET))
+            names.push_back({name, static_cast<uint32_t>(sprite)});
+    }
+    view.first = KEEPERSPRITE_ADD_OFFSET;
+    view.end = static_cast<uint32_t>(custom_sprites_end());
+    view.count = static_cast<uint32_t>(names.size());
+    view.names = names.data();
+}
+
 enum SaveResult Build(const Game *game_state, const IntralevelData *ilvl, const Configs *baseline,
     const char *lua_data, uint32_t lua_len, const CatalogueEntry *centry, SaveBuffer *out, SaveError *err)
 {
@@ -35,8 +54,9 @@ enum SaveResult Build(const Game *game_state, const IntralevelData *ilvl, const 
     enum SaveResult result = save_encode_record(&meta, &save_desc_CatalogueEntry, centry, SVM_Save, err);
     if (result == SVR_Ok)
         result = save_schema_encode(&schema_buffer, roots, root_count, SVM_Save, err);
+    const SessionSprites sprites;
     if (result == SVR_Ok)
-        result = save_names_write(game_state, &nams, err);
+        result = save_names_write(game_state, &sprites.view, &nams, err);
     if (result == SVR_Ok)
     {
         if (baseline != nullptr)

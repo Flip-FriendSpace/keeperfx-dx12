@@ -14,6 +14,7 @@
 
 #include "kfx/platform/IFileSystem.h"
 #include "kfx/save/SaveManager.h"
+#include "kfx/save/core/save_names.h"
 #include "kfx/save/core/save_schema.h"
 #include "kfx/save/core/schema/save_tables_decl.h"
 
@@ -124,6 +125,14 @@ struct ReadResult {
     char *lua_data; uint32_t lua_len;
 };
 
+/** The custom sprite animations loaded now, as a save names them. view points into names. */
+struct SessionSprites {
+    std::vector<SaveSpriteName> names;
+    SaveSpriteNames view;
+    SessionSprites();
+    SessionSprites(const SessionSprites &) = delete;
+    SessionSprites &operator=(const SessionSprites &) = delete;
+};
 /** Encodes a full KFXS buffer (META + SCHM + NAMS + CONF + GAME + ILVL + LUA). baseline may be NULL (no
  *  level set up yet); the CONF chunk is then an empty overlay. */
 enum SaveResult Build(const Game *game_state, const IntralevelData *ilvl, const Configs *baseline,

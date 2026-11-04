@@ -14,6 +14,7 @@
 #include "kfx/save/core/save_codec.h"
 
 struct Configs;
+struct SaveSpriteMap;
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,9 +26,10 @@ enum SaveResult save_config_overlay_write(const struct Configs *current, const s
     struct SaveBuffer *out, struct SaveError *err);
 
 /** Applies a CONF chunk body onto cur (normally freshly loaded from config files). A path
- *  this build has no matching field for is skipped, not refused. */
+ *  this build has no matching field for is skipped, not refused. A sprite animation goes
+ *  through sprites (may be NULL: it is applied as it is). */
 enum SaveResult save_config_overlay_apply(const uint8_t *conf_data, uint32_t conf_len,
-    struct Configs *current, struct SaveError *err);
+    struct Configs *current, const struct SaveSpriteMap *sprites, struct SaveError *err);
 /******************************************************************************/
 #ifdef __cplusplus
 }
